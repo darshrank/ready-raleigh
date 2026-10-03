@@ -41,6 +41,49 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas:
 -->
 
+### 2026-10-03 14:30 Claude (Opus 5.5) lanes A+B, real data + shelter rule
+- Done:
+  - Merged data-pipeline (Codex P2, P3: 3a84291, 3ccecd2) into main. Codex's branch kept docs at
+    the root; main's docs/ layout kept. Codex's two handoff entries are in this log in time order,
+    their DECISIONS line is in docs/DECISIONS.md. The wolfhacks/codex checkout was not touched.
+  - `.env` (gitignored) created from .env.example with `VITE_DATA_BASE=/data`. app/vite.config.ts
+    now has `envDir: '..'` (one-line lane C change): Vite read .env from app/, so the root .env
+    never reached the app and /solo kept loading fixtures.
+  - Contract check on real data (`DATA_DIR=app/public/data npx vitest run shared/src/fixtures.test.ts`):
+    all pass. One mismatch fixed: meta.json. `DataMeta` now types the pipeline's real shape
+    (buildDate, task, sources map, p3.thresholds); the fixture generator writes the same shape;
+    the data test checks meta and that coverage used the 900 s drive limit.
+  - Shelter rule (user decision, DECISIONS): `shelterCells(site, idx)` in coverage.ts. Flooded cells
+    are covered via coverDry, cut-off dry cells via coverFlood, flooded shelters still cover nobody.
+    Tests: hand-made 4-cell bundle (both cases + a wet site) and a fixture check.
+  - `npm run optimize flood` on real data -> app/public/data/optimal_flood.json: score 89.2,
+    2 shelters (Boylan Chapel, osm-node-357813842) + roads road-0523, road-0168.
+- Balance finding (NOT changed, waiting on the user): the game is too easy. At-risk: 2,497 cells
+  (1,706 flood, 791 cut-off dry), 220,098 weighted (173,822 people). A 15-min drive reaches
+  ~5,000 of 6,392 cells, so the average usable shelter covers 110,583 weighted (50.2%) and the best
+  covers 66.5% (Boylan Chapel); 170 of 173 usable sites cover over 25%. Scratch estimates (cover
+  rebuilt from roads_graph.json, matches the pipeline at 900 s, Jaccard 0.999 dry / 0.989 flood):
+  - 10-min limit: mean shelter 25.6%, max 46.0%, optimal 77.0. Not enough on its own.
+  - 5-min limit: mean 5.4%, max 11.6%, optimal 42.7.
+  - Capacity, nearest-first by drive time (15 min): 5k people max 3.2% / optimal ~31 (roads
+    dominate); 10k max 6.1% / ~36; 20k max 11.8% / ~47 (shelters and roads both matter).
+- Verified: typecheck (all workspaces), 30 tests, data test on real data, screenshot of /solo at
+  1440 with real data (fetches /data/cells.json, sites.json, flood_steps.geojson).
+- Half done: nothing in A/B. optimal_flood.json must be rebuilt if the balance rule changes.
+- Next exact step: user picks the balance fix (capacity is the proposal). Then lane C: swap
+  `halftoneDots()` for the pipeline's flood_dots.json (see gotchas), then P6.
+- Gotchas:
+  - /solo freezes ~30 s on real data: `halftoneDots()` (app/src/map/halftone.ts) rasterises the
+    city's flood polygons on the main thread (30.4 s in Node). The style and the camera fit wait
+    behind it. Fix: load flood_dots.json (`[lon, lat, step][]`, 3,261 dots) instead.
+  - Real-data framing fits the whole city at zoom 10.7 (1440 px), below the z13 DESIGN wants on
+    phones; 184 site squares overlap downtown and cover the "Raleigh" label. Lane C to decide.
+  - Flood road names can be "Unnamed road <osm ids>"; the UI needs a fallback label.
+  - 1,250 cells are step 1 (floodway), more than the 424 at step 2: the floodway band is coarse at
+    res 9. Fine for scoring, worth a look before the sim animates step by step.
+  - Capacity needs a drive-time order per site. Cheapest path: lane A writes coverDry/coverFlood
+    sorted by drive time (same file size), the engine fills nearest-first.
+
 ### 2026-10-03 13:45 Claude (Opus 5.5) lane B, P4
 - Done: game engine in shared/src/engine/ (exported from `@shared` and `@shared/engine`):
   - context.ts: `engineIndex(data)` builds typed arrays once per bundle (WeakMap): weight split

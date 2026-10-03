@@ -7,6 +7,8 @@ const serverUrl = process.env.VITE_SERVER_URL ?? 'http://localhost:8787';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // One .env at the repo root (AGENTS.md), shared with the server and the optimize script.
+  envDir: '..',
   resolve: {
     alias: { '@shared': fileURLToPath(new URL('../shared/src', import.meta.url)) },
   },

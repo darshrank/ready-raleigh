@@ -16,6 +16,8 @@ export interface PlayRecord {
   plan: Plan;
   score: ScoreResult;
   placements: PlacementRow[];
+  /** Room games: the mayoral candidate portrait the player ran as. */
+  candidate?: string | null;
 }
 
 export interface PickCount extends PlacementRow {

@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS plays (
 );
 SELECT create_hypertable('plays', by_range('created_at', INTERVAL '1 day'), if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS plays_room ON plays (room_code, created_at DESC);
+-- Room games (P9): the mayoral candidate portrait the player ran as. Null for solo plays.
+ALTER TABLE plays ADD COLUMN IF NOT EXISTS candidate text;
 
 -- One row per piece placed. target is 'site:<id>', 'road:<id>' or 'cell:<index>'.
 CREATE TABLE IF NOT EXISTS placements (

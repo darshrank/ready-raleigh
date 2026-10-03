@@ -26,17 +26,17 @@ export class TigerStore implements PlayStore {
   readonly kind = 'tiger';
   constructor(readonly pool: pg.Pool) {}
 
-  async savePlay({ id, createdAt, plan, score, placements }: PlayRecord) {
+  async savePlay({ id, createdAt, plan, score, placements, candidate = null }: PlayRecord) {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       await client.query(
         `INSERT INTO plays (id, created_at, mode, room_code, player_id, player_name, score, best_possible,
-           protected_people, stranded_people, protected_weighted, at_risk_weighted, spent, plan, result)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+           protected_people, stranded_people, protected_weighted, at_risk_weighted, spent, plan, result, candidate)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
         [id, createdAt, plan.mode, plan.roomCode, plan.playerId, plan.playerName, score.score,
           score.bestPossible, score.protectedPeople, score.strandedPeople, score.protectedWeighted,
-          score.atRiskWeighted, plan.spent, plan, score],
+          score.atRiskWeighted, plan.spent, plan, score, candidate],
       );
       if (placements.length > 0) {
         await client.query(

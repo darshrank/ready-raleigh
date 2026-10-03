@@ -1,11 +1,10 @@
 import Fastify from 'fastify';
-import { WebSocketServer, type WebSocket } from 'ws';
 import type { GameData } from './data';
 import { MemoryStore, type PlayStore } from './db/store';
 import { rankPlanner } from './planner';
 import { BadPlay, buildPlay } from './plays';
-
-const ROOM_PATH = /^\/ws\/rooms\/([A-Za-z0-9-]{1,32})$/;
+import { lanAddresses } from './net';
+import { roomServer } from './roomSocket';
 
 export interface ServerOptions {
   /** Where plays go. Defaults to memory. */
@@ -19,6 +18,10 @@ export function buildServer({ store = new MemoryStore(), data = () => null }: Se
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
 
   app.get('/api/health', async () => ({ ok: true }));
+
+  // Where phones join a room: PUBLIC_URL (our domain or a tunnel) when set, else this machine's LAN
+  // address. The page adds its own port, since in development it is served by Vite, not here.
+  app.get('/api/join-base', async () => ({ publicUrl: process.env.PUBLIC_URL || null, lan: lanAddresses()[0] ?? null }));
 
   app.post('/api/plays', async (req, reply) => {
     try {
@@ -40,24 +43,11 @@ export function buildServer({ store = new MemoryStore(), data = () => null }: Se
     return { store: store.kind, ...rankPlanner(mode, game.bundle, game.optimal(mode), game.extended(mode), crowd) };
   });
 
-  // Rooms: echo for now (P1). P9 replaces this with the room state machine.
-  const wss = new WebSocketServer({ noServer: true });
-  app.server.on('upgrade', (req, socket, head) => {
-    const path = new URL(req.url ?? '/', 'http://localhost').pathname;
-    const match = ROOM_PATH.exec(path);
-    if (!match) {
-      socket.destroy();
-      return;
-    }
-    const code = match[1]!.toUpperCase();
-    wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
-      ws.send(JSON.stringify({ type: 'hello', room: code }));
-      ws.on('message', (data) => ws.send(data.toString()));
-    });
-  });
+  // Rooms (P9): candidates plan the same storm; locked platforms are scored and stored like plays.
+  const rooms = roomServer({ store, data, log: app.log });
+  app.server.on('upgrade', rooms.onUpgrade);
   app.addHook('onClose', async () => {
-    for (const client of wss.clients) client.terminate();
-    await new Promise<void>((resolve) => wss.close(() => resolve()));
+    await rooms.close();
     await store.close();
   });
 

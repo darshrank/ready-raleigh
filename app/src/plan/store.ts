@@ -15,8 +15,10 @@ export type Target =
 /**
  * title (the orbiting city and the briefing) -> intro (the camera flies down) -> planning ->
  * storm (the flood simulation plays) -> results (the card). Play again goes back to planning.
+ * Rooms add waiting between planning and storm: the plan is in, and the storm starts for every
+ * candidate at once when the last one is ready (startStorm).
  */
-export type Phase = 'title' | 'intro' | 'planning' | 'storm' | 'results';
+export type Phase = 'title' | 'intro' | 'planning' | 'waiting' | 'storm' | 'results';
 
 export const sameTarget = (a: Target | null, b: Target | null) =>
   a === b || (!!a && !!b && JSON.stringify(a) === JSON.stringify(b));
@@ -70,6 +72,8 @@ interface PlanStore {
   /** When the storm started (performance.now() ms), the simulation's clock. */
   stormAt: number | null;
   nextId: number;
+  /** Rooms: ending planning waits for the room instead of starting the storm. */
+  hold: boolean;
 
   arm: (piece: FloodPiece | null) => void;
   select: (id: string | null) => void;
@@ -82,8 +86,12 @@ interface PlanStore {
   remove: (id: string) => void;
   /** "Start planning" on the title: the camera flies down; startPlanning follows when it lands. */
   beginIntro: () => void;
-  startPlanning: () => void;
+  /** `endsAt` (ms since epoch) comes from the room's server in multiplayer. */
+  startPlanning: (endsAt?: number) => void;
   endPlanning: () => void;
+  setHold: (hold: boolean) => void;
+  /** Rooms: everyone is ready, the storm starts now. */
+  startStorm: () => void;
   /** Move the storm clock to `endMs` (the storm's length): it clears and the results follow. */
   skipStorm: (endMs: number) => void;
   endStorm: () => void;
@@ -106,6 +114,7 @@ const fresh = () => ({
   notice: null,
   stormAt: null,
   nextId: 1,
+  hold: false,
 });
 
 export const usePlan = create<PlanStore>((set, get) => ({
@@ -185,11 +194,17 @@ export const usePlan = create<PlanStore>((set, get) => ({
   beginIntro: () => {
     if (get().phase === 'title') set({ phase: 'intro' });
   },
-  startPlanning: () =>
-    set({ phase: 'planning', stormAt: null, endsAt: Date.now() + PLANNING_SECONDS * 1000, armed: null, hover: null, notice: null }),
+  startPlanning: (endsAt) =>
+    set({ phase: 'planning', stormAt: null, endsAt: endsAt ?? Date.now() + PLANNING_SECONDS * 1000, armed: null, hover: null, notice: null }),
   endPlanning: () => {
     if (get().phase !== 'planning') return;
-    set({ phase: 'storm', stormAt: performance.now(), armed: null, selectedId: null, hover: null, movingId: null, dragging: false });
+    const locked = { armed: null, selectedId: null, hover: null, movingId: null, dragging: false };
+    if (get().hold) set({ phase: 'waiting', ...locked });
+    else set({ phase: 'storm', stormAt: performance.now(), ...locked });
+  },
+  setHold: (hold) => set({ hold }),
+  startStorm: () => {
+    if (get().phase === 'waiting') set({ phase: 'storm', stormAt: performance.now() });
   },
   skipStorm: (endMs) => {
     const s = get();
@@ -198,7 +213,7 @@ export const usePlan = create<PlanStore>((set, get) => ({
   endStorm: () => {
     if (get().phase === 'storm') set({ phase: 'results' });
   },
-  reset: () => set({ ...fresh(), phase: 'planning', endsAt: Date.now() + PLANNING_SECONDS * 1000 }),
+  reset: () => set({ ...fresh(), hold: get().hold, phase: 'planning', endsAt: Date.now() + PLANNING_SECONDS * 1000 }),
   restart: () => set(fresh()),
 }));
 

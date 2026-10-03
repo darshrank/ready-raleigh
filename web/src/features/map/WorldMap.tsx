@@ -30,6 +30,8 @@ function daylightFor(s: ReturnType<typeof useGame.getState>): number {
   if (s.theme === "day") return 1;
   if (s.theme === "night") return 0;
   if (!s.cityId || GLOBE_PHASES.includes(s.phase)) return 0;
+  // Planning happens on the light street map (clearer for first-time players); the storm brings the night.
+  if (s.phase === "briefing" || s.phase === "planning") return 1;
   const cfg = CITY_SCENARIOS[s.cityId];
   const hour = s.phase === "simulating" || s.phase === "results" || s.phase === "locking" ? s.simHour : 0;
   return Math.round(daylightAt(cfg.startClock + hour) * 20) / 20;

@@ -163,7 +163,8 @@ export const useGame = create<GameState>((set, get) => ({
   timeFreezeUsed: false,
   intelTokens: ROUND.intelTokens,
   intel: { demographic: false, fragility: false, health: false, floodDetail: false },
-  layers: { flood: true, zones: true, atRisk: true, roads: false, facilities: true, buildings: true },
+  // Decluttered by default (team feedback): water, at-risk points and facilities; neighbourhood fills are opt-in.
+  layers: { flood: true, zones: false, atRisk: true, roads: false, facilities: true, buildings: true },
   cameraMode: "city",
   achilles: null,
   achillesState: "idle",
@@ -309,7 +310,7 @@ export const useGame = create<GameState>((set, get) => ({
       bots: null,
       resultsStep: 0,
       estimate: s.baseline,
-      layers: { flood: true, zones: true, atRisk: true, roads: false, facilities: true, buildings: true },
+      layers: { flood: true, zones: false, atRisk: true, roads: false, facilities: true, buildings: true },
     });
   },
   backToLanding: () => {

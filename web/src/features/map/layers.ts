@@ -510,15 +510,16 @@ export function useDeckLayers(): Layer[] {
         ...ON_TOP,
         data: data.origins,
         getPosition: (o) => [o.lon, o.lat],
-        getRadius: (o) => 2 + Math.sqrt(o.pop) / (data.origins.length > 400 ? 6 : 3.4),
+        getRadius: (o) => 1.5 + Math.sqrt(o.pop) / (data.origins.length > 400 ? 8 : 4.5),
         radiusUnits: "pixels",
-        radiusMaxPixels: 11,
+        radiusMaxPixels: 8,
+        opacity: 0.85,
         getFillColor: (o) => {
           const s = share ? share[o.id] : 0;
           return s > 0.75 ? [52, 211, 153, 190] : s > 0.4 ? [250, 204, 21, 190] : [251, 113, 60, 200];
         },
-        getLineColor: [5, 8, 16, 220],
-        lineWidthMinPixels: 1,
+        getLineColor: [255, 255, 255, 200],
+        lineWidthMinPixels: 0.75,
         stroked: true,
         pickable: true,
         updateTriggers: { getFillColor: [estimate] },

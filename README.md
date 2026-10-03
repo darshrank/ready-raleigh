@@ -21,11 +21,21 @@ OpenStreetMap (OSMnx), FEMA National Flood Hazard Layer, U.S. Census ACS 5-year 
 ## Run it
 
 ```bash
-cd web && pnpm install && pnpm dev
+npm install && (cd web && pnpm install)
+npm run dev        # game on http://localhost:3000, multiplayer rooms on :8787
+npm run deploy     # one Cloudflare Worker: static game + rooms (npx wrangler login first)
 ```
+
+## Where the pieces came from
+
+This branch (`claude/unified-product`) merges the three team branches:
+
+- **feat/ready-raleigh-adit**: the app shell, UI and animation, four city packs, engine, event feed, results and methodology.
+- **sakhi/visual-overhaul**: the light, uncluttered street-map look used while planning.
+- **claude/lucid-mccarthy-9x9exf**: realtime multiplayer rooms (Cloudflare Durable Objects) and the independent terrain (HAND) check of FEMA's flood zones.
 
 See `CLAUDE.md` for the stack, data-prep commands and conventions. Specs are in `docs/`.
 
 ## Status
 
-Frontend and engine done for Raleigh on real data. Next: FastAPI backend, realtime rooms, Tiger Data, then the other city packs and bonus integrations.
+Frontend, engine and realtime rooms done. Next: Tiger Data persistence, then the bonus integrations.

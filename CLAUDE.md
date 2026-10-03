@@ -13,8 +13,8 @@ Specs: `docs/master-prompt.md` (current four-city design) and `docs/product-plan
 
 Work in this order. Don't start a later step until the earlier one works end to end.
 
-1. All four city packs end to end on one engine (done in the frontend on real data): Raleigh flood, Miami surge, New York heat, San Francisco earthquake. Multiplayer uses labelled simulated players until the backend exists.
-2. Backend: FastAPI, realtime rooms, Tiger Data persistence.
+1. All four city packs end to end on one engine (done in the frontend on real data): Raleigh flood, Miami surge, New York heat, San Francisco earthquake.
+2. Realtime rooms: done (Cloudflare Durable Objects, see Stack). Next: Tiger Data persistence.
 3. Gemini and ElevenLabs through the backend (keys in `.env.example`).
 4. Planner dashboard.
 5. Bonus challenges: Gemini, ElevenLabs, GoDaddy, Tiger Data, then Streaming, then Solana.
@@ -28,7 +28,9 @@ Skip anything marked (stretch) unless asked.
 - Map: MapLibre GL JS 5 (pinned; v6 not yet supported by our deck.gl setup) with an interleaved deck.gl 9 overlay. Basemap: OpenFreeMap vector tiles with a custom style in `web/src/features/map/style.ts`.
 - Engine: TypeScript in `web/src/lib/engine/` (road graph + Dijkstra, flood model, seeded simulation, scoring, Achilles' heel scan, optimizer, crowd analysis). Heavy runs go through a Web Worker (`engine.worker.ts`).
 - Data prep (`data-prep/build_city.py`): Python 3.13, OSMnx, GeoPandas, Shapely, NetworkX, h3. Writes compact JSON to `web/public/data/<city>/`. Hazard sources: FEMA NFHL (Raleigh, Miami), USGS/ABAG liquefaction scenario (San Francisco), OSM green space + NYC Heat Vulnerability Index (New York). New York facilities, bus stops and neighborhood names come from NYC Open Data and NYS DOH instead of Overpass.
-- Planned: Python FastAPI backend, WebSockets for rooms, Tiger Data (PostgreSQL + PostGIS + Timescale), Gemini, ElevenLabs, Solana devnet. Hosting: Vercel (web), Railway/Render/Fly (API), Tiger Cloud (DB).
+- Rooms and hosting: one Cloudflare Worker (`worker/index.ts`, `wrangler.toml`) serves the static Next export (`web/out`, `output: "export"`) and hosts one Durable Object per room code at `/room/<CODE>` (WebSocket). The room state machine is `web/src/lib/room/logic.ts` (lobby, playing, reveal), shared by the Worker and the browser. `features/experience/RoomBridge.tsx` syncs city, seed and timer from the host, submits locked plans, and turns the other players' plans into the crowd. Simulated players are only the fallback when the room server is unreachable or you are alone.
+- Planned: Tiger Data (PostgreSQL + PostGIS + Timescale), Gemini, ElevenLabs, Solana devnet. Secrets for those go through a Worker route or a small API, never the static frontend.
+- Map look: planning and briefing use the light street-map palette (from the sakhi/visual-overhaul branch) with neighbourhood fills off by default; the storm uses the night palette.
 
 ## Conventions
 
@@ -44,7 +46,12 @@ Skip anything marked (stretch) unless asked.
 ## Commands
 
 ```bash
-# frontend
+# whole app with live rooms (from the repo root)
+npm install && (cd web && pnpm install)
+npm run dev           # web on :3000 + room server (wrangler dev) on :8787
+npm run deploy        # build web/out and deploy the Worker (npx wrangler login first)
+
+# frontend only (rooms fall back to simulated players)
 cd web && pnpm install
 pnpm dev              # http://localhost:3000
 pnpm lint

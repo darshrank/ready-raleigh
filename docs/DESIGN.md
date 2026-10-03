@@ -124,6 +124,14 @@ Coverage in planning is also a halftone: `--safe` dots that grow with the protec
     minor street names from zoom 15, water names in italic.
 - Night: land `--storm-land`, streets as faint `--storm-street` lines with no casing, buildings
   `--storm-street` / `--storm-building`, labels `--storm-label` with a `--storm-land` halo.
+- Detail by zoom (semantic zoom, `app/src/map/detail.ts`). The city view (z12 and below) shows
+  nothing new; each layer appears at its zoom, like a street atlas. Every layer has day and night
+  colors in the basemap palette (`basemap.ts`), so the storm re-paints it.
+
+  | Zoom | Layer | Day | Night |
+  |---|---|---|---|
+  | 14+ | Places from the tiles' `poi`: schools, hospitals and clinics, worship, community centers, libraries, grocery, fire, police. 16 px ink badge with a knocked-out pictogram; names from 15 | `--ink` 85% | `--storm-label` |
+
 - Population ("Who lives here", off by default): flat H3 fill in `--ink`, at most 30% opacity,
   4 stepped tints, no outlines, no extrusion. Everyone, 65 and over, No car.
 - An invisible pickable cell layer is always on, so a tap anywhere opens the neighborhood card.

@@ -6,6 +6,7 @@ import { useMapUi } from '../store';
 import { currentStory } from '../story';
 import { tokens } from '../tokens';
 import { basemapStyle } from './basemap';
+import { installDetail } from './detail';
 import { FloodView } from './flood';
 import { cameraForPoints, framePadding, framePoints, type Pad } from './frame';
 
@@ -106,6 +107,8 @@ export function MapView({
     map.addControl(overlay);
     // The water (DESIGN.md "Water") lives in the style; its animator starts once the style is in.
     let flood: FloodView | null = null;
+    // Icons for the detail that appears as the player zooms in (map/detail.ts).
+    const detail = installDetail(map);
     map.once('load', () => {
       flood = new FloodView(map, tokens(), reducedMotion());
     });
@@ -117,6 +120,7 @@ export function MapView({
     const cleanup = onReadyRef.current?.(map, overlay);
     return () => {
       cleanup?.();
+      detail();
       flood?.destroy();
       mapRef.current = null;
       overlayRef.current = null;

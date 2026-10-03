@@ -28,6 +28,9 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 ## Phase 3: planner
 - [~] P11 Tiger Data storage and planner dashboard (D + C). Lane D done (Claude, D); /planner page (C) next
 
+## Semantic zoom (branch sakhi/semantic-zoom)
+- [~] SZ Detail by zoom on the planning map (Claude, C + A): S1 places done; S2 addresses, S3 GoRaleigh stops, S4 NC OneMap aerial, S5 site buildings, S6 hex fade
+
 ## Phase 4: bonus challenges
 - [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
 - [x] P13 ElevenLabs broadcast and narration (D): POST /api/tts, narrated briefing, news anchor (V2)
@@ -421,6 +424,30 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - Rooms, the planner and POST /api/plays still use Raleigh data.
   - The automated browser pane stops drawing frames after ~10 s, so flights and animations look
     frozen there; judge motion in a real browser.
+
+### 2026-10-03 19:10 EDT Claude (Opus 5.5) lane C, semantic zoom S1 (places)
+- Branch `sakhi/semantic-zoom` in wolfhacks/claude, from group/main a7b011c. Never pushed. The plan
+  (S1-S6) is in the task brief; research found: OpenFreeMap tiles have `poi` (class, subclass,
+  name, rank) and `housenumber`, but the `building` layer carries no names; GoRaleigh GTFS is at
+  https://goraleigh.org/gr_gtfs (1,386 stops); NC OneMap imagery is a 3857 tile cache at
+  services.nconemap.gov/secure/rest/services/Imagery/Orthoimagery_Latest_cached/ImageServer/tile/{z}/{y}/{x}
+  (CORS ok, terms "free and unrestricted use", cite NC OneMap / NC CGIA); sites.json ids are 104
+  osm-node, 100 osm-way, 12 osm-relation.
+- Done (S1): app/src/map/detail.ts: `PLACES_FILTER`, canvas pictograms (`PLACE_ICONS`) turned into
+  SDF images (`sdfImage`), `placeLayers(P)` (z14 icons, z15 names, below street names), and
+  `installDetail(map)` (adds icons; MapView calls it at map creation). basemap.ts exports `Palette`
+  with `placeIcon`/`placeLabel` per mood and slots the places into `labelLayers`.
+- Verified: typecheck, 43 tests. Shots (scratchpad, not committed) at 1440 day and storm and 390 day,
+  z12/z15/z17: `queryRenderedFeatures` on `places` gives 0 at z12, 18-21 at z15. No console errors.
+- Next exact step: S2. In detail.ts add `addressLayers(P)`: `housenumber` text at z16+ (10 px, ink
+  55% / storm-label 60%), placed lowest of the labels, plus a z16+ names layer for non-commercial
+  named POIs (town_hall courthouse/public_building, office government/educational_institution,
+  college, lodging/dormitory, museum, information/office) since the tiles have no building names.
+  Add palette entries `address`, then shots with IDS=places,addresses,building-names.
+- Gotchas: the map is never "idle" or `loaded()` while the water shimmers; wait on
+  `isStyleLoaded()` / `areTilesLoaded()` in scripts. The shot helper used is a scratch script around
+  app/scripts/drive.mjs (jumpTo a view, poll areTilesLoaded, count rendered features, shot). For
+  storm shots run GPU=1 and drag the map once first so the helicopter camera lets go.
 
 ### 2026-10-03 18:45 EDT Claude (Opus 5.5) lane D, P15 live feeds (server)
 - Done: server/src/live/ (sources.ts fetchers + pure parsers, store.ts Tiger/memory/failSoftLive,

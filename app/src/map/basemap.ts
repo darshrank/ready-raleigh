@@ -8,6 +8,7 @@
 import type { ExpressionSpecification, LayerSpecification, Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
 import { rgba, type Tokens } from '../tokens';
 import { floodFlatLayers, floodSources, flood3dLayers, closuresLayer } from './flood';
+import { placeLayers } from './detail';
 
 export const TILES = 'https://tiles.openfreemap.org/planet';
 export const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
@@ -37,7 +38,7 @@ const MAJOR = ['primary', 'secondary', 'tertiary', 'trunk'];
 export type Mood = 'day' | 'storm';
 
 /** Every color the basemap uses, per mood. */
-interface Palette {
+export interface Palette {
   land: string;
   green: string;
   wood: number;
@@ -57,6 +58,9 @@ interface Palette {
   halo: string;
   /** The satellite imagery: full daylight, or dimmed and greyed for the night. */
   imagery: { brightness: number; saturation: number };
+  /** Places (map/detail.ts): the badge and the name. */
+  placeIcon: string;
+  placeLabel: string;
 }
 
 /**
@@ -101,6 +105,8 @@ function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
       label: hex['storm-label'],
       halo: hex['storm-land'],
       imagery: { brightness: 0.42, saturation: -0.4 },
+      placeIcon: rgba(rgb['storm-label'], 0.85),
+      placeLabel: rgba(rgb['storm-label'], 0.9),
     };
   return {
     land: hex.chalk,
@@ -120,6 +126,8 @@ function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
     label: hex.ink,
     halo: hex.chalk,
     imagery: { brightness: 1, saturation: 0 },
+    placeIcon: rgba(rgb.ink, 0.85),
+    placeLabel: rgba(rgb.ink, 0.85),
   };
 }
 
@@ -268,6 +276,8 @@ function labelLayers(P: Palette): LayerSpecification[] {
       },
       paint: label,
     },
+    // Detail by zoom, below the street and place names so those win any collision.
+    ...placeLayers(P),
     {
       id: 'street-names-minor',
       type: 'symbol',

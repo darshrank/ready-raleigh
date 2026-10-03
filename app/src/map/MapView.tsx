@@ -13,6 +13,11 @@ const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)'
 
 interface Props {
   layers: LayersList;
+  /**
+   * Animated layers (the storm). While set, a requestAnimationFrame loop asks it for the layers
+   * every frame, outside React, and `layers` is ignored. Returning null keeps the last frame.
+   */
+  frameLayers?: ((now: number) => LayersList | null) | null;
   /** Points to frame. The camera fits them on load and on resize until the user moves the map. */
   frame: [number, number][] | null;
   /** Show the Tilt toggle (bottom left). The projector view turns it off. */
@@ -30,6 +35,7 @@ interface Props {
 
 export function MapView({
   layers,
+  frameLayers = null,
   frame,
   tiltControl = true,
   onClick,
@@ -94,8 +100,21 @@ export function MapView({
   }, []);
 
   useEffect(() => {
-    overlayRef.current?.setProps({ layers });
-  }, [layers]);
+    if (!frameLayers) overlayRef.current?.setProps({ layers });
+  }, [layers, frameLayers]);
+
+  useEffect(() => {
+    const overlay = overlayRef.current;
+    if (!overlay || !frameLayers) return;
+    let raf = 0;
+    const tick = (now: number) => {
+      const next = frameLayers(now);
+      if (next) overlay.setProps({ layers: next });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [frameLayers]);
 
   // deck.gl only asks getCursor on pointer moves; apply a changed override right away.
   useEffect(() => {

@@ -84,7 +84,7 @@ export function FacilitiesControl() {
 /** Legend dot radius in px per meter of DOT_RADIUS_M (36 m prints as a 6 px dot). */
 const LEGEND_PX_PER_M = 6 / 36;
 
-export function Legend({ planning = false }: { planning?: boolean }) {
+export function Legend({ planning = false, storm = false }: { planning?: boolean; storm?: boolean }) {
   return (
     <div className="grid gap-3 text-13">
       <div>
@@ -100,6 +100,38 @@ export function Legend({ planning = false }: { planning?: boolean }) {
           ))}
         </ul>
       </div>
+      {storm && (
+        <div>
+          <p className="text-15 font-semibold">The storm</p>
+          <ul className="mt-1.5 grid gap-1">
+            <li className="flex items-center gap-2">
+              <svg width="24" height="14" aria-hidden className="shrink-0">
+                <line x1="2" y1="7" x2="15" y2="7" className="stroke-safe" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="18" cy="7" r="3" className="fill-safe" />
+              </svg>
+              Residents reaching a shelter or bus
+            </li>
+            <li className="flex items-center gap-2">
+              <svg width="24" height="14" aria-hidden className="shrink-0 fill-none stroke-alarm" strokeWidth="1.5">
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              Residents stranded
+            </li>
+            <li className="flex items-center gap-2">
+              <svg width="24" height="14" aria-hidden className="shrink-0">
+                <line x1="2" y1="7" x2="22" y2="7" className="stroke-alarm" strokeWidth="4" strokeDasharray="6 4" />
+              </svg>
+              Road closing, then closed (solid)
+            </li>
+            <li className="flex items-center gap-2">
+              <svg width="24" height="14" aria-hidden className="shrink-0">
+                <line x1="2" y1="7" x2="22" y2="7" className="stroke-ink" strokeWidth="4" strokeLinecap="round" />
+              </svg>
+              Protected road, stays open
+            </li>
+          </ul>
+        </div>
+      )}
       {planning && (
         <div>
           <p className="text-15 font-semibold">Your plan</p>

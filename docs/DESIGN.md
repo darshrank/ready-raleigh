@@ -64,7 +64,8 @@ A city map first, our data second.
 
 - Camera: top-down (pitch 0) by default in every phase. A small "Tilt" toggle on the map tilts
   to 45 degrees for a 3D look; it is off by default and never required to play.
-- Camera framing: on load, fit the loaded data's extent at any screen size (no fixed center).
+- Camera framing: on load, fit the loaded data's extent (no fixed center). Phones (under 640 px)
+  open at street level instead (zoom 13 or more) on the area with the most at-risk people.
 - Basemap (MapLibre, OpenFreeMap vector tiles, our own style, no sprite so no POI icons):
   - land `--chalk`; water `--flood` at 35%; creeks and rivers as `--flood` lines, clearly visible.
   - parks and woods: flat `--safe` tint at low opacity (light green, like any city map).
@@ -80,7 +81,10 @@ A city map first, our data second.
   The selected neighborhood gets a `--signal` tint and a 2.5 px `--ink` outline.
 - Shelter sites: small `--ink` squares (hollow if the site floods), always drawn on top.
 - Closed roads: `--alarm`, 4 px, dashed while closing then solid.
-- Moving residents: deck.gl `TripsLayer`, `--safe` trails. Stranded dots stop and turn `--alarm`.
+- Moving residents: deck.gl `TripsLayer`, `--safe` trails. Stranded dots stop and turn into hollow
+  `--alarm` rings. Residents waiting for the water are small `--ink` dots. Each shelter and bus
+  pickup grows a flat `--safe` halo (ink edge) behind its piece as its people arrive, so the crowd
+  reads at the city view too.
 
 ## Game pieces
 

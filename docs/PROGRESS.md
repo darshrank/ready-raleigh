@@ -12,7 +12,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [x] P4 Engine: types, config, coverage, scoring, optimizer, tests (B)
 - [x] P5 Design tokens and map shell with layers (C)
 - [x] P6 Planning phase: tray, placing, budget, timer, instant coverage (C)
-- [ ] P7 Simulation: halftone flood, closing roads, trips, counters (C + B)
+- [~] P7 Simulation: halftone flood, closing roads, trips, counters (C + B). Pass 1 done (Claude, C); pass 2 = road routing
 - [ ] P8 Results screen with score breakdown and optimal plan side by side (C)
 - [ ] P9 Rooms: server websocket, host and player views, leaderboard, crowd heatmap, perception gap (D + C)
 
@@ -40,6 +40,53 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Next exact step:
 - Gotchas:
 -->
+
+### 2026-10-03 14:05 (machine clock) Claude (Opus 5.5) lane C, P7 pass 1
+- Scope: app/ and docs only. shared/ untouched (Codex will work on shared/ and pipeline/ in
+  wolfhacks/codex); the storm only consumes engine exports.
+- Done: the storm replaces the placeholder on /solo. Planning -> storm -> results card -> Play again.
+  - app/src/storm/sim.ts: `buildStorm(data, placements)` (~17 ms on real data) from
+    `simTimeline(soloPlan(...))` + `planState` / `placementEffect`. Pacing constants (LEAD 0.8 s,
+    STEP 4 s, GROW 600 ms, DASH 1.8 s, STORM_MS 12.8 s). Residents: 5,999 dots (1 per 25 weighted
+    people, capped at 6,000), fates: travels (shelter / bus pickup), stays (protected road), stranded.
+    Band lines per step: headline, top 3 flooded hoods, named roads closing (+N more), protected
+    roads that stay open, cut-off hoods at the final step, stranded so far.
+  - app/src/storm/layers.ts: `stormRenderer(storm, data, reduce)`: per-step flood dot layers grow
+    via radiusScale (and the pixel clamps, so it shows at city zoom); closing roads dashed
+    (PathStyleExtension) then solid --alarm, held roads ink; TripsLayer trails (450 ms); residents
+    and stranded rings as double-buffered binary attributes; --safe halos grow behind each shelter /
+    pickup as people arrive. `stormWarmLayers()` precompiles shaders during planning.
+  - app/src/storm/StormOverlay.tsx: Broadcast (slides in once; imperative ticker that drops unseen
+    lines on each new step; static text with reduced motion; sr-only status line per step),
+    Counters (120 px from 1400 px wide, 72 md, 48 phone; rAF writes textContent), ResultsCard
+    (score, protected, stranded, Play again; P8 replaces it).
+  - MapView `frameLayers` prop (rAF loop outside React). store: phases planning | storm | results,
+    `stormAt`, `endStorm`. Phone (<640 px at load) frames `riskFocusPoints(data)` (map/frame.ts):
+    gridDisk 3 around the at-risk cell with the most at-risk weight nearby, opens at z13.1 at 390.
+    Rail during the storm: tray hidden, storm legend; on phones the bottom sheet hides.
+- Verified on real data (scripts below): typecheck, 30 tests, vite build. Frame pacing on Apple M1
+  (Chrome headless on Metal, 1440x900, optimal plan): 782 frames in 13 s, max 16.8 ms, 0 over 33 ms.
+  Screenshots at 1440 and 390 across all steps; touch play at 390 (shelter + pickup by tap, storm,
+  Play again, a second storm); reduced motion emulated (static band, instant counters, no trails);
+  close-up of a closing road (dashed, then solid). No console errors.
+- Half done: P7 pass 2 (residents follow roads, see next step). Rail still shows planned "residents
+  covered" during the storm (fine, matches the card).
+- Next exact step: P8 results screen (replace ResultsCard in storm/StormOverlay.tsx; load
+  optimal_flood.json as OptimalPlan). P7 pass 2: route travellers over roads_graph.json (load it only
+  for the storm), avoiding edges whose floodStep <= the resident's step.
+- Requests for lane B (not done, engine untouched): (1) a `coverSources(plan, data)` helper that says
+  which placement protects each part of each cell; storm/sim.ts derives it from placementEffect
+  today and would drop that code. (2) simTimeline counts `pop` while dots sample weighted people,
+  so dot shares and counters differ a little; a per-step weighted total would let them match.
+- Gotchas:
+  - Headless swiftshader runs the storm at ~2 fps; measure frames with a GPU Chrome:
+    copy app/scripts/drive.mjs and swap the swiftshader flags for
+    `--use-angle=metal --enable-gpu --ignore-gpu-blocklist`.
+  - Never hand deck.gl a layer instance it has dropped (assertion on init); Solo clones the planning
+    stack for this. Storm layers cached inside the renderer are only reused while continuously shown.
+  - deck.gl skips re-uploading a binary attribute when the typed array is the same object: mutate one
+    of two buffers and alternate (storm/layers.ts).
+  - Color binary attributes need `normalized: true` or deck.gl warns.
 
 ### 2026-10-03 15:40 Claude (Opus 5.5) lane C, flood dots + P6
 - Priority from the user: a playable /solo for teammates. Balance (capacity / drive limit) is ON HOLD,

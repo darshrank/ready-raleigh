@@ -1,6 +1,7 @@
 // Camera framing: show every loaded cell and site, at any screen size and pitch.
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { cellToBoundary } from 'h3-js';
+import { atRiskCells, engineIndex } from '@shared/engine';
 import type { MapData } from '../data';
 
 type LngLat = [number, number];
@@ -18,6 +19,29 @@ export function dataPoints({ cells, sites }: MapData): LngLat[] {
   // Real data has tens of thousands of vertices; a few thousand frame just as well.
   const stride = Math.ceil(pts.length / 4000);
   return stride > 1 ? pts.filter((_, k) => k % stride === 0) : pts;
+}
+
+/** Rings around a cell that make up a "street level" area: about 2 km across, z13+ on a phone. */
+const FOCUS_RINGS = 3;
+
+/**
+ * Phones open at street level, not on the whole city (DESIGN.md "Map"): the corners of the cells
+ * around the at-risk cell whose neighborhood holds the most at-risk weighted people.
+ */
+export function riskFocusPoints(data: MapData): LngLat[] {
+  const idx = engineIndex(data);
+  const m = idx.mode.flood;
+  let best = -1;
+  let bestW = -1;
+  for (const i of atRiskCells('flood', data)) {
+    let w = 0;
+    for (const j of idx.disk(i, FOCUS_RINGS)) if (m.atRisk[j]) w += idx.weight[j]!;
+    if (w > bestW) [best, bestW] = [i, w];
+  }
+  if (best < 0) return dataPoints(data);
+  const pts: LngLat[] = [];
+  for (const j of idx.disk(best, FOCUS_RINGS)) pts.push(...(cellToBoundary(data.cells[j]!.h3, true) as LngLat[]));
+  return pts;
 }
 
 /**

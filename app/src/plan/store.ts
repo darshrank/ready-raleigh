@@ -12,7 +12,8 @@ export type Target =
   | { type: 'bus_pickup'; cell: number }
   | { type: 'road_protection'; roadId: string };
 
-export type Phase = 'planning' | 'storm';
+/** planning -> storm (the flood simulation plays) -> results (the card). */
+export type Phase = 'planning' | 'storm' | 'results';
 
 export const sameTarget = (a: Target | null, b: Target | null) =>
   a === b || (!!a && !!b && JSON.stringify(a) === JSON.stringify(b));
@@ -60,6 +61,8 @@ interface PlanStore {
   endsAt: number | null;
   /** Short message for the status line after a refused action. */
   notice: string | null;
+  /** When the storm started (performance.now() ms), the simulation's clock. */
+  stormAt: number | null;
   nextId: number;
 
   arm: (piece: FloodPiece | null) => void;
@@ -73,6 +76,7 @@ interface PlanStore {
   remove: (id: string) => void;
   startPlanning: () => void;
   endPlanning: () => void;
+  endStorm: () => void;
   reset: () => void;
 }
 
@@ -87,6 +91,7 @@ const fresh = () => ({
   cursor: null,
   endsAt: null,
   notice: null,
+  stormAt: null,
   nextId: 1,
 });
 
@@ -163,8 +168,14 @@ export const usePlan = create<PlanStore>((set, get) => ({
   },
 
   startPlanning: () =>
-    set({ phase: 'planning', endsAt: Date.now() + PLANNING_SECONDS * 1000, armed: null, hover: null, notice: null }),
-  endPlanning: () => set({ phase: 'storm', armed: null, selectedId: null, hover: null, movingId: null, dragging: false }),
+    set({ phase: 'planning', stormAt: null, endsAt: Date.now() + PLANNING_SECONDS * 1000, armed: null, hover: null, notice: null }),
+  endPlanning: () => {
+    if (get().phase !== 'planning') return;
+    set({ phase: 'storm', stormAt: performance.now(), armed: null, selectedId: null, hover: null, movingId: null, dragging: false });
+  },
+  endStorm: () => {
+    if (get().phase === 'storm') set({ phase: 'results' });
+  },
   reset: () => set({ ...fresh(), endsAt: Date.now() + PLANNING_SECONDS * 1000 }),
 }));
 

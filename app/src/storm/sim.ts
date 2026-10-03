@@ -1,0 +1,309 @@
+// The storm (P7): everything the flood simulation shows, built once when planning ends.
+//
+// The engine decides who is protected (simTimeline, planState); this file only turns that into
+// things to draw: when each flood step prints, which roads close, and a sample of residents who
+// either travel to their shelter or bus pickup, stay safe behind a protected road, or are stranded.
+import { FINAL_FLOOD_STEP, FLOOD_STEP_NAMES } from '@shared/config';
+import {
+  PART_CAR,
+  PART_NO_CAR,
+  engineIndex,
+  placementEffect,
+  planState,
+  simTimeline,
+  type TimelineStep,
+} from '@shared/engine';
+import type { FloodRoad, Placement } from '@shared/types';
+import type { MapData } from '../data';
+import { soloPlan, floodAtRisk } from '../plan/usePlanScore';
+import { cellCenter, roadLabel } from '../plan/targets';
+
+type LngLat = [number, number];
+
+// Pacing, in ms after the storm starts. The band slides in, then a flood step every 4 seconds.
+export const LEAD_MS = 800;
+export const STEP_MS = 4000;
+/** New flood dots grow from 0 to full size. */
+export const GROW_MS = 600;
+/** A closing road is dashed this long, then solid. */
+export const DASH_MS = 1800;
+/** Counters tick to the step's numbers over this long, once the water has printed. */
+export const TICK_MS = 1600;
+/** When step `k` (1-based) begins. */
+export const stepStart = (k: number) => LEAD_MS + (k - 1) * STEP_MS;
+/** The storm is over: the results card shows. */
+export const STORM_MS = stepStart(FINAL_FLOOD_STEP) + STEP_MS;
+
+/** One resident dot per this many weighted people, and never more than MAX_RESIDENTS dots. */
+const PEOPLE_PER_DOT = 25;
+const MAX_RESIDENTS = 6000;
+/** Residents start anywhere within this distance of their cell's center (res 9 inradius ~150 m). */
+const HOME_SPREAD_M = 130;
+/** Arrivals gather around the shelter or pickup instead of on one pixel (the halo shows the crowd). */
+const CROWD_SPREAD_M = 90;
+
+/** What happens to a resident when the water reaches their block. */
+export const FATE_STRANDED = 0;
+export const FATE_TRAVELS = 1; // to a shelter (car part) or a bus pickup (no-car part)
+export const FATE_STAYS = 2; // car part kept connected by a protected road
+
+export interface Residents {
+  n: number;
+  /** [lon, lat] pairs. */
+  home: Float32Array;
+  dest: Float32Array;
+  /** Index into Storm.places for travellers, -1 for everyone else. */
+  to: Int16Array;
+  fate: Uint8Array;
+  /** When the resident leaves (or is stranded), and when a traveller arrives. ms after the start. */
+  leave: Float32Array;
+  arrive: Float32Array;
+}
+
+export interface Storm {
+  timeline: TimelineStep[];
+  residents: Residents;
+  /** Shelters and bus pickups that receive travellers, and how many dots each receives. */
+  places: { at: LngLat; total: number }[];
+  /** Indices of the residents who travel, for the trails layer. */
+  travellers: Int32Array;
+  /** Flood roads by the step they close at, without the protected ones. */
+  closing: Record<number, FloodRoad[]>;
+  /** Protected flood roads: they stay open. */
+  held: FloodRoad[];
+  /** Broadcast band lines per step (uppercase, like a real alert); index 0 runs before step 1. */
+  band: string[][];
+  /** What screen readers hear per step. */
+  spoken: string[];
+  /** Time of the last visible change: nothing moves after it. */
+  settledMs: number;
+}
+
+// Small seeded generator, so a plan always plays the same storm.
+function mulberry32(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const M_PER_DEG_LAT = 111_320;
+
+/** A point within `r` meters of `at`, uniform over the disc. */
+function scatter(at: LngLat, r: number, rand: () => number): LngLat {
+  const d = r * Math.sqrt(rand());
+  const a = 2 * Math.PI * rand();
+  const k = Math.cos((at[1] * Math.PI) / 180);
+  return [at[0] + (d * Math.cos(a)) / (M_PER_DEG_LAT * k), at[1] + (d * Math.sin(a)) / M_PER_DEG_LAT];
+}
+
+function meters(a: LngLat, b: LngLat): number {
+  const k = Math.cos((a[1] * Math.PI) / 180);
+  return Math.hypot((a[0] - b[0]) * k, a[1] - b[1]) * M_PER_DEG_LAT;
+}
+
+function nearest(from: LngLat, options: number[], places: LngLat[]): number {
+  let best = options[0]!;
+  let bestD = Infinity;
+  for (const o of options) {
+    const d = meters(from, places[o]!);
+    if (d < bestD) [best, bestD] = [o, d];
+  }
+  return best;
+}
+
+/** Destinations per cell for one part: where the shelters (or bus pickups) that cover it are. */
+function destinations(data: MapData, placements: Placement[], type: 'shelter' | 'bus_pickup', places: LngLat[]) {
+  const idx = engineIndex(data);
+  const out = new Map<number, number[]>();
+  for (const p of placements) {
+    if (p.type !== type) continue;
+    const eff = placementEffect(p, idx);
+    if (!eff || eff.kind !== 'cover') continue;
+    const site = p.siteId === undefined ? undefined : idx.sites.get(p.siteId);
+    const at: LngLat | null = site ? [site.lon, site.lat] : p.cell !== undefined ? cellCenter(data, p.cell) : null;
+    if (!at) continue;
+    const place = places.push(at) - 1;
+    for (const i of eff.cells) {
+      const list = out.get(i);
+      if (list) list.push(place);
+      else out.set(i, [place]);
+    }
+  }
+  return out;
+}
+
+/** The step a cell's residents meet the water: its flood step, or the final step if it is only cut off. */
+function cellStep(floodStep: number): number {
+  return floodStep >= 1 && floodStep <= FINAL_FLOOD_STEP ? floodStep : FINAL_FLOOD_STEP;
+}
+
+function sampleResidents(data: MapData, placements: Placement[], places: LngLat[]): Residents {
+  const idx = engineIndex(data);
+  const { n } = idx;
+  const m = idx.mode.flood;
+  const state = planState({ mode: 'flood', placements }, idx);
+  const shelters = destinations(data, placements, 'shelter', places);
+  const pickups = destinations(data, placements, 'bus_pickup', places);
+  const atRisk = floodAtRisk(data);
+
+  let total = 0;
+  for (const i of atRisk) total += m.partW[PART_CAR * n + i]! + m.partW[PART_NO_CAR * n + i]!;
+  const perDot = Math.max(PEOPLE_PER_DOT, total / MAX_RESIDENTS);
+
+  const home: number[] = [];
+  const dest: number[] = [];
+  const to: number[] = [];
+  const fate: number[] = [];
+  const leave: number[] = [];
+  const arrive: number[] = [];
+  const rand = mulberry32(2026);
+  // Systematic sampling: each part carries its remainder to the next cell, so the dot count is
+  // exact (floor of total / perDot) and small blocks still get their share across the city.
+  const carry = [0, 0];
+
+  for (const i of atRisk) {
+    const center = cellCenter(data, i);
+    const step = cellStep(idx.floodStep[i]!);
+    for (const part of [PART_CAR, PART_NO_CAR] as const) {
+      const before = carry[part]!;
+      carry[part] = before + m.partW[part * n + i]! / perDot;
+      const count = Math.floor(carry[part]!) - Math.floor(before);
+      const covered = state.cover[part * n + i]! > 0;
+      const options = covered ? (part === PART_CAR ? shelters : pickups).get(i) : undefined;
+      for (let k = 0; k < count; k++) {
+        const h = scatter(center, HOME_SPREAD_M, rand);
+        const t0 = stepStart(step) + GROW_MS + rand() * 900;
+        let f: number = FATE_STRANDED;
+        let d = h;
+        let t1 = t0;
+        let place = -1;
+        if (options) {
+          f = FATE_TRAVELS;
+          place = nearest(h, options, places);
+          d = scatter(places[place]!, CROWD_SPREAD_M, rand);
+          // Straight lines in pass 1; a 10 km trip takes about 2.2 s, so everyone lands before the next step.
+          t1 = t0 + Math.min(2300, 700 + meters(h, d) * 0.15);
+        } else if (covered) {
+          f = FATE_STAYS;
+        }
+        home.push(h[0], h[1]);
+        dest.push(d[0], d[1]);
+        to.push(place);
+        fate.push(f);
+        leave.push(t0);
+        arrive.push(t1);
+      }
+    }
+  }
+  return {
+    n: fate.length,
+    home: Float32Array.from(home),
+    dest: Float32Array.from(dest),
+    to: Int16Array.from(to),
+    fate: Uint8Array.from(fate),
+    leave: Float32Array.from(leave),
+    arrive: Float32Array.from(arrive),
+  };
+}
+
+const fmt = (x: number) => Math.round(x).toLocaleString('en-US');
+const upper = (s: string) => s.toUpperCase();
+
+/** The `k` names with the most people, from a name -> people map. */
+function top(counts: Map<string, number>, k: number): string[] {
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, k)
+    .map(([name]) => name);
+}
+
+const STEP_HEADLINE: Record<number, string> = {
+  1: 'Creeks leave their banks',
+  2: `Water reaches the ${FLOOD_STEP_NAMES[2]} line`,
+  3: `Water reaches the ${FLOOD_STEP_NAMES[3]} line`,
+};
+
+/** Named roads only: "Unnamed road in X" makes a poor alert line, so those count as "more". */
+const named = (data: MapData, r: FloodRoad) => (/^unnamed road/i.test(r.name) ? null : roadLabel(data, r));
+
+function bandLines(data: MapData, timeline: TimelineStep[], closing: Record<number, FloodRoad[]>, held: FloodRoad[]) {
+  const idx = engineIndex(data);
+  const heldUnlocks = new Set(held.flatMap((r) => r.unlocks));
+  const band: string[][] = [['Flood warning for Raleigh', 'Heavy rain over the creeks', 'Stay off flooded roads'].map(upper)];
+  const spoken: string[] = ['Flood warning for Raleigh.'];
+
+  for (const s of timeline) {
+    const lines = [STEP_HEADLINE[s.step] ?? `Flood step ${s.step}`];
+
+    const wet = new Map<string, number>();
+    for (const i of s.newlyFlooded) {
+      const hood = data.cells[i]!.hood;
+      wet.set(hood, (wet.get(hood) ?? 0) + idx.pop[i]!);
+    }
+    const hoods = top(wet, 3);
+    if (hoods.length) lines.push(`Water in ${hoods.join(', ')}`);
+
+    const roads = closing[s.step] ?? [];
+    const names = [...new Set(roads.map((r) => named(data, r)).filter((x): x is string => !!x))];
+    const shown = names.slice(0, 4);
+    for (const name of shown) lines.push(`${name} closed`);
+    const more = roads.length - roads.filter((r) => shown.includes(named(data, r) ?? '')).length;
+    if (more > 0) lines.push(`${more} more ${more === 1 ? 'road' : 'roads'} closed`);
+
+    for (const r of held.filter((r) => r.floodStep === s.step).slice(0, 2)) lines.push(`${roadLabel(data, r)} stays open`);
+
+    if (s.step === FINAL_FLOOD_STEP) {
+      // Dry blocks that lose every route to a hospital, unless a protected road keeps them connected.
+      const cut = new Map<string, number>();
+      data.cells.forEach((c, i) => {
+        if (c.cutOff && c.floodStep === null && !heldUnlocks.has(i)) cut.set(c.hood, (cut.get(c.hood) ?? 0) + c.pop);
+      });
+      for (const hood of top(cut, 3)) lines.push(`${hood} cut off from hospitals`);
+      if (cut.size > 3) lines.push(`${cut.size - 3} more neighborhoods cut off`);
+    }
+
+    lines.push(`${fmt(s.strandedPeople)} residents stranded`);
+    band.push(lines.map(upper));
+    spoken.push(
+      `${lines.slice(0, -1).join('. ')}. ${fmt(s.protectedPeople)} residents protected, ${fmt(s.strandedPeople)} stranded so far.`,
+    );
+  }
+  return { band, spoken };
+}
+
+export function buildStorm(data: MapData, placements: Placement[]): Storm {
+  const timeline = simTimeline(soloPlan(placements), data);
+  const heldIds = new Set(placements.flatMap((p) => (p.type === 'road_protection' && p.roadId ? [p.roadId] : [])));
+  const closing: Record<number, FloodRoad[]> = {};
+  for (const r of data.floodRoads) {
+    if (heldIds.has(r.id) || r.floodStep < 1 || r.floodStep > FINAL_FLOOD_STEP) continue;
+    (closing[r.floodStep] ??= []).push(r);
+  }
+  const held = data.floodRoads.filter((r) => heldIds.has(r.id));
+  const placeAt: LngLat[] = [];
+  const residents = sampleResidents(data, placements, placeAt);
+  const places = placeAt.map((at) => ({ at, total: 0 }));
+  const travellers: number[] = [];
+  let last = stepStart(FINAL_FLOOD_STEP) + TICK_MS + GROW_MS;
+  for (let k = 0; k < residents.n; k++) {
+    if (residents.fate[k] === FATE_TRAVELS) {
+      travellers.push(k);
+      places[residents.to[k]!]!.total++;
+    }
+    last = Math.max(last, residents.arrive[k]!);
+  }
+  const { band, spoken } = bandLines(data, timeline, closing, held);
+  return { timeline, residents, places, travellers: Int32Array.from(travellers), closing, held, band, spoken, settledMs: last + 600 };
+}
+
+/** The flood step showing at `t` ms (0 before the first one). */
+export function stepAt(t: number): number {
+  let k = 0;
+  while (k < FINAL_FLOOD_STEP && t >= stepStart(k + 1)) k++;
+  return k;
+}

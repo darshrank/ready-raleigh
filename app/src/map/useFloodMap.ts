@@ -31,11 +31,13 @@ export function useFloodMap(data: MapData | null, { targetingSites = false } = {
     [data, showFacilities, labelZoom],
   );
 
-  // Order: invisible pick target / people fill, selected neighborhood, water.
-  const base = useMemo(() => {
+  // Order: invisible pick target / people fill, selected neighborhood, water. The storm draws its
+  // own water, so it takes `under` only.
+  const under = useMemo(() => {
     if (!data) return [];
-    return [cellsLayer(data.cells, metric, showPeople), hoodLayer(data.cells, selectedHood), dots];
-  }, [data, metric, showPeople, selectedHood, dots]);
+    return [cellsLayer(data.cells, metric, showPeople), hoodLayer(data.cells, selectedHood)];
+  }, [data, metric, showPeople, selectedHood]);
+  const base = useMemo(() => (data ? [...under, dots] : []), [data, under, dots]);
 
   // Facilities on top: hospitals, then sites.
   const layers = useMemo(() => (data ? [...base, ...hospitals, sites] : []), [data, base, hospitals, sites]);
@@ -50,5 +52,5 @@ export function useFloodMap(data: MapData | null, { targetingSites = false } = {
     [data, selectHood],
   );
 
-  return { layers, base, hospitals, sites, frame, onClick };
+  return { layers, base, under, hospitals, sites, frame, onClick };
 }

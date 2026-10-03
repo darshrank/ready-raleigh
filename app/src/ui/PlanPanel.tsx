@@ -1,11 +1,10 @@
 // Planning phase controls (P6): budget chips, timer, residents covered, tray, status, plan list.
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
 import { BUDGET } from '@shared/config';
 import type { Placement, ScoreResult } from '@shared/types';
 import type { MapData } from '../data';
 import { DISC_BOX, FLOOD_PIECES, PIECE_INFO, discSvg, pieceCost, type FloodPiece } from '../plan/pieces';
-import { budgetLeft, targetOf, usePlan } from '../plan/store';
+import { targetOf, usePlan } from '../plan/store';
 import { targetLabel } from '../plan/targets';
 import { pieceGain, type Preview } from '../plan/usePlanScore';
 import { tokens } from '../tokens';
@@ -76,7 +75,7 @@ export function Timer({ compact = false }: { compact?: boolean }) {
       }
       aria-label={left === null ? 'Planning timer' : `${left} seconds left to plan`}
     >
-      {phase === 'storm' ? '0:00' : clock(left ?? 0)}
+      {phase !== 'planning' ? '0:00' : clock(left ?? 0)}
     </p>
   );
 }
@@ -177,7 +176,7 @@ export function Status({ data, preview }: { data: MapData; preview: Preview | nu
   );
 
   let body;
-  if (phase === 'storm') body = <p>Planning is over. Your plan is locked in.</p>;
+  if (phase !== 'planning') body = <p>Planning is over. Your plan is locked in.</p>;
   else if (notice) body = <p className="border-l-4 border-alarm pl-2">{notice}</p>;
   else if (preview) {
     const t = targetOf(preview.piece);
@@ -289,55 +288,5 @@ export function StartStorm() {
     >
       Start the storm
     </button>
-  );
-}
-
-/** P7 placeholder: the broadcast band slides in once; the simulation itself comes next. */
-export function StormPlaceholder({ result }: { result: ScoreResult | null }) {
-  const phase = usePlan((s) => s.phase);
-  const placements = usePlan((s) => s.placements);
-  const startPlanning = usePlan((s) => s.startPlanning);
-  const reset = usePlan((s) => s.reset);
-  const reduce = useReducedMotion();
-  if (phase !== 'storm') return null;
-  const atRisk = result ? result.protectedPeople + result.strandedPeople : 0;
-  return (
-    <div className="pointer-events-none absolute inset-0 flex flex-col justify-between">
-      <motion.div
-        initial={reduce ? false : { y: '-100%' }}
-        animate={{ y: 0 }}
-        transition={{ duration: 0.35, ease: 'easeOut' }}
-        className="overflow-hidden bg-ink px-4 py-2 font-display text-18 font-bold tracking-wide text-signal lg:text-24 lg:whitespace-nowrap"
-        role="alert"
-      >
-        EMERGENCY ALERT · FLOOD WATERS RISING · {fmt(result?.protectedPeople ?? 0)} RESIDENTS COVERED
-      </motion.div>
-      <div className="pointer-events-auto m-3 max-w-md border-(length:--rule) border-ink bg-bond p-4 lg:m-6">
-        <p className="font-display text-32 font-extrabold">The storm is coming</p>
-        <p className="mt-2 text-15">
-          Your plan places {placements.length} {placements.length === 1 ? 'piece' : 'pieces'}, spends{' '}
-          {money(BUDGET - budgetLeft(placements))} and covers{' '}
-          <strong className="tabular">{fmt(result?.protectedPeople ?? 0)}</strong> of{' '}
-          <span className="tabular">{fmt(atRisk)}</span> residents at risk. The flood simulation lands in the
-          next build.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={startPlanning}
-            className="border-(length:--rule) border-ink bg-ink px-3 py-1.5 text-15 font-semibold text-bond"
-          >
-            Back to planning
-          </button>
-          <button
-            type="button"
-            onClick={reset}
-            className="border-(length:--rule) border-ink bg-bond px-3 py-1.5 text-15 font-semibold"
-          >
-            Start over
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }

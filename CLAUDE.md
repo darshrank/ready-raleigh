@@ -31,7 +31,7 @@ Skip anything marked (stretch) unless asked.
 
 - Roads, buildings, land use, facilities, neighbourhood names: OpenStreetMap via Overture Maps (S3). Elevation: USGS 3DEP 1/3 arc-second DEM.
 - Flood hazard: Height Above Nearest Drainage (HAND) computed from the DEM with pysheds (`data-prep/hydrology.py`). Water rises through `CONFIG.flood.stages`; a home is at risk when the level passes its HAND; a road closes when water on it is deeper than `roadClosureDepth`. Motorways/trunks are treated as above the 100-year flood.
-- Population: residential building floor area (dasymetric), controlled to census totals. Vulnerability (65+, poverty, no car) comes from ACS tracts via `data-prep/fetch_census.py`. Until that has run, `fallback_demographics.json` applies citywide shares uniformly and the UI says so. The sandbox this was built in cannot reach api.census.gov, so run the census step on a laptop.
+- Population: residential building floor area (dasymetric), controlled to census totals. Vulnerability (65+, poverty, no car) comes from ACS 2023 5-year tract data via `data-prep/fetch_census.py` (bulk summary files on www2.census.gov, no API key; tract polygons from TIGERweb). `fallback_demographics.json` (citywide shares) is only used if the census cache is missing, and the UI says so.
 - Analysis grid: H3 resolution 9.
 
 ## Conventions
@@ -46,7 +46,7 @@ Skip anything marked (stretch) unless asked.
 - Install: `npm install` and `python3 -m venv .venv && .venv/bin/pip install -r data-prep/requirements.txt`
 - Dev: `npm run dev` (Vite on :5173 + room server via `wrangler dev` on :8787; Vite proxies `/room`). `npm run dev:web` alone is enough for solo play.
 - Test: `npm test` (engine on the real data, room state machine). Typecheck: `npm run typecheck`.
-- Data: `npm run data` (fetch Overture + DEM, hydrology, build). `npm run data:census` (needs api.census.gov + tigerweb.geo.census.gov). `npm run data:build` to rebuild outputs from cache.
+- Data: `npm run data` (fetch Overture + DEM, hydrology, build). `npm run data:census` (needs www2.census.gov + tigerweb.geo.census.gov). `npm run data:build` to rebuild outputs from cache.
 - Deploy: `npm run deploy` (Cloudflare account needed: `npx wrangler login`).
 - Optimal plan: `npm run optimal` precomputes `public/data/raleigh/optimal.json`. Rerun after changing `src/config.ts` or the data (otherwise browsers recompute it in a worker, ~30 s).
 - Balance exploration: `TUNE=1 npx vitest run test/tune.test.ts`.

@@ -45,7 +45,7 @@ The processed data is committed, so the data pipeline is only needed to rebuild 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r data-prep/requirements.txt
 npm run data         # Overture + USGS DEM -> HAND -> public/data/raleigh
-npm run data:census  # ACS 5-year + TIGER tracts (needs api.census.gov)
+npm run data:census  # ACS 5-year summary files + TIGERweb tracts
 ```
 
 Deploy with `npm run deploy` (Cloudflare Workers + Durable Objects).
@@ -64,4 +64,4 @@ The full spec is in [docs/product-plan.md](docs/product-plan.md).
 
 First prototype: Flood mode end to end (lobby, briefing, planning, simulation, results, multiplayer reveal). Heatwave mode, the planner dashboard and the bonus integrations come next.
 
-Known gap: the sandbox this was built in couldn't reach the Census API, so the vulnerability layers use citywide placeholder shares until `npm run data:census` runs. Every other number comes from the spatial pipeline.
+All inputs are real data: OSM roads and buildings, the USGS DEM, and ACS 2023 5-year tract data for population, 65+, poverty and car-free households.

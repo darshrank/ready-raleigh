@@ -1,20 +1,19 @@
 """Fetch census tracts + ACS 5-year vulnerability data for Raleigh's counties.
 
-Needs network access to api.census.gov and tigerweb.geo.census.gov (both are
-blocked in some sandboxes; run this on a laptop if so). A CENSUS_API_KEY env
-var is optional for this request volume.
+ACS tables come from the Census Bureau's table-based summary files on
+www2.census.gov (no API key needed; national files are streamed and filtered
+to Wake and Durham counties). Tract polygons come from TIGERweb.
 
 Output: data-prep/cache/census_tracts.geojson with, per tract:
-  pop      total population (B01003)
-  elderly  share aged 65+ (B01001)
-  poverty  share below the poverty line (B17001)
-  nocar    share of households with no vehicle (B08201)
-  hhsize   average household size (B25010)
+  pop      total population                       (B01003)
+  elderly  share aged 65+                         (B01001)
+  poverty  share below the poverty line           (C17002: income/poverty ratio < 1)
+  nocar    share of households with no vehicle    (B25044)
+  hhsize   average household size                 (B25010)
 build.py then distributes each tract's population over its residential
 buildings (dasymetric mapping) instead of using the citywide fallback.
 """
 import json
-import os
 import sys
 
 import requests
@@ -22,43 +21,57 @@ import requests
 from common import CACHE
 
 YEAR = 2023
-STATE = "37"            # North Carolina
+STATE = "37"               # North Carolina
 COUNTIES = ["183", "063"]  # Wake, Durham (Raleigh reaches into Durham County)
 
-AGE65 = [f"B01001_{i:03d}E" for i in list(range(20, 26)) + list(range(44, 50))]
-VARS = ["B01003_001E", "B17001_001E", "B17001_002E", "B08201_001E", "B08201_002E", "B25010_001E"] + AGE65
+SF = f"https://www2.census.gov/programs-surveys/acs/summary_file/{YEAR}/table-based-SF/data/5YRData/acsdt5y{YEAR}-{{}}.dat"
+TIGERWEB = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Tracts_Blocks/MapServer/0/query"
 
-TIGERWEB = ("https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Tracts_Blocks/MapServer/0/query")
+TABLES = {
+    "b01003": ["B01003_E001"],
+    "b01001": ["B01001_E001"] + [f"B01001_E{i:03d}" for i in list(range(20, 26)) + list(range(44, 50))],
+    "c17002": ["C17002_E001", "C17002_E002", "C17002_E003"],
+    "b25044": ["B25044_E001", "B25044_E003", "B25044_E010"],
+    "b25010": ["B25010_E001"],
+}
 
 
-def acs(county):
-    params = {"get": ",".join(["NAME"] + VARS), "for": "tract:*", "in": f"state:{STATE} county:{county}"}
-    if os.environ.get("CENSUS_API_KEY"):
-        params["key"] = os.environ["CENSUS_API_KEY"]
-    r = requests.get(f"https://api.census.gov/data/{YEAR}/acs/acs5", params=params, timeout=60)
-    r.raise_for_status()
-    rows = r.json()
-    head = rows[0]
+def summary_table(table, cols):
+    """Stream one national summary file, keep this study area's tracts."""
+    prefixes = tuple(f"1400000US{STATE}{c}" for c in COUNTIES)
     out = {}
-    for row in rows[1:]:
-        d = dict(zip(head, row))
-        geoid = d["state"] + d["county"] + d["tract"]
-
-        def num(k):
-            v = float(d[k] or 0)
-            return 0.0 if v < 0 else v  # ACS uses large negatives for "not available"
-
-        pop = num("B01003_001E")
-        pov_univ = num("B17001_001E")
-        hh = num("B08201_001E")
-        out[geoid] = {
-            "pop": pop,
-            "elderly": sum(num(k) for k in AGE65) / pop if pop else 0.0,
-            "poverty": num("B17001_002E") / pov_univ if pov_univ else 0.0,
-            "nocar": num("B08201_002E") / hh if hh else 0.0,
-            "hhsize": num("B25010_001E") or 2.4,
-        }
+    with requests.get(SF.format(table), stream=True, timeout=300) as r:
+        r.raise_for_status()
+        r.encoding = "utf-8"
+        lines = (l.decode("utf-8") if isinstance(l, bytes) else l for l in r.iter_lines(chunk_size=1 << 20))
+        head = next(lines).split("|")
+        idx = [head.index(c) for c in cols]
+        for line in lines:
+            if not line.startswith(prefixes):
+                continue
+            parts = line.split("|")
+            geoid = parts[0][len("1400000US"):]
+            out[geoid] = [float(parts[i]) if parts[i] not in ("", ".", "null") else 0.0 for i in idx]
+    print(f"  {table}: {len(out)} tracts")
     return out
+
+
+def acs():
+    t = {name: summary_table(name, cols) for name, cols in TABLES.items()}
+    stats = {}
+    for geoid, (pop,) in t["b01003"].items():
+        age = t["b01001"].get(geoid)
+        pov = t["c17002"].get(geoid)
+        veh = t["b25044"].get(geoid)
+        hh = t["b25010"].get(geoid)
+        stats[geoid] = {
+            "pop": pop,
+            "elderly": sum(age[1:]) / age[0] if age and age[0] else 0.0,
+            "poverty": (pov[1] + pov[2]) / pov[0] if pov and pov[0] else 0.0,
+            "nocar": (veh[1] + veh[2]) / veh[0] if veh and veh[0] else 0.0,
+            "hhsize": hh[0] if hh and hh[0] > 0 else 2.4,
+        }
+    return stats
 
 
 def tracts(county):
@@ -70,21 +83,22 @@ def tracts(county):
 
 
 def main():
+    print(f"ACS {YEAR} 5-year summary files")
+    stats = acs()
     features = []
     for county in COUNTIES:
-        stats = acs(county)
-        for f in tracts(county):
+        fs = tracts(county)
+        for f in fs:
             geoid = f["properties"]["GEOID"]
-            if geoid not in stats:
-                continue
-            features.append({"type": "Feature", "geometry": f["geometry"],
-                             "properties": {"GEOID": geoid, **stats[geoid]}})
-        print(f"county {county}: {len(stats)} tracts")
+            if geoid in stats:
+                features.append({"type": "Feature", "geometry": f["geometry"],
+                                 "properties": {"GEOID": geoid, **stats[geoid]}})
+        print(f"county {county}: {len(fs)} tract polygons")
     if not features:
         sys.exit("no tracts fetched")
     out = CACHE / "census_tracts.geojson"
     out.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
-    print(f"{len(features)} tracts -> {out.name} (ACS {YEAR} 5-year)")
+    print(f"{len(features)} tracts -> {out.name}")
 
 
 if __name__ == "__main__":

@@ -603,6 +603,8 @@ def main():
             if not tp:
                 continue
             tot = sum(tp.values())
+            if tot <= 0:
+                continue  # buildings only in zero-population tracts (campus, industrial)
             for k in keys:
                 shares[k][c] = sum(census[t][k] * w for t, w in tp.items()) / tot
         demog_source = "acs5"

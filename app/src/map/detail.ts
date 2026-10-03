@@ -28,6 +28,10 @@ export const BUS_STOP_ZOOM = 14;
 
 const BUS_STOPS = 'bus-stops';
 
+/** Aerial imagery fades in over this zoom range. */
+export const AERIAL_ZOOM: [number, number] = [16, 17];
+const AERIAL = 'aerial';
+
 const is = (key: string, value: string): ExpressionSpecification => ['==', ['get', key], value];
 const among = (key: string, values: string[]): ExpressionSpecification => ['match', ['get', key], values, true, false];
 
@@ -262,9 +266,43 @@ function sdfImage(draw: Draw, size = ICON): ImageData {
 /** GoRaleigh's GTFS feed (pipeline/bus_stops.py), recorded in meta.json. */
 const BUS_ATTRIBUTION = 'Bus stops: <a href="https://goraleigh.org" target="_blank">GoRaleigh GTFS</a>';
 
+/**
+ * NC OneMap's statewide orthoimagery (NC Orthoimagery Program, 6 inch, natural color), its Web
+ * Mercator tile cache. Terms (nconemap.gov/pages/terms): free and unrestricted use, no release
+ * needed; cite NC OneMap / NC Center for Geographic Information and Analysis.
+ */
+const AERIAL_TILES =
+  'https://services.nconemap.gov/secure/rest/services/Imagery/Orthoimagery_Latest_cached/ImageServer/tile/{z}/{y}/{x}';
+const AERIAL_ATTRIBUTION =
+  'Imagery: <a href="https://www.nconemap.gov" target="_blank">NC OneMap</a>, NC Center for Geographic Information and Analysis';
+
 export function detailSources(): Record<string, SourceSpecification> {
   return {
     [BUS_STOPS]: { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, attribution: BUS_ATTRIBUTION },
+    // minzoom: no tile is ever requested below the zoom where the imagery starts to show.
+    [AERIAL]: { type: 'raster', tiles: [AERIAL_TILES], tileSize: 256, minzoom: AERIAL_ZOOM[0], maxzoom: 20, attribution: AERIAL_ATTRIBUTION },
+  };
+}
+
+/**
+ * Aerial imagery from z16, fading in until z17: above the land, green and water fills, below the
+ * buildings, streets and water, so the printed street map stays on top of the photo. Toned per
+ * mood: a little washed out by day so the inks read; dark and grey at night.
+ */
+export function aerialLayer(P: Palette): LayerSpecification {
+  return {
+    id: AERIAL,
+    type: 'raster',
+    source: AERIAL,
+    minzoom: AERIAL_ZOOM[0],
+    paint: {
+      'raster-opacity': ['interpolate', ['linear'], ['zoom'], AERIAL_ZOOM[0], 0, AERIAL_ZOOM[1], P.aerial.opacity],
+      'raster-saturation': P.aerial.saturation,
+      'raster-contrast': P.aerial.contrast,
+      'raster-brightness-min': P.aerial.brightnessMin,
+      'raster-brightness-max': P.aerial.brightnessMax,
+      'raster-fade-duration': 200,
+    },
   };
 }
 

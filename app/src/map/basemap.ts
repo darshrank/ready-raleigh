@@ -8,7 +8,7 @@
 import type { ExpressionSpecification, LayerSpecification, Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
 import { rgba, type Tokens } from '../tokens';
 import { floodFlatLayers, floodSources, flood3dLayers, closuresLayer } from './flood';
-import { detailLabelLayers, detailSources } from './detail';
+import { aerialLayer, detailLabelLayers, detailSources } from './detail';
 
 export const TILES = 'https://tiles.openfreemap.org/planet';
 export const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
@@ -65,6 +65,8 @@ export interface Palette {
   address: string;
   /** GoRaleigh bus stop badges. */
   busIcon: string;
+  /** Aerial imagery from z16 (map/detail.ts): full opacity at z17 and the photo's tone. */
+  aerial: { opacity: number; saturation: number; contrast: number; brightnessMin: number; brightnessMax: number };
 }
 
 /**
@@ -113,6 +115,7 @@ function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
       placeLabel: rgba(rgb['storm-label'], 0.9),
       address: rgba(rgb['storm-label'], 0.6),
       busIcon: rgba(rgb['storm-label'], 0.85),
+      aerial: { opacity: 0.8, saturation: -0.6, contrast: -0.1, brightnessMin: 0, brightnessMax: 0.38 },
     };
   return {
     land: hex.chalk,
@@ -136,6 +139,7 @@ function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
     placeLabel: rgba(rgb.ink, 0.85),
     address: rgba(rgb.ink, 0.55),
     busIcon: rgba(rgb.ink, 0.85),
+    aerial: { opacity: 0.85, saturation: -0.35, contrast: -0.12, brightnessMin: 0.12, brightnessMax: 1 },
   };
 }
 
@@ -216,6 +220,7 @@ function groundLayers(P: Palette): LayerSpecification[] {
       layout: { visibility: 'none' },
       paint: { 'raster-brightness-max': P.imagery.brightness, 'raster-saturation': P.imagery.saturation, 'raster-fade-duration': 150 },
     },
+    aerialLayer(P),
     {
       id: 'buildings',
       type: 'fill',
@@ -374,8 +379,9 @@ export function applyPalette(map: MapLibreMap, mood: Mood, t: Tokens, ms: number
   for (const layer of paletteLayers(palette(mood, t, satellite))) {
     if (!('paint' in layer) || !layer.paint) continue;
     for (const [prop, value] of Object.entries(layer.paint)) {
-      // Only colors, opacities and the imagery's light change; widths and heights stay.
-      if (!/color|opacity|brightness|saturation/.test(prop)) continue;
+      // Only colors, opacities and the imagery's tone (satellite, aerial photo) change; widths and
+      // heights stay.
+      if (!/color|opacity|brightness|saturation|contrast/.test(prop)) continue;
       map.setPaintProperty(layer.id, `${prop}-transition`, { duration: ms, delay: 0 });
       map.setPaintProperty(layer.id, prop, value);
     }

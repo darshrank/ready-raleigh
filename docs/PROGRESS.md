@@ -29,7 +29,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [~] P11 Tiger Data storage and planner dashboard (D + C). Lane D done (Claude, D); /planner page (C) next
 
 ## Semantic zoom (branch sakhi/semantic-zoom)
-- [~] SZ Detail by zoom on the planning map (Claude, C + A): S1 places, S2 addresses, S3 GoRaleigh stops done; S4 NC OneMap aerial, S5 site buildings, S6 hex fade
+- [~] SZ Detail by zoom on the planning map (Claude, C + A): S1 places, S2 addresses, S3 GoRaleigh stops, S4 NC OneMap aerial done; S5 site buildings, S6 hex fade
 
 ## Phase 4: bonus challenges
 - [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
@@ -424,6 +424,25 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - Rooms, the planner and POST /api/plays still use Raleigh data.
   - The automated browser pane stops drawing frames after ~10 s, so flights and animations look
     frozen there; judge motion in a real browser.
+
+### 2026-10-03 20:05 EDT Claude (Opus 5.5) lane C, semantic zoom S4 (NC OneMap aerial)
+- Done: detail.ts raster source `aerial` (NC OneMap Orthoimagery_Latest_cached tiles, minzoom 16,
+  maxzoom 20, attribution "Imagery: NC OneMap, NC Center for Geographic Information and Analysis")
+  and `aerialLayer(P)` (raster-opacity z16 0 -> z17 85% day / 80% night), placed in basemap.ts
+  groundLayers after `waterway`, before `buildings`. Palette `aerial` {opacity, saturation,
+  contrast, brightnessMin, brightnessMax} per mood; applyPalette's regex now includes raster tone.
+- Verified: typecheck, 43 tests. nconemap requests: 0 at z12 and z15, 68 by z17 (1440). Day, storm
+  (1440) and 390 shots; labels and streets read on the photo. Pan at z17, GPU Chrome 1440x900, 12
+  drags over 10.5 s: 60 fps, p99 16.8 ms, max 16.8 ms, 0 frames over 33 ms. No console errors.
+- Next exact step: S5. Write pipeline/site_buildings.py (stdlib + Overpass at
+  https://overpass-api.de/api/interpreter, send a User-Agent or it is refused; cache responses in
+  pipeline/cache/). For each site in sites.json: osm-node -> the building way/relation whose
+  polygon contains it; osm-way/relation tagged building -> itself; grounds (school campus) ->
+  the building containing site lon/lat, else the largest building inside the grounds. Write
+  app/public/data/site_buildings.json `[{id, match, rings}]` (5 decimals, < 5 MB) and report counts
+  per rule. Then the app: GeoJSON source `site-buildings`, outline + fill layers z15+, hide the
+  deck.gl square for matched sites at z15+, hover/tap card (name, type, capacity 10,000).
+- Gotchas: raster sources pick tiles by rounded zoom, so z16.5 already loads z17 imagery.
 
 ### 2026-10-03 19:45 EDT Claude (Opus 5.5) lanes A+C, semantic zoom S3 (GoRaleigh bus stops)
 - Done: pipeline/bus_stops.py (stdlib, cached in pipeline/cache/goraleigh_gtfs.zip + .json) wrote

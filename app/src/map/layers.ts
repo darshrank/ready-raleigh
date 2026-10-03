@@ -114,8 +114,11 @@ const labelAbove = (h: Hospital, all: Hospital[]) =>
 /** Below this zoom the whole city is on screen and hospital names crowd the place names. */
 export const HOSPITAL_LABEL_ZOOM = 10.5;
 
-/** Hospitals (hospitals.json): a cross, and the name from HOSPITAL_LABEL_ZOOM. Part of the Facilities layer. */
-export function hospitalLayers(hospitals: Hospital[], visible: boolean, zoom: number) {
+/**
+ * Hospitals (hospitals.json): a cross, and the name from HOSPITAL_LABEL_ZOOM. Part of the Facilities
+ * layer. `night` names them in the storm's label colors (DESIGN.md night palette).
+ */
+export function hospitalLayers(hospitals: Hospital[], visible: boolean, zoom: number, night = false) {
   const { hex, rgb } = tokens();
   return [
     new IconLayer<Hospital>({
@@ -135,7 +138,7 @@ export function hospitalLayers(hospitals: Hospital[], visible: boolean, zoom: nu
       getPosition: (h) => [h.lon, h.lat],
       getText: hospitalName,
       getSize: 13,
-      getColor: rgb.ink,
+      getColor: night ? rgb['storm-label'] : rgb.ink,
       getTextAnchor: (h) => (labelAbove(h, hospitals) ? 'middle' : 'start'),
       getAlignmentBaseline: (h) => (labelAbove(h, hospitals) ? 'bottom' : 'center'),
       getPixelOffset: (h) => (labelAbove(h, hospitals) ? [0, -12] : [14, 0]),
@@ -144,7 +147,7 @@ export function hospitalLayers(hospitals: Hospital[], visible: boolean, zoom: nu
       characterSet: 'auto',
       fontSettings: { sdf: true },
       outlineWidth: 4,
-      outlineColor: [...rgb.chalk, 255],
+      outlineColor: [...(night ? rgb['storm-land'] : rgb.chalk), 255],
       parameters: { depthCompare: 'always' },
     }),
   ];

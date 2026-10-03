@@ -13,6 +13,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [x] P5 Design tokens and map shell with layers (C)
 - [x] P6 Planning phase: tray, placing, budget, timer, instant coverage (C)
 - [~] P7 Simulation: halftone flood, closing roads, trips, counters (C + B). Pass 1 done (Claude, C); pass 2 = road routing
+- [x] V1 Visual overhaul: title and briefing, game HUD, realistic water, night storm with helicopter camera, daylight end (C)
 - [ ] P8 Results screen with score breakdown and optimal plan side by side (C)
 - [ ] P9 Rooms: server websocket, host and player views, leaderboard, crowd heatmap, perception gap (D + C)
 
@@ -40,6 +41,60 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Next exact step:
 - Gotchas:
 -->
+
+### 2026-10-03 15:10 (machine clock) Claude (Opus 5.5) lane C, V1 visual overhaul
+- Scope: app/ and docs only. shared/ and pipeline/ untouched. DESIGN.md rewritten first (two moods,
+  tokens, water, HUD, title, storm, end, sound, performance floor); DECISIONS has the new lines.
+- Done (solo flow is now title -> intro -> planning -> storm -> results; /solo?skip starts at planning):
+  - Title (ui/Title.tsx): Raleigh downtown orbiting at pitch 60 with 3D buildings, title plate,
+    briefing card "Hurricane approaching. 72 hours of rain. You have $10M and 3 minutes.", "Start
+    planning" -> MapView flies to the frame (flyToFrame, onFramed) -> store.startPlanning.
+  - Planning HUD (ui/Hud.tsx replaces ui/PlanPanel.tsx; routes/Solo.tsx has no rail): top plate
+    (budget chips, timer turns --alarm and pulses under 30 s, covered), bottom tray of chunky discs
+    (CSS hard shadow, lift when armed) + placed pieces + Start the storm, status plate, top-right
+    3D / Layers (toggles, legend, keys) / Sound. Neighborhood card floats (compact on phones).
+    Framing pads around the plates (frame.ts Pad, hull-based framePoints).
+  - Juice (plan/Juice.tsx): +N chip above the aim point, landing ring + floating +N chip, Web Audio
+    stamp (ui/sound.ts), navigator.vibrate(15) on coarse pointers, stamp 1.3x -> 1 in 200 ms.
+  - Water (map/flood.ts + basemap.ts): flood_steps.geojson split into 1,444 parts with growth
+    delays (distance to earlier water); per-step fills (step 1 --flood-deep), blurred waterline,
+    night glow line, shimmer, 3D extrusion per step (6/3/1.5 m) + 3D buildings above pitch 20.
+    FloodView (one per map, floodViewOf(map)) animates looks, growth and the submerged streets.
+  - Submerged streets: tile roads clipped against a 15 m flood raster (built in idle chunks):
+    deep band + flowing dashes (4 crossfaded dash layers), road-closed barriers at each waterline
+    (symbol layer from z12, rotated across the street, labels win collisions).
+  - Storm (storm/director.ts, Weather.tsx, StormOverlay.tsx, sim.ts): wipe -> night palette, rain
+    canvas, lightning + thunder, tilt to 55, per-step helicopter stop (named road that strands the
+    most blocks; at step 3 the neighborhood cut off with the most people) with a LIVE caption,
+    glowing evacuees, stranded rings, counters on plates, Skip to results. End: palette back to
+    day over 1.6 s, water stays full, band slides away, camera to the city, results card slides up.
+    Pieces + hospitals (night label colors) are the only deck.gl icons in the storm.
+- Verified (GPU Chrome, app/scripts/drive.mjs with GPU=1): storm at 1440x900 with every effect on:
+  59.8 fps, p99 16.8 ms, max 50 ms, 3 frames over 33 ms in 22.8 s; 390x844: 59.8 fps, max 50 ms.
+  Screenshots of every phase at 1440 and 390, the fly-down, aim/landing juice, timer under 30 s,
+  street-level close-ups of Glenwood Avenue under Crabtree Creek by night and by day.
+  Regression: title -> planning; mouse place all three pieces (+114,992 hover for Boylan Chapel),
+  drag shelter to Mount Olivet, select + Delete, keyboard 2/arrows/Enter, storm, skip, Play again
+  (day palette, empty board), second storm; phone tap place, touch-drag, Remove, pan, storm,
+  Play again. Reduced motion (REDUCE=1): no orbit/rain/wipe/flights, LIVE caption still names
+  events. /host and /play show the water. typecheck, 30 tests, vite build. No console errors.
+- Critique fixes (top 3 against DESIGN.md): the broadcast band now leaves when the sky clears;
+  hospital names use night label colors during the storm; planning water preview raised to 75%.
+- Half done: nothing in V1. P7 pass 2 (residents on roads) and P8 (full results) still open.
+- Next exact step: P8 results screen (replace ResultsCard in storm/StormOverlay.tsx; it sits
+  bottom-left on desktop with the city framed to its right via resultsPad in Solo.tsx).
+- Gotchas:
+  - drive.mjs: GPU=1 for any storm or frame-rate run; REDUCE=1 for reduced motion. It now kills
+    Chrome on any exit; before that, a crashed run left headless Chromes animating (load avg 190)
+    and every measurement after it was wrong. Wrap evals that return objects in void(...).
+  - Never change a data-driven or cross-faded paint value per frame (relayout). FloodView.paint()
+    caches what it sent; keep new animation on constants, feature-state or visibility.
+  - fill-extrusion ignores color alpha; 3D water fades by layer opacity per step.
+  - cameraForPoints jumps the map to measure: call it only while the map is still (it would stop a
+    flight). The director computes every camera at storm start.
+  - The title orbit uses camera padding; its cleanup removes the padding without moving the view.
+  - Once (not reproduced in two reruns) a reduced-motion screenshot showed the pre-storm band lines
+    at 6 s. If it shows again, look at useStormStep's timer in StormOverlay.tsx.
 
 ### 2026-10-03 14:05 (machine clock) Claude (Opus 5.5) lane C, P7 pass 1
 - Scope: app/ and docs only. shared/ untouched (Codex will work on shared/ and pipeline/ in

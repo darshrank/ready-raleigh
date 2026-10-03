@@ -7,6 +7,7 @@
 // Coordinates may be strings: "G(lon,lat)" is a map point, "B(text)" the first visible button with that text.
 // Chrome path is macOS; set CHROME to override. GPU=1 renders on the GPU (Metal) instead of
 // swiftshader: use it for frame rates and for the storm, which swiftshader runs at about 2 fps.
+// REDUCE=1 emulates prefers-reduced-motion: reduce.
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -45,6 +46,7 @@ await send('Runtime.enable'); await send('Page.enable');
 const mobile = +w < 600;
 await send('Emulation.setDeviceMetricsOverride', { width: +w, height: +h, deviceScaleFactor: mobile ? 2 : 1, mobile });
 if (mobile) await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+if (process.env.REDUCE) await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
 const t0 = Date.now();
 await send('Page.navigate', { url });
 const mouse = async (type, x, y, extra = {}) => send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1, ...extra });

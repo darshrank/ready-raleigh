@@ -2,7 +2,7 @@
 // title (Raleigh orbiting, the briefing) -> intro (the camera flies down) -> planning (day HUD and
 // tray) -> storm (night, weather, the news helicopter) -> results (day again, the card slides up).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import type { Layer, LayersList, PickingInfo } from '@deck.gl/core';
 import type { FloodRoad } from '@shared/types';
@@ -10,6 +10,7 @@ import { useMapData } from '../data';
 import { floodViewOf } from '../map/flood';
 import { riskFocusPoints } from '../map/frame';
 import { MapView } from '../map/MapView';
+import { HOSPITAL_LABEL_ZOOM, hospitalLayers } from '../map/layers';
 import { useFloodMap } from '../map/useFloodMap';
 import { AimChip, LandingFx } from '../plan/Juice';
 import {
@@ -28,7 +29,7 @@ import { focusMap, usePlanning } from '../plan/usePlanning';
 import { Link } from '../router';
 import { directStorm, resetWater } from '../storm/director';
 import { stormRenderer, stormWarmLayers } from '../storm/layers';
-import { RESULTS_AFTER_MS, STORM_MS, buildStorm, type StormEvent } from '../storm/sim';
+import { CLEAR_MS, RESULTS_AFTER_MS, STORM_MS, buildStorm, type StormEvent } from '../storm/sim';
 import { Broadcast, Counters, ResultsCard, SkipStorm } from '../storm/StormOverlay';
 import { Lightning, Rain, Wipe } from '../storm/Weather';
 import { MapControls, PLATE, SoundButton, Status, TopHud, Tray } from '../ui/Hud';
@@ -168,16 +169,18 @@ export function Solo() {
   const frameLayers = useMemo(() => {
     if (!data || !storm || stormAt === null || !pieces) return null;
     const renderer = stormRenderer(storm, reduce);
-    // Shelter sites are planning targets; the storm shows only the plan's pieces and the hospitals.
-    const top: LayersList = [...fm.hospitals, pieces];
+    // Shelter sites are planning targets; the storm shows only the plan's pieces and the hospitals,
+    // named in the night label colors until the sky clears.
+    const night: LayersList = [...hospitalLayers(data.hospitals, true, HOSPITAL_LABEL_ZOOM, true), pieces];
+    const day: LayersList = [...hospitalLayers(data.hospitals, true, HOSPITAL_LABEL_ZOOM), pieces];
     let done = false;
     return (now: number) => {
       if (done) return null;
       const t = now - stormAt;
       done = renderer.settled(t);
-      return [...fm.under, ...renderer.layers(t), ...top];
+      return [...fm.under, ...renderer.layers(t), ...(t < STORM_MS + CLEAR_MS / 2 ? night : day)];
     };
-  }, [data, storm, stormAt, reduce, pieces, fm.under, fm.hospitals]);
+  }, [data, storm, stormAt, reduce, pieces, fm.under]);
 
   // The storm on the map: night, water, submerged streets, the helicopter, then the clear.
   const [live, setLive] = useState<StormEvent | null>(null);
@@ -212,6 +215,17 @@ export function Solo() {
     const id = setTimeout(endStorm, Math.max(0, stormAt + STORM_MS + RESULTS_AFTER_MS - performance.now()));
     return () => clearTimeout(id);
   }, [phase, stormAt, endStorm]);
+
+  // The broadcast belongs to the storm: it leaves when the sky clears.
+  const [cleared, setCleared] = useState(false);
+  useEffect(() => {
+    if (stormAt === null) return setCleared(false);
+    const wait = stormAt + STORM_MS - performance.now();
+    setCleared(wait <= 0);
+    if (wait <= 0) return;
+    const id = setTimeout(() => setCleared(true), wait);
+    return () => clearTimeout(id);
+  }, [stormAt]);
 
   // A plain map click (nothing armed) deselects the piece and opens the neighborhood card.
   const baseClick = fm.onClick;
@@ -315,8 +329,14 @@ export function Solo() {
       {storm && stormAt !== null && (
         <div className="pointer-events-none absolute inset-0 flex flex-col justify-between overflow-hidden">
           <div className="relative">
-            <Broadcast storm={storm} stormAt={stormAt} live={live} />
-            <div className="absolute top-full right-3 mt-2 lg:right-5">
+            <AnimatePresence>
+              {!cleared && (
+                <motion.div key="band" exit={reduce ? undefined : { y: '-110%' }} transition={{ duration: 0.4, ease: 'easeIn' }}>
+                  <Broadcast storm={storm} stormAt={stormAt} live={live} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <div className={(cleared ? 'top-3 lg:top-5 ' : 'top-full mt-2 ') + 'absolute right-3 lg:right-5'}>
               {phase === 'results' ? (
                 <MapControls phase="results" />
               ) : (

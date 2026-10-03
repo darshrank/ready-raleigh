@@ -60,7 +60,8 @@ export type WaterLevel = 'preview' | 'full';
 const a = (c: RGB, alpha: number): RGBA => [c[0], c[1], c[2], alpha];
 
 function look(mood: Mood, level: WaterLevel, { rgb }: Tokens): Look {
-  const k = level === 'preview' ? 0.55 : 1;
+  // Planning preview: faint, but strong enough to read under the coverage dots at the city view.
+  const k = level === 'preview' ? 0.75 : 1;
   if (mood === 'storm') {
     const w = rgb['storm-water'];
     return {
@@ -149,7 +150,7 @@ export function floodFlatLayers(t: Tokens): LayerSpecification[] {
       layout: { 'line-join': 'round' },
       paint: {
         'line-color': css(L.edge),
-        'line-width': zoomed(10, 1.2, 13, 3, 17, 9),
+        'line-width': zoomed(10, 1.8, 13, 3, 17, 9),
         'line-blur': zoomed(10, 1.2, 13, 3, 17, 9),
         'line-opacity': revealed,
       },

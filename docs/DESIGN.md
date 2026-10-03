@@ -10,6 +10,9 @@ as a game board. Hazards are drawn as **halftone dots**, the way a print shop sh
 
 That halftone is the one bold idea. Everything else stays quiet and disciplined.
 
+The map comes first. It must read as a real Raleigh street map a resident recognizes; our data
+sits on top of it as a light layer, never a wall of shapes that hides the streets.
+
 - Planning phase: the calm board. Tactile pieces on a printed map.
 - Simulation phase: an emergency broadcast takes over the top of the screen.
 - Reveal phase: two printed maps side by side, the room's plan and the data's plan.
@@ -26,8 +29,8 @@ That halftone is the one bold idea. Everything else stays quiet and disciplined.
 | `--signal` | `#FFC628` | budget, timer, broadcast text, selected piece |
 | `--safe` | `#00A95C` | protected people, coverage rings |
 
-Rules: flat fills only. No gradients. No soft grey drop shadows. Depth comes from the 3D map and
-from a hard 3 px offset shadow in `--ink` on game pieces only. Text contrast meets WCAG AA.
+Rules: flat fills only. No gradients. No soft grey drop shadows. Depth comes from a hard 3 px
+offset shadow in `--ink` on game pieces only. Text contrast meets WCAG AA.
 
 ## Type
 
@@ -48,7 +51,8 @@ emergency alerts use it.
 Hazards are not filled polygons. They are dot grids.
 - pipeline/ exports a regular dot grid (about every 120 m) inside flood polygons, each dot tagged
   with its flood step, and one grid over the study area tagged with heat.
-- deck.gl `ScatterplotLayer` draws the dots. Radius encodes intensity.
+- deck.gl `ScatterplotLayer` draws the dots. Radius encodes intensity. Dots are small (at most
+  about a third of the grid spacing) and about 75% opaque, so streets and labels read through.
 - Flood simulation: as the step rises, dots in the new step grow from 0 to full radius over
   600 ms. The water "prints" itself onto the city.
 - Heat: dot radius maps to temperature. Trees and cooling centers shrink nearby dots.
@@ -56,10 +60,25 @@ Hazards are not filled polygons. They are dot grids.
 
 ## Map
 
-- MapLibre basemap restyled: land `--chalk`, water `--flood` at 35% opacity, roads `--ink` thin,
-  no POI icons, few labels. Pitch 45 degrees in planning, 55 in simulation.
-- Population: deck.gl `H3HexagonLayer`, extruded low, like stacked board pieces. Color from
-  `--bond` to `--ink` by share of vulnerable residents. Toggle height between total, 65+, no car.
+A city map first, our data second.
+
+- Camera: top-down (pitch 0) by default in every phase. A small "Tilt" toggle on the map tilts
+  to 45 degrees for a 3D look; it is off by default and never required to play.
+- Camera framing: on load, fit the loaded data's extent at any screen size (no fixed center).
+- Basemap (MapLibre, OpenFreeMap vector tiles, our own style, no sprite so no POI icons):
+  - land `--chalk`; water `--flood` at 35%; creeks and rivers as `--flood` lines, clearly visible.
+  - parks and woods: flat `--safe` tint at low opacity (light green, like any city map).
+  - building footprints: flat `--ink` tint at about 8%, from zoom 13.
+  - streets: `--bond` fill with a thin `--ink` casing; major roads wider; motorways solid `--ink`.
+  - rail: thin dashed `--ink`.
+  - labels in `--ink` with a chalk halo: neighborhood names, major street names from zoom 13,
+    minor street names from zoom 15, water names in italic.
+- Population ("Who lives here" toggle, off by default): flat H3 fill in `--ink`, at most 30%
+  opacity, 4 stepped tints, no hexagon outlines, no extrusion. A switch picks what it shows:
+  Everyone, 65 and over, No car.
+- An invisible pickable cell layer is always on, so a tap anywhere opens the neighborhood card.
+  The selected neighborhood gets a `--signal` tint and a 2.5 px `--ink` outline.
+- Shelter sites: small `--ink` squares (hollow if the site floods), always drawn on top.
 - Closed roads: `--alarm`, 4 px, dashed while closing then solid.
 - Moving residents: deck.gl `TripsLayer`, `--safe` trails. Stranded dots stop and turn `--alarm`.
 
@@ -78,7 +97,7 @@ Host screen (projector, 16:9):
 +--------------------------------------------------------------+
 | [room code BIG]                      [timer 2:41]   [budget] |
 |                                                              |
-|                 full-bleed 3D map of Raleigh                 |
+|                   full-bleed map of Raleigh                  |
 |                                                              |
 | players: ● Aum ● Darsh ● Sakhi ● ...          [live counters]|
 +--------------------------------------------------------------+

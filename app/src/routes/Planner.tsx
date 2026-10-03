@@ -1,4 +1,4 @@
-import { HeightToggle, Legend } from '../ui/MapRail';
+import { PeopleLayerControl, Legend } from '../ui/MapRail';
 import { MapScreen } from '../ui/MapScreen';
 
 export function Planner() {
@@ -11,7 +11,7 @@ export function Planner() {
             No plays yet. Sites ranked by where residents and the data agree appear here after the
             first round.
           </p>
-          <HeightToggle />
+          <PeopleLayerControl />
           <Legend />
         </>
       )}

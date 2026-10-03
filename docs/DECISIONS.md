@@ -17,4 +17,5 @@ One line each. Newest at the bottom. Do not reopen a decision without writing wh
 - Routing: a 40-line history-API router in app/src/router.tsx instead of a dependency (five static routes).
 - Basemap: our own MapLibre style on OpenFreeMap's OpenMapTiles source (no sprite), not a restyled positron, so only DESIGN.md layers exist.
 - Halftone dots are generated in the browser from flood_steps.geojson as a stand-in; the pipeline's exported dot grid replaces it when P3 lands.
-- Hex color is 4 stepped ink tints (0/18/34/50%) by vulnerable share, not a continuous ramp, so it reads as print screens and keeps flood dots legible.
+- Map first (user request, after P5): top-down camera with an optional Tilt; no hex extrusion or grid; population is an opt-in flat ink fill at most 30%. Replaces the extruded vulnerable-share hexes.
+- Camera framing fits cells and sites, not flood polygons, so phones open at zoom 13 or more where street names and buildings exist.

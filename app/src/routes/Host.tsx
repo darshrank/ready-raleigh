@@ -12,7 +12,7 @@ export function Host({ code }: { code: string }) {
 
   return (
     <div className="relative h-full">
-      <MapView layers={layers} frame={frame} onClick={onClick} />
+      <MapView layers={layers} frame={frame} onClick={onClick} tiltControl={false} />
       <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-4 p-4 lg:p-6">
         <div className="border-(length:--rule) border-ink bg-bond px-4 py-3">
           <p className="text-15">Join at {joinUrl}</p>

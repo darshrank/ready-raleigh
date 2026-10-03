@@ -41,6 +41,35 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas:
 -->
 
+### 2026-10-03 13:05 Claude (Opus 5.5) lane C, P5 revision: map first
+- Done: design change requested after P5. DESIGN.md "Map" rewritten (also the concept intro, the
+  depth rule, halftone size, host layout) and the app follows it:
+  - Camera top-down (pitch 0). "Tilt" button bottom-left of the map eases to 45 and back; state
+    in the store (`tilt`), off by default, hidden on /host (`tiltControl={false}`).
+  - Basemap (map/basemap.ts) now reads as a street map: building footprints (ink 7-10%, z13+),
+    parks/woods/grounds in a light `--safe` tint, streets as bond fill with ink casing (motorways
+    wider, heavier casing), dashed rail, creeks at 70%, names for major streets z12+, minor z15+,
+    water in italic, neighborhoods bold.
+  - Population: no extrusion, no grid. `cellsLayer` is always on and pickable; with "Who lives
+    here" on (rail, off by default) it fills ink at 6/13/21/30% by Everyone / 65 and over /
+    No car, with a Fewer-More key. Selected neighborhood: `hoodLayer` draws the hood's outline
+    (h3 `cellsToMultiPolygon`) in 2.5 px ink over a 35% signal tint.
+  - Halftone dots: radius 36/28/20 m (max 10 px), 75% opaque. Sites unchanged, always on top.
+- Critique fixes: (1) framing now fits cells and sites only, not flood polygons; the fixture
+  creek is much wider than the cells and pushed the 390 px view to z12.7, below where street
+  names and buildings exist (z13.1 now). (2) Motorways were solid ink and turned the Beltline
+  interchange into a blot; now cased streets.
+- Verified: typecheck, 7 tests, vite build; screenshots at 1440 and 390 of default view, map click
+  (card + outline), "Who lives here" on, Tilt on.
+- Half done: nothing.
+- Next exact step: P6 planning phase (tray in the /solo rail and the 390 bottom sheet).
+- Gotchas:
+  - deck.gl does not pick fills with alpha 0. The invisible pick layer uses alpha 1/255.
+  - In dev, `window.__map` is the MapLibre map; the screenshot script can read it via the
+    `EVAL` env var (for example zoom, or `queryRenderedFeatures` to check labels).
+  - OpenFreeMap has no buildings below z13 and few names below z12; keep default framing at or
+    above z13 on phones.
+
 ### 2026-10-03 12:25 Claude (Opus 5.5) lanes B+C, P5
 - Done: tokens live once as :root vars in app/src/styles.css (7 colors, --rule, --piece-shadow,
   --focus-ring); Tailwind reads them via `@theme inline`; deck.gl/MapLibre read them through

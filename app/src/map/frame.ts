@@ -1,19 +1,20 @@
-// Camera framing: show every loaded cell, site and flood polygon, at any screen size and pitch.
+// Camera framing: show every loaded cell and site, at any screen size and pitch.
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { cellToBoundary } from 'h3-js';
 import type { MapData } from '../data';
 
 type LngLat = [number, number];
 
-/** The outline points of everything drawn from data: hexagon corners, sites, flood polygon rings. */
-export function dataPoints({ cells, sites, floodSteps }: MapData): LngLat[] {
+/**
+ * What the camera must show: every cell's corners and every site, the places people act on.
+ * Flood polygons are left out on purpose: they can run far along a creek, and fitting them pushed
+ * the phone view below zoom 13, where street names and buildings disappear. Water past the
+ * edge of the screen reads naturally on a map.
+ */
+export function dataPoints({ cells, sites }: MapData): LngLat[] {
   const pts: LngLat[] = [];
   for (const c of cells) pts.push(...(cellToBoundary(c.h3, true) as LngLat[]));
   for (const s of sites) pts.push([s.lon, s.lat]);
-  for (const f of floodSteps.features) {
-    const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
-    for (const rings of polys) pts.push(...(rings[0] ?? []));
-  }
   // Real data has tens of thousands of vertices; a few thousand frame just as well.
   const stride = Math.ceil(pts.length / 4000);
   return stride > 1 ? pts.filter((_, k) => k % stride === 0) : pts;

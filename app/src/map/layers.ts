@@ -1,82 +1,77 @@
-// deck.gl layers for the map shell: population pieces, flood halftone, shelter sites.
+// deck.gl layers over the basemap: a light data layer on a real map (DESIGN.md "Map").
 import { H3HexagonLayer } from '@deck.gl/geo-layers';
-import { IconLayer, ScatterplotLayer } from '@deck.gl/layers';
-import { latLngToCell } from 'h3-js';
+import { IconLayer, PolygonLayer, ScatterplotLayer } from '@deck.gl/layers';
+import { cellsToMultiPolygon } from 'h3-js';
 import type { Cell, Site } from '@shared/types';
-import { weightedPeople } from '@shared/config';
-import { tint, tokens, type RGB } from '../tokens';
+import { tokens, type RGB } from '../tokens';
 import type { HalftoneDot } from './halftone';
 
-export type HeightMetric = 'pop' | 'pop65' | 'noCarHH';
+export type PeopleMetric = 'pop' | 'pop65' | 'noCarHH';
 
-/** Tallest hexagon in meters. Low on purpose: stacked board pieces, not skyscrapers. */
-const MAX_HEIGHT_M = 60;
-/** Ink screen tints for the vulnerability classes, lightest first. Flat steps, no ramp. */
-const TINTS = [0, 0.18, 0.34, 0.5];
-const H3_RES = 9;
+type RGBA = [number, number, number, number];
+const withAlpha = ([r, g, b]: RGB, a: number): RGBA => [r, g, b, Math.round(a * 255)];
 
-/** Share of a cell's weighted people that comes from the vulnerable groups. */
-const vulnerableShare = (c: Cell) => {
-  const w = weightedPeople(c);
-  return w > 0 ? (w - c.pop) / w : 0;
-};
+/** "Who lives here" fill: ink at four flat opacities, never above 30%. */
+export const PEOPLE_ALPHA = [0.06, 0.13, 0.21, 0.3];
+// Alpha 1/255, not 0: deck.gl does not pick fully transparent fills, and 1/255 cannot be seen.
+const CLEAR: RGBA = [0, 0, 0, 1];
 
-/** Height in meters of every cell for the chosen metric, keyed by H3 index. */
-export function cellHeights(cells: Cell[], metric: HeightMetric): Map<string, number> {
-  const max = Math.max(1, ...cells.map((c) => c[metric]));
-  return new Map(cells.map((c) => [c.h3, (c[metric] / max) * MAX_HEIGHT_M]));
-}
-
-/** Height of the piece under a point, so dots and squares sit on top of it. */
-const heightAt = (heights: Map<string, number>, lon: number, lat: number) =>
-  heights.get(latLngToCell(lat, lon, H3_RES)) ?? 0;
-
-export function hexLayer(
-  cells: Cell[],
-  heights: Map<string, number>,
-  metric: HeightMetric,
-  selectedHood: string | null,
-) {
+/**
+ * Every cell, always present and pickable so a tap anywhere opens the neighborhood card.
+ * Invisible unless `showPeople`, then a flat low-opacity fill by the chosen metric. No outlines.
+ */
+export function cellsLayer(cells: Cell[], metric: PeopleMetric, showPeople: boolean) {
   const { rgb } = tokens();
-  const shares = cells.map(vulnerableShare);
-  const lo = Math.min(...shares);
-  const hi = Math.max(...shares);
-  const fill = (c: Cell): RGB => {
-    if (c.hood === selectedHood) return rgb.signal;
-    const t = hi > lo ? (vulnerableShare(c) - lo) / (hi - lo) : 0;
-    return tint(rgb.bond, rgb.ink, TINTS[Math.min(TINTS.length - 1, Math.floor(t * TINTS.length))] ?? 0);
+  const max = Math.max(1, ...cells.map((c) => c[metric]));
+  const fill = (c: Cell): RGBA => {
+    if (!showPeople) return CLEAR;
+    const step = Math.min(PEOPLE_ALPHA.length - 1, Math.floor((c[metric] / max) * PEOPLE_ALPHA.length));
+    return withAlpha(rgb.ink, PEOPLE_ALPHA[step] ?? 0);
   };
-
   return new H3HexagonLayer<Cell>({
     id: 'cells',
     data: cells,
     getHexagon: (c) => c.h3,
-    extruded: true,
-    getElevation: (c) => heights.get(c.h3) ?? 0,
+    extruded: false,
+    stroked: false,
     getFillColor: fill,
-    wireframe: true,
-    getLineColor: rgb.ink,
-    material: { ambient: 0.75, diffuse: 0.35, shininess: 0, specularColor: [0, 0, 0] },
     pickable: true,
-    updateTriggers: { getElevation: metric, getFillColor: selectedHood },
+    updateTriggers: { getFillColor: [metric, showPeople] },
   });
 }
 
-/** Dot radius in meters by flood step: the floodway prints heaviest. */
-const DOT_RADIUS_M: Record<number, number> = { 1: 48, 2: 36, 3: 24 };
+/** The selected neighborhood: a signal tint inside a 2.5 px ink outline. */
+export function hoodLayer(cells: Cell[], hood: string | null) {
+  const { rgb } = tokens();
+  const h3s = hood ? cells.filter((c) => c.hood === hood).map((c) => c.h3) : [];
+  const polygons = h3s.length ? cellsToMultiPolygon(h3s, true) : [];
+  return new PolygonLayer<number[][][]>({
+    id: 'hood',
+    data: polygons,
+    getPolygon: (p) => p,
+    getFillColor: withAlpha(rgb.signal, 0.35),
+    getLineColor: rgb.ink,
+    getLineWidth: 2.5,
+    lineWidthUnits: 'pixels',
+    lineJointRounded: true,
+  });
+}
 
-export function floodDotsLayer(dots: HalftoneDot[], heights: Map<string, number>, metric: HeightMetric) {
+/** Dot radius in meters by flood step: the floodway prints heaviest. Spacing is 120 m. */
+export const DOT_RADIUS_M: Record<number, number> = { 1: 36, 2: 28, 3: 20 };
+
+export function floodDotsLayer(dots: HalftoneDot[]) {
   const { rgb } = tokens();
   return new ScatterplotLayer<HalftoneDot>({
     id: 'flood-halftone',
     data: dots,
-    // +2 m keeps the dot above the piece's top face (no z-fighting).
-    getPosition: (d) => [d.lon, d.lat, heightAt(heights, d.lon, d.lat) + 2],
+    getPosition: (d) => [d.lon, d.lat],
     getRadius: (d) => DOT_RADIUS_M[d.step] ?? 20,
     radiusUnits: 'meters',
-    radiusMinPixels: 1.5,
-    getFillColor: rgb.flood,
-    updateTriggers: { getPosition: metric },
+    radiusMinPixels: 1.2,
+    radiusMaxPixels: 10, // stay dots, not discs, when zoomed in
+    // Slightly translucent so streets and labels read through the water.
+    getFillColor: withAlpha(rgb.flood, 0.75),
   });
 }
 
@@ -94,19 +89,18 @@ const SITE_MAPPING = {
   floods: { x: 32, y: 0, width: 32, height: 32 },
 };
 
-export function sitesLayer(sites: Site[], heights: Map<string, number>, metric: HeightMetric) {
+export function sitesLayer(sites: Site[]) {
   return new IconLayer<Site>({
     id: 'sites',
     data: sites,
     iconAtlas: siteAtlas(tokens().hex),
     iconMapping: SITE_MAPPING,
     getIcon: (s) => (s.floodStep === null ? 'dry' : 'floods'),
-    getPosition: (s) => [s.lon, s.lat, heightAt(heights, s.lon, s.lat) + 4],
+    getPosition: (s) => [s.lon, s.lat],
     getSize: 16,
     sizeUnits: 'pixels',
     pickable: true,
-    // Billboards stand upright, so the piece they sit on would clip their lower half.
+    // Always on top: billboards stand upright, so a tilted map would otherwise clip them.
     parameters: { depthCompare: 'always' },
-    updateTriggers: { getPosition: metric },
   });
 }

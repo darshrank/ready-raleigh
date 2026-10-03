@@ -31,6 +31,7 @@ Skip anything marked (stretch) unless asked.
 - Rooms and hosting: one Cloudflare Worker (`worker/index.ts`, `wrangler.toml`) serves the static Next export (`web/out`, `output: "export"`) and hosts one Durable Object per room code at `/room/<CODE>` (WebSocket). The room state machine is `web/src/lib/room/logic.ts` (lobby, playing, reveal), shared by the Worker and the browser. `features/experience/RoomBridge.tsx` syncs city, seed and timer from the host, submits locked plans, and turns the other players' plans into the crowd. Simulated players are only the fallback when the room server is unreachable or you are alone.
 - Planned: Tiger Data (PostgreSQL + PostGIS + Timescale), Gemini, ElevenLabs, Solana devnet. Secrets for those go through a Worker route or a small API, never the static frontend.
 - Map look: planning and briefing use the light street-map palette (from the sakhi/visual-overhaul branch) with neighbourhood fills off by default; the storm uses the night palette.
+- Storm effects (`web/src/features/storm/`, from sakhi/visual-overhaul): wipe, rain canvas, lightning, Web Audio sounds (toggle remembered in localStorage), and a director that flies the camera to up to 6 located warning/critical sim events, keyed to the simulation clock so pause, speed and scrub still work. Rain and lightning only for flood and coastal hazards; reduced motion keeps only the LIVE caption. The player grabbing the map stops the camera director for that run.
 
 ## Conventions
 

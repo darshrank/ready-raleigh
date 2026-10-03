@@ -19,6 +19,8 @@ import { cn } from "@/lib/utils";
 import { useGame } from "@/stores/game";
 import { CityDataBridge } from "./CityDataBridge";
 import { GameLoop } from "./GameLoop";
+import { PlacementSound } from "@/features/storm/PlacementSound";
+import { Storm } from "@/features/storm/Storm";
 import { RoomBridge } from "./RoomBridge";
 import { SimulationController } from "./SimulationController";
 
@@ -49,6 +51,8 @@ export function Experience() {
       <GameLoop />
       <SimulationController />
       <RoomBridge />
+      <PlacementSound />
+      <Storm />
       <AnimatePresence>
         {phase === "landing" && <Landing key="landing" />}
         {phase === "select" && <CitySelect key="select" />}

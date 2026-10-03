@@ -31,7 +31,7 @@ npm run deploy     # one Cloudflare Worker: static game + rooms (npx wrangler lo
 This branch (`claude/unified-product`) merges the three team branches:
 
 - **feat/ready-raleigh-adit**: the app shell, UI and animation, four city packs, engine, event feed, results and methodology.
-- **sakhi/visual-overhaul**: the light, uncluttered street-map look used while planning.
+- **sakhi/visual-overhaul**: the light, uncluttered street-map look used while planning, and the storm: ink wipe into night, rain, lightning with thunder, the news-helicopter camera with LIVE captions, and the synthesized sounds.
 - **claude/lucid-mccarthy-9x9exf**: realtime multiplayer rooms (Cloudflare Durable Objects) and the independent terrain (HAND) check of FEMA's flood zones.
 
 See `CLAUDE.md` for the stack, data-prep commands and conventions. Specs are in `docs/`.

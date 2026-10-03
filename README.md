@@ -25,6 +25,7 @@ Built for the Center for Geospatial Analytics track. The name is a placeholder.
 | What | How | Source |
 |---|---|---|
 | Flood hazard | Height Above Nearest Drainage from a hydrologically conditioned 10 m DEM (fill, D8 flow, channels at 1 km² drainage area). The water level rises in stages; each building and road segment floods when the level passes its HAND. | USGS 3DEP 1/3 arc-second |
+| Model check | Compared with FEMA's official 100-year floodplain: critical success index 0.53 at the 4 m stage, 86% of FEMA's floodplain area captured. FEMA's floodplain is a toggleable map layer. | FEMA NFHL |
 | Roads | 56k-edge routable network with OSM road classes and bridge flags. Closure height = lowest 40 m stretch under water, ignoring bridges and their abutments. Motorways are assumed above the 100-year flood. | OpenStreetMap via Overture Maps |
 | People | 117k residential buildings inside city limits. Residents are spread by floor area (dasymetric) and controlled to the 2020 Census count. Vulnerability shares come from ACS tracts. | OSM/Overture buildings, US Census |
 | Shelter sites | Schools, community centers, libraries and places of worship. Placements snap to the nearest one. | OSM/Overture places |

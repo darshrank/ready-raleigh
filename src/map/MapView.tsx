@@ -149,6 +149,16 @@ export default function MapView() {
       L.push(new BitmapLayer({ id: 'water', image: water, bounds: world.hand.bounds as any, pickable: false }))
     }
 
+    // official FEMA floodplain, outlined so it reads over the modelled water
+    if (layers.fema && world.fema && !inSim) {
+      L.push(new GeoJsonLayer({
+        id: 'fema', data: world.fema as any, stroked: true, filled: true, lineWidthUnits: 'pixels',
+        getFillColor: (f: any) => (f.properties.kind === '100yr' ? [255, 255, 255, 28] : [200, 160, 255, 22]),
+        getLineColor: (f: any) => (f.properties.kind === '100yr' ? [255, 255, 255, 220] : [200, 160, 255, 200]),
+        getLineWidth: 1.5,
+      }))
+    }
+
     // shelter reach
     if (layers.coverage && shownEval && showPlanningLayers && !inReveal) {
       L.push(new H3HexagonLayer({

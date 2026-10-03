@@ -9,7 +9,7 @@ import { loadWorldFromDisk } from './loadWorld'
 it.skipIf(!process.env.TUNE)('tune', () => {
   const world = loadWorldFromDisk()
   const cfg = CONFIG as any
-  for (const [cap, drive] of [[6000, 15], [6000, 10], [8000, 10]]) {
+  for (const [cap, drive] of (process.env.CAPS ? JSON.parse(process.env.CAPS) : [[6000, 15], [6000, 10], [8000, 10]])) {
     cfg.interventions.shelter.capacity = cap
     cfg.interventions.shelter.driveMinutes = drive
     const model = new FloodModel(world)

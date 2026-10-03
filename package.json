@@ -16,7 +16,8 @@
     "data:fetch": ".venv/bin/python data-prep/fetch_overture.py && .venv/bin/python data-prep/fetch_dem.py && .venv/bin/python data-prep/hydrology.py",
     "data:census": ".venv/bin/python data-prep/fetch_census.py && .venv/bin/python data-prep/build.py",
     "data:build": ".venv/bin/python data-prep/build.py",
-    "optimal": "tsx scripts/optimal.ts"
+    "optimal": "tsx scripts/optimal.ts",
+    "data:fema": ".venv/bin/python data-prep/fetch_fema.py && .venv/bin/python data-prep/build.py"
   },
   "dependencies": {
     "@deck.gl/aggregation-layers": "^9.4.0",

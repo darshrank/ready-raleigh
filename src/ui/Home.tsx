@@ -1,3 +1,4 @@
+import type { Meta } from '../engine/world'
 import { useState } from 'react'
 import { useStore } from '../store'
 
@@ -88,6 +89,7 @@ export default function Home() {
                 </li>
               ))}
             </ul>
+            {world.meta.femaValidation && <FemaCheck v={world.meta.femaValidation} />}
             {world.meta.demographics === 'citywide-fallback' && (
               <p className="muted note">Vulnerability layers use citywide census averages until tract data is loaded.</p>
             )}
@@ -95,5 +97,16 @@ export default function Home() {
         )}
       </div>
     </div>
+  )
+}
+
+/** How the HAND flood model compares with FEMA's official 100-year floodplain. */
+function FemaCheck({ v }: { v: NonNullable<Meta['femaValidation']> }) {
+  const best = v.levels.find((l) => l.level === v.bestLevel)!
+  return (
+    <p className="muted note">
+      Flood model check: at {best.level} m the modelled flood covers {Math.round(best.areaRecall * 100)}% of FEMA's
+      100-year floodplain in Raleigh (critical success index {best.csi.toFixed(2)}).
+    </p>
   )
 }

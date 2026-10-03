@@ -15,7 +15,7 @@ export const CONFIG = {
       label: 'Shelter',
       cost: 3_000_000,
       /** people one shelter can take */
-      capacity: 6_000,
+      capacity: 3_000,
       /** residents with a car are covered if they can drive there within this */
       driveMinutes: 15,
       blurb: 'Covers residents who can drive to it within 15 minutes on roads that are still open.',

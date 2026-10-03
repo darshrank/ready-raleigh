@@ -19,9 +19,10 @@ from rasterio.warp import Resampling, calculate_default_transform, reproject
 from common import CACHE
 
 CELL = 10.0  # metres
-# Channels start where the upstream drainage area reaches this size. ~1 km^2
-# matches the creeks NC floodplain mapping studies in Wake County.
-STREAM_AREA_KM2 = 1.0
+# Channels start where the upstream drainage area reaches 1 square mile
+# (2.59 km^2), the threshold FEMA uses for detailed flood studies, so the
+# modelled floodplain covers the same streams as the official one.
+STREAM_AREA_KM2 = 2.59
 UTM = "EPSG:32617"
 
 

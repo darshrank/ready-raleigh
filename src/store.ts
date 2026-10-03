@@ -8,10 +8,11 @@ import { distanceM, loadWorld, nearestNode, type World } from './engine/world'
 import { LocalRoom, makeCode, RemoteRoom, type RoomConnection } from './multiplayer/connection'
 import type { Mode, Placement, PlacementKind, RoomState, Submission } from './shared/types'
 
-export type LayerKey = 'water' | 'floodRoads' | 'atRisk' | 'population' | 'elderly' | 'poverty' | 'nocar' | 'facilities' | 'coverage'
+export type LayerKey = 'water' | 'fema' | 'floodRoads' | 'atRisk' | 'population' | 'elderly' | 'poverty' | 'nocar' | 'facilities' | 'coverage'
 
 export const LAYER_INFO: Record<LayerKey, { label: string; group: 'Hazard' | 'People' | 'Infrastructure' | 'Your plan' }> = {
   water: { label: 'Flood extent at peak', group: 'Hazard' },
+  fema: { label: 'FEMA 100-yr floodplain', group: 'Hazard' },
   floodRoads: { label: 'Flood-prone roads', group: 'Hazard' },
   atRisk: { label: 'Residents at risk', group: 'People' },
   population: { label: 'Population density', group: 'People' },
@@ -249,7 +250,7 @@ export const useStore = create<Store>((set, get) => {
     optimal: null,
     optimalEval: null,
     optProgress: null,
-    layers: { water: true, floodRoads: true, atRisk: true, population: false, elderly: false, poverty: false, nocar: false, facilities: false, coverage: true },
+    layers: { water: true, fema: false, floodRoads: true, atRisk: true, population: false, elderly: false, poverty: false, nocar: false, facilities: false, coverage: true },
     selectedHex: null,
     toast: null,
     stage: 'simulation',

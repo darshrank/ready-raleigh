@@ -10,6 +10,13 @@ export interface Meta {
   population: number
   generated: string
   demographics: 'acs5' | 'citywide-fallback'
+  /** agreement between the HAND model and FEMA's 100-year floodplain, per water level */
+  femaValidation?: {
+    bestLevel: number
+    residents100yr: number
+    residents500yr: number
+    levels: { level: number; csi: number; areaRecall: number; areaPrecision: number; residentRecall: number; residentPrecision: number }[]
+  } | null
   hand: { bounds: [number, number, number, number]; width: number; height: number; step: number }
   sources: { name: string; use: string }[]
 }
@@ -32,6 +39,9 @@ export interface Hexes {
   expoStart: Int32Array
   expoBin: Int16Array
   expoPop: Float32Array
+  /** residents in FEMA's 100-year / 500-year floodplain (null if NFHL not loaded) */
+  fema100: Float32Array | null
+  fema500: Float32Array | null
   districts: string[]
   hoods: string[]
 }
@@ -101,6 +111,8 @@ export interface World {
   boundary: GeoJSON.Feature
   hand: HandRaster | null
   /** precomputed optimal plan (scripts/optimal.ts), if present */
+  /** FEMA NFHL floodplain polygons (kind: '100yr' | '500yr') */
+  fema?: GeoJSON.FeatureCollection
   optimal?: { configHash: string; generated: string; placements: import('../shared/types').Placement[]; score: number; evaluations: number; ms: number }
 }
 
@@ -147,6 +159,8 @@ export function parseHexes(j: any): Hexes {
     expoPop,
     districts: j.districts,
     hoods: j.hoods,
+    fema100: j.fema100 ? Float32Array.from(j.fema100) : null,
+    fema500: j.fema500 ? Float32Array.from(j.fema500) : null,
   }
 }
 
@@ -271,7 +285,8 @@ export async function loadWorld(onProgress?: (msg: string) => void): Promise<Wor
   onProgress?.('Building road network')
   const hand = await decodeHand(BASE + 'hand.png', meta).catch(() => null)
   const optimal = await get('optimal.json').catch(() => undefined)
-  return { meta, hex: parseHexes(hexJ), graph: parseGraph(graphJ), roads, facilities, boundary, hand, optimal }
+  const fema = await get('fema.json').catch(() => undefined)
+  return { meta, hex: parseHexes(hexJ), graph: parseGraph(graphJ), roads, facilities, boundary, hand, optimal, fema }
 }
 
 /** Snap a point to the nearest graph node (linear scan; ~40k nodes, fast enough). */

@@ -56,6 +56,21 @@ export default function HexCard() {
             <dd className="num">{model.levels[firstStage]} m above normal</dd>
           </>
         )}
+        {hex.fema100 && (
+          <>
+            <dt>In FEMA floodplain</dt>
+            <dd className="num">
+              {hex.fema100[h] + hex.fema500![h] >= 1 ? (
+                <>
+                  {num(hex.fema100[h])} (100-yr)
+                  {hex.fema500![h] >= 1 && <>, {num(hex.fema500![h])} (500-yr)</>}
+                </>
+              ) : (
+                <span className="muted">none</span>
+              )}
+            </dd>
+          </>
+        )}
       </dl>
       <div className="shares">
         <Share label="65+" v={hex.elderly[h]} />

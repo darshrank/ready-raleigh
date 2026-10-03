@@ -7,6 +7,10 @@ const GROUPS = ['Hazard', 'People', 'Infrastructure', 'Your plan'] as const
 /** legend swatch per layer, matching the colours in MapView */
 const LEGEND: Record<LayerKey, { color: string; shape?: 'dot' | 'line' | 'square'; text: string }[]> = {
   water: [{ color: 'rgb(60,140,230)', shape: 'square', text: 'Flood water (darker = deeper)' }],
+  fema: [
+    { color: 'rgb(255,255,255)', shape: 'line', text: 'FEMA 100-year floodplain (official)' },
+    { color: 'rgb(200,160,255)', shape: 'line', text: 'FEMA 500-year floodplain' },
+  ],
   floodRoads: [
     { color: 'rgb(255,60,60)', shape: 'line', text: 'Road floods early' },
     { color: 'rgb(255,190,60)', shape: 'line', text: 'Road floods late' },

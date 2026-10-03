@@ -546,6 +546,77 @@ def neighbourhoods(city):
     return macro, micro
 
 
+# --------------------------------------------------------------------------- FEMA
+
+VALIDATION_LEVELS = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6]
+
+
+def fema_layer(city, hand: Hand, bpts, bpop, bhand):
+    """FEMA NFHL floodplain: map layer, residents inside it, and agreement with HAND.
+
+    Agreement is measured on the 10 m grid inside city limits, against the
+    1%-annual-chance floodplain: for each water level L, cells with HAND < L
+    are 'modelled flooded'. Critical Success Index = hits / (hits + misses +
+    false alarms), the usual score for comparing flood maps.
+    """
+    path = CACHE / "fema_nfhl.geojson"
+    if not path.exists():
+        return None, None, None
+    fc = json.loads(path.read_text())
+    by_kind = defaultdict(list)
+    for f in fc["features"]:
+        g = shape(f["geometry"])
+        if not g.is_valid:
+            g = g.buffer(0)
+        by_kind["100yr" if f["properties"]["sfha"] else "500yr"].append(g)
+    near_city = city.buffer(0.002)
+    sfha = unary_union(by_kind["100yr"]).intersection(near_city)
+    x500 = unary_union(by_kind["500yr"]).intersection(near_city)
+    log(f"FEMA: 100-yr floodplain {utm(sfha).area / 1e6:.1f} km2, 500-yr band {utm(x500).area / 1e6:.1f} km2 in city")
+
+    layer = {"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {"kind": k}, "geometry": mapping(g.simplify(0.00004))}
+        for k, g in (("100yr", sfha), ("500yr", x500)) if not g.is_empty]}
+
+    shapely.prepare(sfha)
+    shapely.prepare(x500)
+    in100 = shapely.contains_xy(sfha, bpts[:, 0], bpts[:, 1])
+    in500 = shapely.contains_xy(x500, bpts[:, 0], bpts[:, 1]) & ~in100
+
+    # area agreement on the HAND grid
+    shape_hw = hand.hand.shape
+    fema_mask = rasterize([(utm(sfha), 1)], out_shape=shape_hw, transform=hand.tf, dtype="uint8").astype(bool)
+    city_mask = rasterize([(utm(city), 1)], out_shape=shape_hw, transform=hand.tf, dtype="uint8").astype(bool)
+    valid = city_mask & (hand.hand > -1000)
+    h = hand.hand
+    rows = []
+    for L in VALIDATION_LEVELS:
+        model = (h < L) & valid
+        hits = int((model & fema_mask & valid).sum())
+        miss = int((~model & fema_mask & valid).sum())
+        false = int((model & ~fema_mask & valid).sum())
+        bmodel = bhand < L
+        rows.append({
+            "level": L,
+            "csi": round(hits / max(1, hits + miss + false), 3),
+            "areaRecall": round(hits / max(1, hits + miss), 3),
+            "areaPrecision": round(hits / max(1, hits + false), 3),
+            # residents: share of FEMA floodplain residents the model flags, and vice versa
+            "residentRecall": round(float(bpop[in100 & bmodel].sum() / max(1e-9, bpop[in100].sum())), 3),
+            "residentPrecision": round(float(bpop[(in100 | in500) & bmodel].sum() / max(1e-9, bpop[bmodel].sum())), 3),
+        })
+    best = max(rows, key=lambda r: r["csi"])
+    log(f"FEMA vs HAND: best CSI {best['csi']} at {best['level']} m "
+        f"(area recall {best['areaRecall']}, precision {best['areaPrecision']})")
+    validation = {
+        "levels": rows,
+        "bestLevel": best["level"],
+        "residents100yr": round(float(bpop[in100].sum())),
+        "residents500yr": round(float(bpop[in500].sum())),
+    }
+    return layer, validation, (in100, in500)
+
+
 # --------------------------------------------------------------------------- main
 
 def main():
@@ -593,6 +664,16 @@ def main():
         if not np.isnan(hv) and hv < HAND_MAX:
             expo[c, int(hv // HAND_BIN)] += bpop[i]
     log(f"population on grid {pop.sum():.0f}; within HAND<=3m {expo[:, :12].sum():.0f}")
+
+    fema_geo, fema_val, fema_in = fema_layer(city, hand, bpts, bpop, bhand)
+    fema100 = np.zeros(len(cells))
+    fema500 = np.zeros(len(cells))
+    if fema_in:
+        for i, c in enumerate(bcell):
+            if fema_in[0][i]:
+                fema100[c] += bpop[i]
+            elif fema_in[1][i]:
+                fema500[c] += bpop[i]
 
     # ---- vulnerability shares
     if census:
@@ -670,6 +751,9 @@ def main():
         "tract": [census[t]["geoid"] if t >= 0 else None for t in tract_of] if census else None,
         # sparse exposure: per hex, [bin, pop, bin, pop, ...] for HAND < HAND_MAX
         "expo": [[v for b in np.nonzero(row)[0] for v in (int(b), round(float(row[b]), 1))] for row in expo],
+        # residents in FEMA's 1% (100-year) and 0.2% (500-year) annual-chance floodplain
+        "fema100": rnd(fema100, 1) if fema_in else None,
+        "fema500": rnd(fema500, 1) if fema_in else None,
         "districts": district_names,
         "hoods": hood_names,
     }
@@ -712,6 +796,9 @@ def main():
         {"type": "Feature", "properties": {"name": "Raleigh"}, "geometry": mapping(city.simplify(0.0003))},
         separators=(",", ":")))
 
+    if fema_geo:
+        (OUT / "fema.json").write_text(json.dumps(fema_geo, separators=(",", ":")))
+
     release = (CACHE / "overture_release.txt").read_text().strip()
     meta = {
         "city": "Raleigh, NC",
@@ -721,6 +808,7 @@ def main():
         "population": round(float(pop.sum())),
         "hand": hand_meta,
         "demographics": demog_source,
+        "femaValidation": fema_val,
         "sources": [
             {"name": "OpenStreetMap via Overture Maps " + release,
              "use": "road network, building footprints, land use, facilities, neighbourhood names"},
@@ -729,7 +817,8 @@ def main():
             {"name": "US Census Bureau ACS 5-year + TIGER tracts" if census else
              "US Census 2020 (city total, P1) + ACS citywide shares",
              "use": "population and vulnerable groups"},
-        ],
+        ] + ([{"name": "FEMA National Flood Hazard Layer (NFHL)",
+               "use": "official 100- and 500-year floodplains, used to check the HAND flood model"}] if fema_geo else []),
     }
     (OUT / "meta.json").write_text(json.dumps(meta, indent=1))
     for f in sorted(OUT.iterdir()):

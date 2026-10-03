@@ -24,6 +24,93 @@
   "step": 0.05
  },
  "demographics": "acs5",
+ "femaValidation": {
+  "levels": [
+   {
+    "level": 0.5,
+    "csi": 0.311,
+    "areaRecall": 0.365,
+    "areaPrecision": 0.676,
+    "residentRecall": 0.239,
+    "residentPrecision": 0.168
+   },
+   {
+    "level": 1,
+    "csi": 0.381,
+    "areaRecall": 0.463,
+    "areaPrecision": 0.682,
+    "residentRecall": 0.437,
+    "residentPrecision": 0.231
+   },
+   {
+    "level": 1.5,
+    "csi": 0.433,
+    "areaRecall": 0.548,
+    "areaPrecision": 0.674,
+    "residentRecall": 0.552,
+    "residentPrecision": 0.228
+   },
+   {
+    "level": 2,
+    "csi": 0.465,
+    "areaRecall": 0.616,
+    "areaPrecision": 0.655,
+    "residentRecall": 0.654,
+    "residentPrecision": 0.211
+   },
+   {
+    "level": 2.5,
+    "csi": 0.485,
+    "areaRecall": 0.675,
+    "areaPrecision": 0.633,
+    "residentRecall": 0.694,
+    "residentPrecision": 0.182
+   },
+   {
+    "level": 3,
+    "csi": 0.502,
+    "areaRecall": 0.737,
+    "areaPrecision": 0.612,
+    "residentRecall": 0.748,
+    "residentPrecision": 0.155
+   },
+   {
+    "level": 3.5,
+    "csi": 0.519,
+    "areaRecall": 0.804,
+    "areaPrecision": 0.595,
+    "residentRecall": 0.774,
+    "residentPrecision": 0.129
+   },
+   {
+    "level": 4,
+    "csi": 0.526,
+    "areaRecall": 0.86,
+    "areaPrecision": 0.576,
+    "residentRecall": 0.805,
+    "residentPrecision": 0.114
+   },
+   {
+    "level": 5,
+    "csi": 0.51,
+    "areaRecall": 0.928,
+    "areaPrecision": 0.531,
+    "residentRecall": 0.891,
+    "residentPrecision": 0.098
+   },
+   {
+    "level": 6,
+    "csi": 0.473,
+    "areaRecall": 0.964,
+    "areaPrecision": 0.481,
+    "residentRecall": 0.94,
+    "residentPrecision": 0.092
+   }
+  ],
+  "bestLevel": 4,
+  "residents100yr": 1924,
+  "residents500yr": 980
+ },
  "sources": [
   {
    "name": "OpenStreetMap via Overture Maps 2026-09-23.1",
@@ -36,6 +123,10 @@
   {
    "name": "US Census Bureau ACS 5-year + TIGER tracts",
    "use": "population and vulnerable groups"
+  },
+  {
+   "name": "FEMA National Flood Hazard Layer (NFHL)",
+   "use": "official 100- and 500-year floodplains, used to check the HAND flood model"
   }
  ]
 }

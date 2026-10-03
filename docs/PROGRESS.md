@@ -28,7 +28,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [ ] P12 Gemini briefing and debrief (D)
 - [ ] P13 ElevenLabs broadcast and narration (D)
 - [ ] P14 GoDaddy domain and deploy (any)
-- [ ] P15 Live mode: USGS gauges and NWS weather into Tiger Data (D)
+- [~] P15 Live mode: USGS gauges and NWS weather into Tiger Data (D). Server done (Claude, D); title-screen live line (C) next
 - [ ] P16 Solana plan record (D)
 
 ## Phase 5: demo
@@ -71,6 +71,23 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Next exact step:
 - Gotchas:
 -->
+
+### 2026-10-03 18:45 EDT Claude (Opus 5.5) lane D, P15 live feeds (server)
+- Done: server/src/live/ (sources.ts fetchers + pure parsers, store.ts Tiger/memory/failSoftLive,
+  summary.ts, job.ts). Schema: `gauges` table and `gauge_hourly` continuous aggregate.
+  GET /api/live/gauges -> `{store, updatedAt, stale, headline, gauges[], weather}`; each gauge has
+  site, name, lon/lat, stageFt, flowCfs, trend rising|falling|steady, change1hFt, flood stages,
+  category none|action|minor|moderate|major, belowFloodFt. GET /api/live/gauges/:site?hours=48 ->
+  hourly rows from gauge_hourly (use %2F for the '/' in an nws grid id).
+- Verified live: 27 USGS gauges, 75,145 readings (7 days) into Tiger in 18 s; 20 gauges have NOAA
+  flood stages; KRDU temperature and the RAH grid rain forecast stored. Headline at 18:40 EDT:
+  "Walnut Creek at Rose Lane at Raleigh, NC: 6.2 ft and rising, 3.9 ft below flood stage."
+  Summary endpoint ~0.5 s. 14 server tests pass (parsers on trimmed real responses, summary, routes).
+- Next exact step (lane C): show `headline` and `weather.rainNext24hMm` on the title screen from
+  GET /api/live/gauges (hide it when the request fails or `stale` is true); optional gauge dots on
+  the map coloured by `category`, with a sparkline from /api/live/gauges/:site.
+- Gotchas: the first poll after a server start takes ~20 s (backfill); until then the endpoint
+  returns what Tiger already has. Set LIVE_FEEDS=false to keep tests and offline demos quiet.
 
 ### 2026-10-03 18:20 EDT Claude (Opus 5.5) lanes B+C, real data is the default
 - Done: app/src/data.ts falls back to /data (real Raleigh data) when VITE_DATA_BASE is unset or

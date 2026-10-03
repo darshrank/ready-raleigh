@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS placements (
 SELECT create_hypertable('placements', by_range('created_at', INTERVAL '1 day'), if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS placements_play ON placements (play_id);
 
--- Live river gauges (P15). Hypertable on time.
+-- Live river gauges and weather (P15). site_no is a USGS site number or 'nws:<station or grid>'.
+-- parameter: stage_ft, flow_cfs, temp_c, rain_mm, rain_forecast_mm. Hypertable on time.
 CREATE TABLE IF NOT EXISTS gauge_readings (
   time      timestamptz      NOT NULL,
   site_no   text             NOT NULL,
@@ -49,6 +50,33 @@ CREATE TABLE IF NOT EXISTS gauge_readings (
   UNIQUE (site_no, parameter, time)
 );
 SELECT create_hypertable('gauge_readings', by_range('time', INTERVAL '7 days'), if_not_exists => TRUE);
+
+-- Gauges seen in the study area, with NOAA flood stages when NOAA tracks them.
+CREATE TABLE IF NOT EXISTS gauges (
+  site_no     text PRIMARY KEY,
+  name        text             NOT NULL,
+  lon         double precision NOT NULL,
+  lat         double precision NOT NULL,
+  nws_lid     text,
+  action_ft   double precision,
+  minor_ft    double precision,
+  moderate_ft double precision,
+  major_ft    double precision,
+  updated_at  timestamptz      NOT NULL DEFAULT now()
+);
+
+-- Hourly gauge and weather stats. Real-time, so the newest readings count at once.
+CREATE MATERIALIZED VIEW IF NOT EXISTS gauge_hourly
+WITH (timescaledb.continuous, timescaledb.materialized_only = false) AS
+SELECT time_bucket(INTERVAL '1 hour', time) AS bucket, site_no, parameter,
+  avg(value) AS avg_value, min(value) AS min_value, max(value) AS max_value,
+  last(value, time) AS last_value, count(*) AS readings
+FROM gauge_readings
+GROUP BY bucket, site_no, parameter
+WITH NO DATA;
+SELECT add_continuous_aggregate_policy('gauge_hourly',
+  start_offset => INTERVAL '30 days', end_offset => INTERVAL '1 hour',
+  schedule_interval => INTERVAL '15 minutes', if_not_exists => TRUE);
 
 -- Crowd picks per spot per hour. Real-time (materialized_only = false): new plays count at once.
 CREATE MATERIALIZED VIEW IF NOT EXISTS placements_hourly

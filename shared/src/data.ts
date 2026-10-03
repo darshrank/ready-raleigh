@@ -28,6 +28,9 @@ export interface FloodStepsCollection {
   }[];
 }
 
+/** flood_dots.json entry: a halftone dot on a ~120 m grid, tagged with the first step that reaches it. */
+export type FloodDot = [lon: number, lat: number, step: number];
+
 /**
  * meta.json, as the pipeline writes it. Only the fields the app may show are typed; the pipeline
  * also writes p2 / p3 build details (sanity counts, methods) that stay untyped here.

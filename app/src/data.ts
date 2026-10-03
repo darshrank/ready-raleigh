@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { Cell, Site } from '@shared/types';
-import type { FloodStepsCollection } from '@shared/data';
+import type { Cell, FloodRoad, Site } from '@shared/types';
+import type { DataBundle, FloodDot, Hospital } from '@shared/data';
 
 /** Where the static data lives. Fixtures until the pipeline writes the real files to /data. */
 export const DATA_BASE: string = import.meta.env.VITE_DATA_BASE ?? '/data/fixtures';
@@ -11,10 +11,14 @@ async function getJson<T>(file: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-export interface MapData {
-  cells: Cell[];
-  sites: Site[];
-  floodSteps: FloodStepsCollection;
+/**
+ * Everything the map and the engine read. It is the engine's DataBundle too: the engine caches its
+ * index by object identity, so this object is built once per page load and never changed.
+ */
+export interface MapData extends DataBundle {
+  hospitals: Hospital[];
+  /** Halftone flood dots from the pipeline (pipeline/ writes them; the browser only draws them). */
+  floodDots: FloodDot[];
 }
 
 // One fetch per page load, shared by every route.
@@ -24,8 +28,10 @@ export function loadMapData(): Promise<MapData> {
   mapData ??= Promise.all([
     getJson<Cell[]>('cells.json'),
     getJson<Site[]>('sites.json'),
-    getJson<FloodStepsCollection>('flood_steps.geojson'),
-  ]).then(([cells, sites, floodSteps]) => ({ cells, sites, floodSteps }));
+    getJson<FloodRoad[]>('flood_roads.json'),
+    getJson<Hospital[]>('hospitals.json'),
+    getJson<FloodDot[]>('flood_dots.json'),
+  ]).then(([cells, sites, floodRoads, hospitals, floodDots]) => ({ cells, sites, floodRoads, hospitals, floodDots }));
   mapData.catch(() => (mapData = null)); // let a later mount retry
   return mapData;
 }

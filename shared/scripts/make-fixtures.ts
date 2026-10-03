@@ -10,7 +10,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { cellToLatLng, gridDisk, latLngToCell } from 'h3-js';
 import { FINAL_FLOOD_STEP, FLOOD_STEP_NAMES, SHELTER_DRIVE_LIMIT_S } from '../src/config';
-import type { DataMeta, FloodStepsCollection, Hospital, RoadsGraph } from '../src/data';
+import type { DataMeta, FloodDot, FloodStepsCollection, Hospital, RoadsGraph } from '../src/data';
 import type { Cell, FloodRoad, Site } from '../src/types';
 
 type LonLat = [number, number];
@@ -110,6 +110,26 @@ const floodSteps: FloodStepsCollection = {
     geometry: { type: 'Polygon' as const, coordinates: [bandFor(step)] },
   })),
 };
+
+// Halftone dots, as the pipeline writes them: a 120 m grid in offset rows, each dot tagged with the
+// first step that reaches it.
+const DOT_SPACING_M = 120;
+function floodDots(): FloodDot[] {
+  const outer = bandFor(3);
+  const xs = outer.map(([x]) => x);
+  const ys = outer.map(([, y]) => y);
+  const [w, e, s, n] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const dLat = (DOT_SPACING_M * Math.sqrt(3)) / 2 / M_PER_DEG_LAT;
+  const dLon = DOT_SPACING_M / (M_PER_DEG_LAT * Math.cos((((s + n) / 2) * Math.PI) / 180));
+  const dots: FloodDot[] = [];
+  for (let row = 0, lat = s; lat <= n; row++, lat += dLat) {
+    for (let lon = w + (row % 2) * (dLon / 2); lon <= e; lon += dLon) {
+      const step = floodStepAt([lon, lat]);
+      if (step !== null) dots.push([r5(lon), r5(lat), step]);
+    }
+  }
+  return dots;
+}
 
 // ---------- cells ----------
 const centerH3 = latLngToCell(CENTER[1], CENTER[0], RES);
@@ -319,6 +339,7 @@ const files: Record<string, unknown> = {
   'sites.json': sites,
   'flood_roads.json': floodRoads,
   'flood_steps.geojson': floodSteps,
+  'flood_dots.json': floodDots(),
   'roads_graph.json': graph,
   'hospitals.json': hospitals,
   'meta.json': meta,

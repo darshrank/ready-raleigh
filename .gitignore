@@ -1,0 +1,15 @@
+.DS_Store
+
+# local agent tooling (DevRelay)
+.agents/
+
+# data prep: virtualenv and raw downloads (regenerate with the build script)
+data-prep/.venv/
+data-prep/cache/
+data-prep/cache-build.log
+__pycache__/
+
+# secrets
+.env
+.env.*
+!.env.example

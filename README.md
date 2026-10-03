@@ -1,33 +1,31 @@
-# Ready Raleigh
+# FAULTLINE: Cities Under Pressure
 
-A multiplayer map game where Raleigh residents plan their city's response to floods and heatwaves on real data. Each play is a proposed plan, and the combined plans show town planners where residents and the data agree action is needed.
+*Pick a city. Face the disaster. Rewrite the outcome.*
 
-Built for the Center for Geospatial Analytics track. The name is a placeholder.
+A multiplayer geospatial resilience game on real cities and real data. Players plan where to put shelters, buses, road protection and rescue teams before a disaster, watch it play out on the real road network, then compare their plan with an optimizer and the rest of the room. The combined plans show planners where residents and the data agree action is needed.
+
+Built for the Center for Geospatial Analytics track.
 
 ## How a round works
 
-1. **Join**: enter a room code on a phone or laptop, or play solo.
-2. **Briefing**: pick Flood or Heatwave and learn the scenario.
-3. **Planning**: spend a $10M budget in about 3 minutes, placing shelters, bus pickups, cooling centers and more on a real map of Raleigh.
-4. **Simulation**: watch the event play out. Water spreads, roads close, and residents travel toward shelters.
-5. **Results**: get a score based on the share of at-risk residents protected, weighted toward vulnerable groups, plus a debrief and the best plan the algorithm found.
-6. **Reveal**: see the room's leaderboard, a crowd heatmap, and the perception gap, meaning the areas the data flags but the crowd ignored.
+1. **Choose a city**: Raleigh (Hurricane Cascade) is playable. Miami, New York and San Francisco have their map, camera and scenario design in place.
+2. **Briefing**: a fly-through of the city with the real numbers: residents in the flood hazard area, households without a car, flood-prone crossings.
+3. **Planning**: spend $10M in 3 minutes on shelters, bus pickups, road protection and high-water rescue teams. Intel scans, a time freeze and an Achilles' heel network scan help.
+4. **Simulation**: water spreads along FEMA flood zones, roads close, and every evacuation is routed on the OpenStreetMap network. Reroutes, strandings and functional isolation all emerge from the routing.
+5. **Results**: resilience score with transparent weights, who benefited, the critical failure, the optimizer's alternate timeline, the room leaderboard, and the perception gap between the crowd and the data.
 
-## Planned stack
+## Data
 
-- **Map and animation:** MapLibre, deck.gl
-- **Data:** OpenStreetMap, US Census, NC OneMap, NOAA, USGS
+OpenStreetMap (OSMnx), FEMA National Flood Hazard Layer, U.S. Census ACS 5-year (tract), OpenFreeMap tiles. See the in-app methodology page for roles and limitations.
 
-## Build order
+## Run it
 
-1. Flood mode end to end
-2. Heatwave mode on the same engine
-3. Planner dashboard
-4. Bonus challenge integrations
-5. Stretch items
+```bash
+cd web && pnpm install && pnpm dev
+```
 
-The full spec is in [docs/product-plan.md](docs/product-plan.md).
+See `CLAUDE.md` for the stack, data-prep commands and conventions. Specs are in `docs/`.
 
 ## Status
 
-Planning. No code yet.
+Frontend and engine done for Raleigh on real data. Next: FastAPI backend, realtime rooms, Tiger Data, then the other city packs and bonus integrations.

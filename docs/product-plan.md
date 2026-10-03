@@ -1,6 +1,6 @@
 # Ready Raleigh: Product Plan
 
-Oct 3, 2026 · @Darsh
+Oct 3, 2026
 
 ## Overview
 

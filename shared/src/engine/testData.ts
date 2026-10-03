@@ -1,6 +1,6 @@
 // Test helpers: a seeded synthetic bundle of any size, and random valid plans. Not exported from
 // the engine index; tests import it directly.
-import { gridDisk, latLngToCell } from 'h3-js';
+import { gridDisk, gridDistance, latLngToCell } from 'h3-js';
 import { BUDGET, COSTS, MODE_INTERVENTIONS } from '../config';
 import type { DataBundle } from '../data';
 import type { Cell, FloodRoad, Mode, Placement, Plan, Site } from '../types';
@@ -37,6 +37,7 @@ export function syntheticBundle(nCells: number, seed = 1, nSites = 400, nRoads =
       lowInc: Math.round(pop * rand() * 0.4),
       noCarHH: Math.round((pop / 2.2) * rand() * 0.3),
       floodStep: flood < 0.05 ? 1 : flood < 0.12 ? 2 : flood < 0.2 ? 3 : null,
+      floodFrac: flood < .2 ? 1 : 0,
       cutOff: rand() < 0.12,
       heatC: Math.round((30 + rand() * 14) * 10) / 10,
       treePct: Math.round(rand() * 60),
@@ -51,7 +52,9 @@ export function syntheticBundle(nCells: number, seed = 1, nSites = 400, nRoads =
 
   const sites: Site[] = Array.from({ length: nSites }, (_, s) => {
     const cell = Math.floor(rand() * nCells);
-    const coverDry = near(cell, 14);
+    const time = (i: number) => gridDistance(h3s[cell]!, h3s[i]!) * 30_000;
+    const coverDry = near(cell, 14).sort((a, b) => time(a) - time(b) || a - b);
+    const coverFlood = coverDry.filter(() => rand() < .7);
     return {
       id: `site-${s}`,
       name: `Site ${s}`,
@@ -61,7 +64,9 @@ export function syntheticBundle(nCells: number, seed = 1, nSites = 400, nRoads =
       cell,
       floodStep: cells[cell]!.floodStep,
       coverDry,
-      coverFlood: coverDry.filter(() => rand() < 0.7),
+      coverFlood,
+      driveDry: coverDry.map(time),
+      driveFlood: coverFlood.map(time),
     };
   });
   const floodRoads: FloodRoad[] = Array.from({ length: nRoads }, (_, r) => ({

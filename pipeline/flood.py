@@ -12,9 +12,9 @@ from pyproj import Transformer
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
 from scipy.spatial import cKDTree
-from shapely import make_valid, set_precision, union_all, prepare, intersects
+from shapely import make_valid, set_precision, union_all, prepare, intersects, STRtree
 from shapely.geometry import LineString, MultiPolygon, Point, Polygon, mapping
-from shapely.ops import transform
+from shapely.ops import transform, clip_by_rect
 
 from .config import MAX_FILE_BYTES, METRIC_CRS
 
@@ -73,6 +73,34 @@ def classify(geometries, hazards):
     return values
 
 
+def cell_flood_shares(polygons, hazards):
+    """Metric area shares of cumulative, unsimplified zones (union avoids double counting)."""
+    series = gpd.GeoSeries(polygons, crs=METRIC_CRS)
+    shares = np.zeros((len(series), 3))
+    for step in (1, 2, 3):
+        cumulative = union_all([hazards[s] for s in range(1, step + 1)])
+        parts = list(cumulative.geoms) if cumulative.geom_type == 'MultiPolygon' else [cumulative]
+        tree = STRtree(parts)
+        for i, polygon in enumerate(series):
+            # The union's components are disjoint: their clipped areas can be summed exactly.
+            area = 0.
+            for j in tree.query(polygon):
+                local = make_valid(clip_by_rect(parts[j], *polygon.bounds))
+                area += polygon.intersection(local).area
+            shares[i, step - 1] = min(1., max(0., area / polygon.area))
+    steps = [next((s + 1 for s, fraction in enumerate(row) if fraction >= .2 - 1e-12), None) for row in shares]
+    return steps, shares
+
+
+def is_bridge(value):
+    values = value if isinstance(value, list) else [value]
+    return any(v is not None and str(v).lower() not in ('', 'no', 'false', '0', 'nan') for v in values)
+
+
+def risk_share(cell):
+    return cell['floodFrac'] if cell['floodStep'] is not None else float(cell['cutOff'])
+
+
 def prepare_graph(graph, hazards):
     node_ids = sorted(graph.nodes)
     index = {node: i for i, node in enumerate(node_ids)}
@@ -89,10 +117,11 @@ def prepare_graph(graph, hazards):
         osmid = data.get('osmid')
         osmid = '-'.join(map(str, sorted(osmid))) if isinstance(osmid, list) else str(osmid)
         records.append({'u': index[u], 'v': index[v], 'seconds': max(.01, round(data['travel_time'], 2)),
-                        'name': name, 'osmid': osmid, 'geometry': transform(TO_METRIC, line)})
+                        'name': name, 'ref': data.get('ref', ''), 'bridge': is_bridge(data.get('bridge')),
+                        'osmid': osmid, 'geometry': transform(TO_METRIC, line)})
     steps = classify([r['geometry'] for r in records], hazards)
     for r, step in zip(records, steps):
-        r['step'] = step
+        r['step'] = None if r['bridge'] else step
     edges = [[r['u'], r['v'], r['seconds'], r['step']] for r in records]
     return {'nodes': nodes, 'edges': edges}, records, cKDTree(xy)
 
@@ -168,25 +197,31 @@ def facilities(amenities, study, hazards, tree, cells):
 _COVER = None
 
 
-def init_coverage(dry_reverse, flood_reverse, cell_nodes):
+def init_coverage(dry_reverse, flood_reverse, cell_nodes, risk=None):
     global _COVER
-    _COVER = dry_reverse, flood_reverse, cell_nodes
+    _COVER = dry_reverse, flood_reverse, cell_nodes, risk
 
 
 def cover_one(site):
-    dry, flooded, cell_nodes = _COVER
+    dry, flooded, cell_nodes, risk = _COVER
     output = {k: v for k, v in site.items() if not k.startswith('_')}
     # Coverage is reachability, independent of whether a site itself floods.
     # Consumers separately reject a shelter with floodStep <= current step.
     for label, graph in [('coverDry', dry), ('coverFlood', flooded)]:
         distances = dijkstra(graph, directed=True, indices=site['_node'], limit=900)
-        output[label] = np.flatnonzero(distances[cell_nodes] <= 900).tolist()
+        seconds = distances[cell_nodes]
+        eligible = np.flatnonzero((seconds <= 900) & (risk if risk is not None else True))
+        # Integer milliseconds preserve road-time precision while keeping JSON compact.
+        times = np.rint(seconds[eligible] * 1000).astype(int)
+        order = np.lexsort((eligible, times))
+        output[label] = eligible[order].tolist()
+        output[label.replace('cover', 'drive')] = times[order].tolist()
     return output
 
 
-def site_coverage(sites, dry, flooded, cell_nodes):
+def site_coverage(sites, dry, flooded, cell_nodes, risk=None):
     with ProcessPoolExecutor(max_workers=min(6, os.cpu_count() or 1), initializer=init_coverage,
-                             initargs=(dry.T.tocsr(), flooded.T.tocsr(), cell_nodes)) as pool:
+                             initargs=(dry.T.tocsr(), flooded.T.tocsr(), cell_nodes, risk)) as pool:
         results = list(pool.map(cover_one, sites, chunksize=8))
     # Fit the per-file budget while retaining the deterministic preference ranking.
     while len(json.dumps(results, separators=(',', ':'), ensure_ascii=False).encode()) >= MAX_FILE_BYTES:
@@ -196,22 +231,29 @@ def site_coverage(sites, dry, flooded, cell_nodes):
     return results
 
 
-def road_segments(records, study):
+def road_segments(records, study, cells=None):
     """Continuous, unbranched flooded chains per street (both directions together)."""
     groups = defaultdict(dict)
+    hood_tree = cKDTree([TO_METRIC(*reversed(h3.cell_to_latlng(c['h3']))) for c in cells]) if cells else None
     study = transform(TO_METRIC, study)
     for edge_i, r in enumerate(records):
         if r['step'] is None or not r['geometry'].intersects(study):
             continue
-        name = r['name'] or f"Unnamed road {r['osmid']}"
+        ref = r.get('ref', '')
+        ref = ' / '.join(sorted(set(ref))) if isinstance(ref, list) else ref
+        midpoint = r['geometry'].interpolate(.5, normalized=True)
+        hood = cells[int(hood_tree.query([midpoint.x, midpoint.y])[1])]['hood'] if hood_tree is not None else 'Raleigh'
+        name = r['name'] or ref or f"Unnamed road near {hood}"
         # Reciprocal arcs share a geometry; retain distinct parallel carriageways.
         coords = tuple((round(x, 2), round(y, 2)) for x, y in r['geometry'].coords)
         canonical = min(coords, coords[::-1])
         key = (min(r['u'], r['v']), max(r['u'], r['v']), canonical)
-        entry = groups[name].setdefault(key, {'u': r['u'], 'v': r['v'], 'geom': r['geometry'], 'ids': []})
+        # A friendly fallback label must not merge unrelated unnamed OSM ways.
+        group = (name, r['osmid'] if not r['name'] and not ref else '')
+        entry = groups[group].setdefault(key, {'u': r['u'], 'v': r['v'], 'geom': r['geometry'], 'ids': []})
         entry['ids'].append(edge_i)
     segments = []
-    for name, physical in sorted(groups.items()):
+    for (name, _), physical in sorted(groups.items()):
         graph = nx.MultiGraph()
         for edge_id, entry in enumerate(physical.values()):
             graph.add_edge(entry['u'], entry['v'], key=edge_id, **entry)
@@ -282,7 +324,7 @@ def unlock_one(segment):
 
 
 def protection_roads(segments, flooded, distances, cell_nodes, cutoff, edges, cells):
-    weights = [c['pop'] + c['pop65'] + c['lowInc'] + 2.5*c['noCarHH'] for c in cells]
+    weights = [(c['pop'] + c['pop65'] + c['lowInc'] + 2.5*c['noCarHH']) * risk_share(c) for c in cells]
     with ProcessPoolExecutor(max_workers=min(6, os.cpu_count() or 1), initializer=init_roads,
                              initargs=(flooded.T.tocsr(), np.isfinite(distances), cell_nodes, cutoff, edges, weights)) as pool:
         ranked = list(pool.map(unlock_one, segments, chunksize=32))

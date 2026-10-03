@@ -1,0 +1,28 @@
+{
+  "residents": 544819.3623140028,
+  "atRiskPeople": 37539.444477621226,
+  "atRiskWeighted": 47812.80768912538,
+  "atRiskResidentShare": 0.06890255206456049,
+  "cutOffCells": 261,
+  "cellsPerFloodStep": {
+    "1": 416,
+    "2": 447,
+    "3": 15,
+    "null": 5514
+  },
+  "optimalScore": 76.32618048638084,
+  "optimalProtectedPeople": 28383.86251605999,
+  "largestSingleShelter": {
+    "siteId": "osm-node-12223563601",
+    "name": "Red Bud Writing Project",
+    "weightedScore": 28.486173397632612,
+    "protectedPeople": 9999.99999999999,
+    "atRiskPeopleShare": 0.2663864673320191
+  },
+  "largestSingleShelterPeople": 10000.000000000013,
+  "optimizerMs": 1183.585084,
+  "stats": {
+    "candidates": 3070,
+    "evaluations": 24046
+  }
+}

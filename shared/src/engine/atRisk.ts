@@ -9,6 +9,11 @@ export function isFloodAtRisk(c: Cell): boolean {
   return (c.floodStep !== null && c.floodStep <= FINAL_FLOOD_STEP) || c.cutOff;
 }
 
+/** Flooded cells use final area share; dry cut-off cells count in full, without double counting. */
+export function floodRiskShare(c: Cell): number {
+  return c.floodStep !== null && c.floodStep <= FINAL_FLOOD_STEP ? c.floodFrac : c.cutOff ? 1 : 0;
+}
+
 /** Heat threshold in Celsius: the configured percentile of cell heat (nearest rank). */
 export function heatThreshold(cells: Cell[], percentile = HEAT_THRESHOLD_PERCENTILE): number {
   if (cells.length === 0) return Infinity;

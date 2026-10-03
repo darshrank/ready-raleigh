@@ -1,22 +1,26 @@
 // score(plan, data): share of at-risk weighted people the plan protects, with the breakdowns the
 // results screen and the AI debrief need.
-import { SHELTER_DRIVE_LIMIT_S } from '../config';
+import { BUDGET, SHELTER_DRIVE_LIMIT_S } from '../config';
 import type { DataBundle } from '../data';
 import type { Plan, ScoreResult } from '../types';
 import { type EngineIndex, PART_CAR, PART_NO_CAR, engineIndex } from './context';
 import { type CoverState, planState, protectedWeight, siteUsable } from './coverage';
+import { optimize } from './optimizer';
 import { assertValidPlan } from './plan';
 
 const TOP_MISSES = 5;
 
 /** Scores a valid plan. Throws PlanError if the plan is over budget or references bad ids. */
-export function score(plan: Plan, data: DataBundle): ScoreResult {
-  assertValidPlan(plan, data);
+export function score(plan: Plan, data: DataBundle, budget = BUDGET): ScoreResult {
+  assertValidPlan(plan, data, budget);
   const idx = engineIndex(data);
-  return summarize(plan, idx, planState(plan, idx));
+  const result = summarize(plan, idx, planState(plan, idx));
+  const best = optimize(plan.mode, data, budget);
+  const bestPossible = result.atRiskWeighted > 0 ? 100 * best.protectedWeighted / result.atRiskWeighted : 100;
+  return { ...result, bestPossible };
 }
 
-export function summarize(plan: Plan, idx: EngineIndex, state: CoverState): ScoreResult {
+function summarize(plan: Plan, idx: EngineIndex, state: CoverState): Omit<ScoreResult, 'bestPossible'> {
   const { n } = idx;
   const m = idx.mode[plan.mode];
   const hoodRisk = new Float64Array(idx.hoods.length);
@@ -37,10 +41,10 @@ export function summarize(plan: Plan, idx: EngineIndex, state: CoverState): Scor
     const share = w > 0 ? pw / w : 0;
     atRiskW += w;
     protW += pw;
-    atRiskPeople += idx.pop[i]!;
-    protPeople += idx.pop[i]! * share;
-    atRiskVuln += idx.vulnW[i]!;
-    protVuln += idx.vulnW[i]! * share;
+    atRiskPeople += (idx.pop[i]! * m.riskShare[i]!);
+    protPeople += (idx.pop[i]! * m.riskShare[i]!) * share;
+    atRiskVuln += (idx.vulnW[i]! * m.riskShare[i]!);
+    protVuln += (idx.vulnW[i]! * m.riskShare[i]!) * share;
     const h = idx.hoodOf[i]!;
     hoodRisk[h]! += w;
     hoodProt[h]! += pw;
@@ -91,8 +95,8 @@ export function missReason(plan: Plan, idx: EngineIndex, state: CoverState, i: n
   const reasons: string[] = [];
   if (m.partW[PART_CAR * n + i]! > 0 && state.cover[PART_CAR * n + i]! < 1) {
     if (floodedShelterWouldCover(plan, idx, i)) reasons.push(`the nearest shelter floods; no working shelter within ${DRIVE_MIN} minutes`);
-    else if (idx.floodStep[i] === 0) reasons.push(`cut off from hospitals; no protected road or shelter within ${DRIVE_MIN} minutes`);
-    else reasons.push(`no shelter within ${DRIVE_MIN} minutes`);
+    else if (idx.floodStep[i] === 0) reasons.push(`cut off from hospitals; no protected road or shelter with room within ${DRIVE_MIN} minutes`);
+    else reasons.push(`no shelter with room within ${DRIVE_MIN} minutes`);
   }
   if (m.partW[PART_NO_CAR * n + i]! > 0 && state.cover[PART_NO_CAR * n + i]! < 1) {
     reasons.push('households with no car and no bus pickup nearby');

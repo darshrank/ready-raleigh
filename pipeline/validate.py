@@ -2,7 +2,7 @@
 import math
 import h3
 
-FIELDS = {"i", "h3", "hood", "pop", "pop65", "lowInc", "noCarHH", "floodStep", "cutOff", "heatC", "treePct"}
+FIELDS = {"i", "h3", "hood", "pop", "pop65", "lowInc", "noCarHH", "floodStep", "floodFrac", "cutOff", "heatC", "treePct"}
 
 
 def validate_cells(cells):
@@ -19,11 +19,14 @@ def validate_cells(cells):
         seen.add(cell["h3"])
         if not isinstance(cell["hood"], str) or not cell["hood"].strip():
             raise ValueError(f"Cell {i}: missing neighborhood name.")
-        for field in ("pop", "pop65", "lowInc", "noCarHH", "heatC", "treePct"):
+        for field in ("pop", "pop65", "lowInc", "noCarHH", "heatC", "treePct", "floodFrac"):
             value = cell[field]
             if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
                 raise ValueError(f"Cell {i}: invalid {field}.")
         if cell["pop65"] > cell["pop"] or cell["lowInc"] > cell["pop"]:
             raise ValueError(f"Cell {i}: demographic count exceeds population.")
-        if (cell["floodStep"] is not None and (type(cell["floodStep"]) is not int or cell["floodStep"] not in (1, 2, 3))) or type(cell["cutOff"]) is not bool or cell["treePct"] > 100:
+        if (cell["floodStep"] is not None and (type(cell["floodStep"]) is not int or cell["floodStep"] not in (1, 2, 3))) or type(cell["cutOff"]) is not bool or cell["treePct"] > 100 or cell["floodFrac"] > 1:
             raise ValueError(f"Cell {i}: invalid flood, access, or canopy field.")
+
+        if cell["floodStep"] is not None and cell["floodFrac"] < .2 - 1e-6:
+            raise ValueError(f"Cell {i}: flooded cell below 20% threshold.")

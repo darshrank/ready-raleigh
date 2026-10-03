@@ -127,7 +127,7 @@ def main():
     cells = [{"i": c["i"], "h3": c["h3"], "hood": named["names"][c["h3"]],
               **{key: c[key] for key in ("pop", "pop65", "lowInc", "noCarHH")},
               **{k: previous.get(c["h3"], {}).get(k, default) for k, default in
-                 (("floodStep", None), ("cutOff", False), ("heatC", 0), ("treePct", 0))}} for c in allocated]
+                 (("floodStep", None), ("floodFrac", 0), ("cutOff", False), ("heatC", 0), ("treePct", 0))}} for c in allocated]
     validate_cells(cells)
     write_json(destination, cells)
     if [c["h3"] for c in cells] != [c["h3"] for c in allocated]:

@@ -8,6 +8,7 @@ from shapely import union_all
 from .config import DATA, MAX_FILE_BYTES
 from .sources import read_json
 from .validate import validate_cells
+from .flood import risk_share
 
 
 def validate_artifacts():
@@ -18,7 +19,7 @@ def validate_artifacts():
     cells=data['cells.json'];validate_cells(cells)
     count=len(cells)
     def indices(values):
-        assert values == sorted(set(values))
+        assert len(values) == len(set(values))
         assert all(type(i) is int and 0 <= i < count for i in values)
     def coordinate(pair):
         assert len(pair)==2 and all(type(n) in (int,float) and math.isfinite(n) and round(n,5)==n for n in pair)
@@ -38,11 +39,16 @@ def validate_artifacts():
     assert len({s['id'] for s in sites})==len(sites)
     assert len({h3.latlng_to_cell(s['lat'],s['lon'],8) for s in sites})==len(sites)
     for s in sites:
-        assert set(s)=={'id','name','kind','lon','lat','cell','floodStep','coverDry','coverFlood'}
+        assert set(s)=={'id','name','kind','lon','lat','cell','floodStep','coverDry','coverFlood','driveDry','driveFlood'}
         coordinate([s['lon'],s['lat']]);assert s['floodStep'] in (None,1,2,3)
         assert s['name'] and s['kind'] in {'school','community_centre','library','place_of_worship'}
         assert type(s['cell']) is int and 0<=s['cell']<count
         indices(s['coverDry']);indices(s['coverFlood'])
+        for suffix in ('Dry', 'Flood'):
+            times = s['drive' + suffix]
+            assert len(times) == len(s['cover' + suffix])
+            assert times == sorted(times) and all(type(t) is int and 0 <= t <= 900000 for t in times)
+            assert all(risk_share(cells[i]) > 0 for i in s['cover' + suffix])
         assert set(s['coverFlood']) <= set(s['coverDry'])
     roads=data['flood_roads.json'];assert 0<len(roads)<=50
     assert len({r['id'] for r in roads})==len(roads)
@@ -52,7 +58,7 @@ def validate_artifacts():
         assert r['name'] and r['floodStep'] in (1,2,3) and len(r['coords'])>=2
         for xy in r['coords']:coordinate(xy)
         indices(r['unlocks']);assert all(cells[i]['cutOff'] for i in r['unlocks'])
-        weights.append(sum(cells[i]['pop']+cells[i]['pop65']+cells[i]['lowInc']+2.5*cells[i]['noCarHH'] for i in r['unlocks']))
+        weights.append(sum((cells[i]['pop']+cells[i]['pop65']+cells[i]['lowInc']+2.5*cells[i]['noCarHH']) * risk_share(cells[i]) for i in r['unlocks']))
     assert weights==sorted(weights,reverse=True)
     flood=data['flood_steps.geojson'];assert flood['type']=='FeatureCollection'
     assert [f['properties']['step'] for f in flood['features']]==[1,2,3]

@@ -1,10 +1,8 @@
 // Budgeted max coverage: pick placements that protect the most weighted people within budget.
 //
-// Lazy greedy (CELF): candidates sit in a max-heap keyed by their last known marginal gain per
-// dollar. Coverage only shrinks gains, so a candidate whose fresh gain still tops the heap is the
-// true best and is taken without rescoring the rest. As in Khuller et al. / Leskovec et al., the
-// result is the best of the ratio greedy, a pure-gain greedy, and the best single placement.
-// (Trees can gain from a neighbour's cooling, so for heat the lazy step is a heuristic.)
+// Flood uses eager greedy because capacity reassignment invalidates lazy marginal-gain bounds.
+// Heat retains CELF lazy greedy (a heuristic for tree synergies). Both compare gain-per-dollar,
+// pure-gain greedy and the best single placement; this is a baseline, not a proven global optimum.
 import { BUDGET, COSTS, MODE_INTERVENTIONS } from '../config';
 import type { DataBundle } from '../data';
 import type { Mode, Placement, Plan } from '../types';
@@ -54,13 +52,42 @@ export interface OptimizeResult {
   stats: { candidates: number; evaluations: number };
 }
 
+const cache = new WeakMap<DataBundle, Map<string, OptimizeResult>>();
+
 export function optimize(mode: Mode, data: DataBundle, budget = BUDGET): OptimizeResult {
+  if (!Number.isFinite(budget) || budget < 0) throw new Error('Budget must be finite and nonnegative');
+  let memo = cache.get(data);
+  if (!memo) { memo = new Map(); cache.set(data, memo); }
+  const cacheKey = `${mode}:${budget}`;
+  const cached = memo.get(cacheKey);
+  if (cached) return cached;
   const idx = engineIndex(data);
   const cands = candidates(mode, data);
   let evaluations = 0;
 
   const greedy = (byRatio: boolean): { picks: number[]; gain: number } => {
     const state = emptyState(mode, idx);
+    // Capacity reassignment can increase a marginal gain; CELF's stale bounds are not valid.
+    if (mode === 'flood') {
+      const picks: number[] = [];
+      let spent = 0, gain = 0;
+      const used = new Set<number>();
+      while (true) {
+        let best = -1, bestKey = 0, bestGain = 0;
+        cands.forEach((c, k) => {
+          if (used.has(k) || c.cost > budget - spent) return;
+          const g = marginalGain(idx, state, c.eff);
+          evaluations++;
+          const key = byRatio ? g / c.cost : g;
+          if (key > bestKey) { best = k; bestKey = key; bestGain = g; }
+        });
+        if (best < 0) break;
+        const c = cands[best]!;
+        applyEffect(state, c.eff, idx.n);
+        picks.push(best); used.add(best); spent += c.cost; gain += bestGain;
+      }
+      return { picks, gain };
+    }
     const heap = new MaxHeap();
     cands.forEach((c, k) => {
       if (c.cost > budget) return;
@@ -103,11 +130,13 @@ export function optimize(mode: Mode, data: DataBundle, budget = BUDGET): Optimiz
 
   const placements: Placement[] = best.picks.map((k, n) => ({ id: `opt-${n + 1}`, ...cands[k]!.placement }));
   const spent = best.picks.reduce((s, k) => s + cands[k]!.cost, 0);
-  return {
+  const result: OptimizeResult = {
     plan: { roomCode: 'optimal', playerId: 'optimizer', playerName: 'Optimizer', mode, placements, spent },
     protectedWeighted: best.gain,
     stats: { candidates: cands.length, evaluations },
   };
+  memo.set(cacheKey, result);
+  return result;
 }
 
 interface HeapItem {

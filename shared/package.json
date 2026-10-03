@@ -6,8 +6,8 @@
   "types": "src/index.ts",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "fixtures": "tsx scripts/make-fixtures.ts",
-    "optimize": "tsx scripts/optimize.ts"
+    "fixtures": "node --import tsx scripts/make-fixtures.ts",
+    "optimize": "node --import tsx scripts/optimize.ts"
   },
   "dependencies": {
     "h3-js": "^4.5.0"

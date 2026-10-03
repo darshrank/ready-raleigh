@@ -18,7 +18,7 @@ from pipeline.validate import validate_cells
 def sample_cell():
     return {"i": 0, "h3": h3.latlng_to_cell(35.78, -78.64, 9), "hood": "Downtown",
             "pop": 100.0, "pop65": 10.0, "lowInc": 15.0, "noCarHH": 5.0,
-            "floodStep": None, "cutOff": False, "heatC": 0, "treePct": 0}
+            "floodStep": None, "floodFrac": 0, "cutOff": False, "heatC": 0, "treePct": 0}
 
 
 class PipelineTests(unittest.TestCase):

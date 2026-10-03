@@ -8,7 +8,7 @@ import type { DataMeta, FloodStepsCollection, Hospital, RoadsGraph } from './dat
 import type { Cell, FloodRoad, Site } from './types';
 
 const DATA_DIR =
-  process.env.DATA_DIR ?? fileURLToPath(new URL('../../app/public/data/fixtures/', import.meta.url));
+  process.env.DATA_DIR ?? fileURLToPath(new URL('../fixtures/', import.meta.url));
 const load = <T>(f: string): T => JSON.parse(readFileSync(`${DATA_DIR}/${f}`, 'utf8')) as T;
 
 const cells = load<Cell[]>('cells.json');
@@ -34,6 +34,9 @@ describe(`data files in ${DATA_DIR}`, () => {
       }
       expect(c.pop65).toBeLessThanOrEqual(c.pop);
       expect(validStep(c.floodStep)).toBe(true);
+      expect(c.floodFrac).toBeGreaterThanOrEqual(0);
+      expect(c.floodFrac).toBeLessThanOrEqual(1);
+      if (c.floodStep !== null) expect(c.floodFrac).toBeGreaterThanOrEqual(.2 - 1e-6);
       expect(typeof c.cutOff).toBe('boolean');
     });
   });
@@ -45,6 +48,12 @@ describe(`data files in ${DATA_DIR}`, () => {
       expect(s.coverDry.every(validCell)).toBe(true);
       expect(s.coverFlood.every(validCell)).toBe(true);
       expect(s.coverFlood.every((i) => s.coverDry.includes(i))).toBe(true);
+      for (const suffix of ['Dry', 'Flood'] as const) {
+        const times = s[`drive${suffix}`];
+        expect(times).toHaveLength(s[`cover${suffix}`].length);
+        expect(times).toEqual([...times].sort((a, b) => a - b));
+        expect(times.every((t) => Number.isInteger(t) && t >= 0 && t <= SHELTER_DRIVE_LIMIT_S * 1000)).toBe(true);
+      }
     }
     for (const r of roads) {
       expect(r.coords.length).toBeGreaterThanOrEqual(2);

@@ -9,12 +9,13 @@ import type { DataBundle, DataMeta, Hospital, RoadsGraph } from '../src/data';
 import type { Cell, FloodRoad, Site } from '../src/types';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-export const FIXTURES_DIR = join(ROOT, 'app/public/data/fixtures');
+export const FIXTURES_DIR = join(ROOT, 'shared/fixtures');
 
 export function dataDir(env: NodeJS.ProcessEnv = process.env): string {
   if (env === process.env && existsSync(join(ROOT, '.env'))) process.loadEnvFile(join(ROOT, '.env'));
   if (env.DATA_DIR) return env.DATA_DIR;
-  const base = env.VITE_DATA_BASE ?? '/data/fixtures';
+  if (!env.VITE_DATA_BASE) return FIXTURES_DIR;
+  const base = env.VITE_DATA_BASE;
   if (/^[a-z]+:\/\//i.test(base)) {
     throw new Error(`VITE_DATA_BASE is a URL (${base}); set DATA_DIR to a local folder instead`);
   }

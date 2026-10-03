@@ -23,6 +23,8 @@ export interface TimelineStep {
   /** People affected so far who reach help, and who do not. */
   protectedPeople: number;
   strandedPeople: number;
+  protectedWeighted: number;
+  strandedWeighted: number;
 }
 
 export function simTimeline(plan: Plan, data: DataBundle): TimelineStep[] {
@@ -38,6 +40,8 @@ export function simTimeline(plan: Plan, data: DataBundle): TimelineStep[] {
   const flooded: number[] = [];
   let protectedPeople = 0;
   let strandedPeople = 0;
+  let protectedWeighted = 0;
+  let strandedWeighted = 0;
   const counted = new Uint8Array(n);
   for (let step = 1; step <= FINAL_FLOOD_STEP; step++) {
     const newlyFlooded: number[] = [];
@@ -50,9 +54,12 @@ export function simTimeline(plan: Plan, data: DataBundle): TimelineStep[] {
       if (counted[i] || !m.atRisk[i]) continue;
       counted[i] = 1;
       const w = m.partW[PART_CAR * n + i]! + m.partW[PART_NO_CAR * n + i]!;
-      const share = w > 0 ? protectedWeight(idx, state, i) / w : 0;
-      protectedPeople += idx.pop[i]! * share;
-      strandedPeople += idx.pop[i]! * (1 - share);
+      const pw = protectedWeight(idx, state, i);
+      const share = w > 0 ? pw / w : 0;
+      protectedWeighted += pw;
+      strandedWeighted += w - pw;
+      protectedPeople += idx.pop[i]! * m.riskShare[i]! * share;
+      strandedPeople += idx.pop[i]! * m.riskShare[i]! * (1 - share);
     }
     const closing = data.floodRoads.filter((r) => r.floodStep <= step);
     steps.push({
@@ -63,6 +70,8 @@ export function simTimeline(plan: Plan, data: DataBundle): TimelineStep[] {
       heldRoadIds: closing.filter((r) => held.has(r.id)).map((r) => r.id),
       protectedPeople,
       strandedPeople,
+      protectedWeighted,
+      strandedWeighted,
     });
   }
   return steps;

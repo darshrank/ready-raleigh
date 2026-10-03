@@ -104,7 +104,7 @@ describe('score', () => {
 
   describe('shelter coverage rule', () => {
     // Four at-risk cells and one site whose coverDry holds 0, 1, 2 and coverFlood only 2.
-    const at = (c: Cell, over: Partial<Cell>): Cell => ({ ...c, floodStep: null, cutOff: false, ...over });
+    const at = (c: Cell, over: Partial<Cell>): Cell => ({ ...c, floodStep: null, floodFrac: 1, cutOff: false, ...over });
     const cells = [
       at(data.cells[0]!, { i: 0, floodStep: 2 }), // floods, dry-road reach only: evacuates in time
       at(data.cells[1]!, { i: 1, cutOff: true }), // dry but cut off, dry-road reach only: stranded
@@ -113,7 +113,7 @@ describe('score', () => {
     ];
     const site: Site = {
       id: 'site-a', name: 'A', kind: 'school', lon: 0, lat: 0, cell: 2,
-      floodStep: null, coverDry: [0, 1, 2], coverFlood: [2],
+      floodStep: null, coverDry: [0, 1, 2], coverFlood: [2], driveDry: [100, 200, 300], driveFlood: [300],
     };
     const bundle: DataBundle = { cells, sites: [site, { ...site, id: 'site-wet', floodStep: 3 }], floodRoads: [] };
     const carW = (c: Cell) => weightedPeople(c) - NO_CAR_HH_WEIGHT * c.noCarHH;

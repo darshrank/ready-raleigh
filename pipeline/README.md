@@ -36,8 +36,8 @@ Keys are never written to cache, metadata, or logs.
    distances; ways/relations use Overpass centers. Empty OSM results fall back to
    the Census tract name. Failed network requests fail the stage rather than silently
    inventing names. These labels are not official neighborhood boundaries.
-7. Write `app/public/data/cells.json` with exactly the AGENTS.md Cell fields and P2
-   placeholders (`floodStep=null`, `cutOff=false`, `heatC=0`, `treePct=0`). Export
+7. Write `app/public/data/cells.json` with the shared/src/types.ts Cell fields and P2
+   placeholders (`floodStep=null`, `floodFrac=0`, `cutOff=false`, `heatC=0`, `treePct=0`). Export
    provenance, variables, limitations, and missing-demographic cell indices in
    `app/public/data/meta.json`.
 8. Validate contract, uniqueness, finite nonnegative estimates, population sanity,
@@ -122,22 +122,26 @@ Use `python -m pipeline.validate_flood` for the artifact contracts and budgets.
   Node coordinates use five decimals; full line geometry stays in the cache.
 - Original dissolved hazard geometry determines intersections for roads, cell
   polygons and site footprints. Only the displayed study-area polygons simplify
-  at 10 m. Bridges close on 2D intersection regardless of deck height.
+  at 10 m. Tagged bridges remain open at all steps (a stated assumption). Cell
+  shares use cumulative polygon unions in UTM; first >=20% area sets floodStep,
+  and floodFrac stores the step-3 share. Population is uniform within each cell.
 - Hospitals: every OSM `amenity=hospital` in the 5 km search margin, deduplicated
   by name and snapped node. No emergency-department or operating-status guarantee.
 - Dijkstra runs on reversed directed edges to compute resident-to-destination
   routes. Parallel arcs use the minimum time, never a sparse-matrix sum. `cutOff`
-  follows the requested final-state rule: no hospital reachable at step 3. Existing
-  dry gaps and the count newly disconnected by flooding are separately audited.
+  requires a dry route that is lost by step 3. Existing dry gaps are excluded
+  and separately audited.
 - Sites: one per H3 resolution-8 cell, preference order school, community centre,
   library, worship. Up to 300 sites are processed with multiprocessing; if their
   coverage arrays exceed 5 MB, retain the longest prefix that fits. Coverage is
-  the raw 900-second driving catchment. The engine must separately check a site's
-  `floodStep` before using its `coverFlood` array as an available shelter.
+  the at-risk portion of each 900-second catchment, sorted nearest first, with aligned
+  driveDry/driveFlood integer milliseconds. The engine checks site floodStep,
+  uses dry roads for evacuation of flooded cells and final roads for dry cut-off cells,
+  and allocates 10,000 people per shelter.
 - Road candidates are continuous, unbranched flooded chains of the same street,
   with reciprocal arcs protected together. Reopening is evaluated independently
   while all other flooded edges remain closed. Select the top 50 by restored
-  `pop + pop65 + lowInc + 2.5 * noCarHH`. The contract cannot represent joint
+  `(pop + pop65 + lowInc + 2.5 * noCarHH) * riskShare`. The contract cannot represent joint
   benefits that require multiple separately protected segments.
 - Dots: 120 m grid in UTM 17N, earliest hazard step, inside the exported polygons.
   Metadata includes source dates, thresholds, limitations, counts, snap-distance
@@ -159,3 +163,29 @@ All files must be below 5,000,000 bytes uncompressed.
 
 These dependency notes stay in the data lane per the explicit folder restriction.
 No contracts or other lanes were changed.
+
+## Data realism and balance handoff (2026-10-03)
+
+The current rebuilt bundle is staged in `pipeline/out/data/` to honor the request
+not to write under `app/`. It includes `optimal_flood.json` and `balance_report.json`.
+The UI owner must adopt the matching bundle before consuming the new required
+`Cell.floodFrac` and `Site.driveDry`/`driveFlood` fields. Updated synthetic fixtures
+are in `shared/fixtures/`; `npm run fixtures` regenerates them there.
+
+```sh
+PIPELINE_DATA_DIR=pipeline/out/data pipeline/.venv/bin/python -m pipeline.build_flood
+PIPELINE_DATA_DIR=pipeline/out/data pipeline/.venv/bin/python -m pipeline.validate_flood
+PIPELINE_DATA_DIR=pipeline/out/data pipeline/.venv/bin/python -m pipeline.verify_balance
+DATA_DIR=pipeline/out/data npm run optimize flood
+DATA_DIR=pipeline/out/data node node_modules/vitest/vitest.mjs run shared/src/fixtures.test.ts
+```
+
+`build_flood` needs existing cells/meta from P2 in the selected directory; a fresh
+build can run `build_all` with the same environment variable. `cell_flood_shares.json`
+under `pipeline/out/` records every cell's three cumulative area shares in index order.
+The verifier additionally uses the local routing audit cache to check exact drive
+order/times, bridge exemptions, hospital disconnections and road unlocks.
+
+The optimizer refuses flood datasets above 20% at-risk residents. Shares use actual
+estimated people over all study-area residents (Raleigh plus 1 km), not vulnerability
+weights over a population denominator. Weighted exposure is reported separately.

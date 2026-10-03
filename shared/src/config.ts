@@ -49,7 +49,7 @@ export const HEAT_THRESHOLD_PERCENTILE = 80;
 export const FINAL_FLOOD_STEP = 3;
 
 /** Optional shelter capacity in people; null turns it off. */
-export const SHELTER_CAPACITY: number | null = null;
+export const SHELTER_CAPACITY: number | null = 10_000;
 
 /** Weight per household with no car (the no-car part of weightedPeople). */
 export const NO_CAR_HH_WEIGHT = 2.5;

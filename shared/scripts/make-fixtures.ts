@@ -8,6 +8,7 @@
 // Names and coordinates are approximate. This is fake data with the real file shapes.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { cellToLatLng, gridDisk, latLngToCell } from 'h3-js';
 import { FINAL_FLOOD_STEP, FLOOD_STEP_NAMES, SHELTER_DRIVE_LIMIT_S } from '../src/config';
 import type { DataMeta, FloodDot, FloodStepsCollection, Hospital, RoadsGraph } from '../src/data';
@@ -15,7 +16,7 @@ import type { Cell, FloodRoad, Site } from '../src/types';
 
 type LonLat = [number, number];
 
-const OUT_DIR = fileURLToPath(new URL('../../app/public/data/fixtures/', import.meta.url));
+const OUT_DIR = process.env.FIXTURES_DIR ?? fileURLToPath(new URL('../fixtures/', import.meta.url));
 const CENTER: LonLat = [-78.674, 35.784]; // Talley Student Union
 const RES = 9;
 
@@ -160,6 +161,7 @@ const cells: Cell[] = h3s.map((h3, i) => {
     lowInc: Math.round(pop * between(0.1, 0.4)),
     noCarHH: Math.round(households * between(0.05, 0.3)),
     floodStep: floodStepAt(p),
+    floodFrac: floodStepAt(p) === null ? 0 : 1,
     cutOff: false, // filled in after the graph is built
     heatC: Math.round((41 - treePct * 0.18 + between(-1.5, 1.5)) * 10) / 10,
     treePct,
@@ -300,7 +302,7 @@ function makeSite(id: string, name: string, kind: string, lon: number, lat: numb
   const dry = driveTimes(node, () => false);
   const wet = driveTimes(node, closedAtFinal);
   const within = (dist: number[]) =>
-    cells.filter((_, i) => dist[at(cellNode, i)]! <= SHELTER_DRIVE_LIMIT_S).map((c) => c.i);
+    cells.filter((c, i) => (c.floodStep !== null || c.cutOff) && dist[at(cellNode, i)]! <= SHELTER_DRIVE_LIMIT_S).map((c) => c.i).sort((a, b) => dist[at(cellNode, a)]! - dist[at(cellNode, b)]! || a - b);
   return {
     id,
     name,
@@ -311,6 +313,8 @@ function makeSite(id: string, name: string, kind: string, lon: number, lat: numb
     floodStep: floodStepAt(p),
     coverDry: within(dry),
     coverFlood: within(wet),
+    driveDry: within(dry).map((i) => Math.round(dry[at(cellNode, i)]! * 1000)),
+    driveFlood: within(wet).map((i) => Math.round(wet[at(cellNode, i)]! * 1000)),
   };
 }
 const sites: Site[] = [
@@ -345,7 +349,7 @@ const files: Record<string, unknown> = {
   'meta.json': meta,
 };
 for (const [name, data] of Object.entries(files)) {
-  writeFileSync(OUT_DIR + name, JSON.stringify(data) + '\n');
+  writeFileSync(join(OUT_DIR, name), JSON.stringify(data) + '\n');
 }
 
 const flooded = cells.filter((c) => c.floodStep !== null).length;

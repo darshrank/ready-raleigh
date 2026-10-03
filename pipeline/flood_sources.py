@@ -18,6 +18,7 @@ NFHL = 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28'
 def configure_osm():
     ox.settings.cache_folder = str(CACHE / 'osmnx')
     ox.settings.use_cache = True
+    ox.settings.useful_tags_way = sorted(set(ox.settings.useful_tags_way) | {"bridge", "ref"})
     ox.settings.requests_timeout = 180
     ox.settings.http_user_agent = "ReadyRaleigh-WolfHacks/1.0 (educational flood accessibility analysis; OpenStreetMap data attribution)"
     ox.settings.log_console = False
@@ -34,7 +35,10 @@ def download_roads(polygon):
     configure_osm()
     path = CACHE / 'drive.graphml'
     if path.exists():
-        return ox.load_graphml(path)
+        cached = ox.load_graphml(path)
+        if any("bridge" in d for _, _, d in cached.edges(data=True)):
+            return cached
+        print("Cached graph lacks bridge tags; rebuilding from OSM responses.", flush=True)
     graph = ox.graph_from_polygon(polygon, network_type='drive', simplify=True, retain_all=True, truncate_by_edge=True)
     # OSM posted speeds take precedence. These are km/h fallbacks by road class.
     graph = ox.routing.add_edge_speeds(graph, hwy_speeds={

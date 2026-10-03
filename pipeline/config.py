@@ -1,10 +1,11 @@
 from pathlib import Path
+import os
 
 ROOT = Path(__file__).resolve().parents[1]
 PIPELINE = ROOT / "pipeline"
 CACHE = PIPELINE / "cache"
 OUT = PIPELINE / "out"
-DATA = ROOT / "app" / "public" / "data"
+DATA = Path(os.environ.get("PIPELINE_DATA_DIR", ROOT / "app" / "public" / "data"))
 METRIC_CRS = "EPSG:26917"  # NAD83 / UTM zone 17N, meters, appropriate for Raleigh.
 RESOLUTION = 9
 BUFFER_METERS = 1000

@@ -4,7 +4,7 @@ import { gridDisk } from 'h3-js';
 import { NO_CAR_HH_WEIGHT, weightedPeople } from '../config';
 import type { DataBundle } from '../data';
 import type { FloodRoad, Mode, Site } from '../types';
-import { atRiskMask, heatThreshold } from './atRisk';
+import { atRiskMask, floodRiskShare, heatThreshold } from './atRisk';
 
 /**
  * Each cell's weighted people split into two parts, so a placement can protect one part only.
@@ -19,6 +19,7 @@ export interface ModeIndex {
   atRisk: Uint8Array;
   /** Weight of part p of cell i at [p * n + i]; zero for cells not at risk. */
   partW: Float64Array;
+  riskShare: Float64Array;
 }
 
 export interface EngineIndex {
@@ -67,6 +68,9 @@ function buildIndex(data: DataBundle): EngineIndex {
   const noCarW = new Float64Array(n);
 
   cells.forEach((c, i) => {
+    if (!Number.isFinite(c.floodFrac) || c.floodFrac < 0 || c.floodFrac > 1) {
+      throw new Error(`Cell ${i} needs floodFrac in [0, 1]; rebuild data for the current contract`);
+    }
     weight[i] = weightedPeople(c);
     noCarW[i] = NO_CAR_HH_WEIGHT * c.noCarHH;
     vulnW[i] = c.pop65 + c.lowInc + noCarW[i]!;
@@ -91,8 +95,8 @@ function buildIndex(data: DataBundle): EngineIndex {
   const heatW = new Float64Array(2 * n);
   for (let i = 0; i < n; i++) {
     if (floodRisk[i]) {
-      floodW[PART_CAR * n + i] = weight[i]! - noCarW[i]!;
-      floodW[PART_NO_CAR * n + i] = noCarW[i]!;
+      floodW[PART_CAR * n + i] = (weight[i]! - noCarW[i]!) * floodRiskShare(cells[i]!);
+      floodW[PART_NO_CAR * n + i] = noCarW[i]! * floodRiskShare(cells[i]!);
     }
     if (heatRisk[i]) heatW[PART_CAR * n + i] = weight[i]!;
   }
@@ -127,8 +131,8 @@ function buildIndex(data: DataBundle): EngineIndex {
     hoods,
     heatThreshold: heatThreshold(cells),
     mode: {
-      flood: { atRisk: floodRisk, partW: floodW },
-      heat: { atRisk: heatRisk, partW: heatW },
+      flood: { atRisk: floodRisk, partW: floodW, riskShare: Float64Array.from(cells, floodRiskShare) },
+      heat: { atRisk: heatRisk, partW: heatW, riskShare: Float64Array.from(heatRisk) },
     },
     sites: new Map(data.sites.map((s) => [s.id, s])),
     roads: new Map(data.floodRoads.map((r) => [r.id, r])),

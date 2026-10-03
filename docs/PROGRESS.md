@@ -9,7 +9,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 ## Phase 1: flood mode end to end
 - [ ] P2 Pipeline: study area, cells, census joins (A)
 - [ ] P3 Pipeline: roads graph, flood steps, sites, coverage, flood roads, hospitals, halftone dots (A)
-- [ ] P4 Engine: types, config, coverage, scoring, optimizer, tests (B)
+- [x] P4 Engine: types, config, coverage, scoring, optimizer, tests (B)
 - [x] P5 Design tokens and map shell with layers (C)
 - [ ] P6 Planning phase: tray, placing, budget, timer, instant coverage (C)
 - [ ] P7 Simulation: halftone flood, closing roads, trips, counters (C + B)
@@ -40,6 +40,39 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Next exact step:
 - Gotchas:
 -->
+
+### 2026-10-03 13:45 Claude (Opus 5.5) lane B, P4
+- Done: game engine in shared/src/engine/ (exported from `@shared` and `@shared/engine`):
+  - context.ts: `engineIndex(data)` builds typed arrays once per bundle (WeakMap): weight split
+    into car / no-car parts per mode, at-risk masks, hood ids, heat threshold, cached `disk(i,k)`.
+  - atRisk.ts (`atRiskCells`, `heatThreshold`), coverage.ts (`placementCoverage(p, mode, data)`
+    for the tray's instant coverage, `siteUsable`, effects and gains), plan.ts (`planCost`,
+    `planProblems`, `PlanError`), score.ts (`score(plan, data)`), optimizer.ts
+    (`optimize(mode, data)`), timeline.ts (`simTimeline(plan, data)`: per step flooded,
+    newlyFlooded, closedRoadIds, heldRoadIds, protected and stranded people).
+  - Model: see DECISIONS (P4 lines). topMisses reasons: "no shelter within 15 minutes",
+    "households with no car and no bus pickup nearby", "the nearest shelter floods; ...",
+    "cut off from hospitals; ...", heat: "hot block with no cooling center, ...".
+  - data.ts: `DataBundle`, `OptimalPlan`. config.ts: `MODE_INTERVENTIONS`, `HEAT_COVER_CREDIT`,
+    `NO_CAR_HH_WEIGHT`. types.ts unchanged.
+  - `npm run optimize [flood|heat]` loads DATA_DIR, else app/public + VITE_DATA_BASE (reads .env),
+    and writes optimal_flood.json / optimal_heat.json there. Fixtures: flood 68.3, heat 100.
+  - Fixtures: added site-avent-ferry (dry, south of the creek); cells unchanged.
+- Verified: typecheck (all workspaces), 26 tests. Benchmark on a synthetic 6,400-cell bundle:
+  index build ~7.5 ms once, first score ~4.6 ms, warm score ~0.4 ms; optimizer ~120 ms.
+- Half done: nothing. SHELTER_CAPACITY is still ignored (it is null).
+- Next exact step: P6 planning phase can call `placementCoverage` per placement and `score` on
+  every change (sub-millisecond). Load optimal_flood.json as `OptimalPlan` for P8.
+- Gotchas:
+  - Build the bundle object once and reuse it: the index cache is keyed by object identity.
+  - coverFlood is reachability at the final step, so flooded cells are rarely in any site's
+    coverFlood and shelters mostly help cut-off cells. On fixtures the north-side shelters cover
+    no at-risk cell. If real data shows the same, lane A/B should decide whether flooded cells use
+    coverDry (evacuate before the water arrives). Check `placementCoverage` per site on real data.
+  - For heat the optimizer's lazy step is a heuristic (trees can gain from neighbours' cooling).
+  - simTimeline is flood only and throws for a heat plan.
+  - Engine tests always use the fixtures (they name fixture sites); fixtures.test.ts still
+    follows DATA_DIR.
 
 ### 2026-10-03 13:05 Claude (Opus 5.5) lane C, P5 revision: map first
 - Done: design change requested after P5. DESIGN.md "Map" rewritten (also the concept intro, the

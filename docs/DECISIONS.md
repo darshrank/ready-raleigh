@@ -19,3 +19,10 @@ One line each. Newest at the bottom. Do not reopen a decision without writing wh
 - Halftone dots are generated in the browser from flood_steps.geojson as a stand-in; the pipeline's exported dot grid replaces it when P3 lands.
 - Map first (user request, after P5): top-down camera with an optional Tilt; no hex extrusion or grid; population is an opt-in flat ink fill at most 30%. Replaces the extruded vulnerable-share hexes.
 - Camera framing fits cells and sites, not flood polygons, so phones open at zoom 13 or more where street names and buildings exist.
+- Engine (P4), flood: each at-risk cell's weight splits into a car part (protected by a usable shelter's coverFlood or a protected road's unlocks) and a no-car part, 2.5 * noCarHH (protected by a bus pickup within gridDisk 2). People and vulnerable counts follow the protected share of the cell's weight.
+- Engine (P4), heat: cooling center credit 1, water station 0.5 (HEAT_COVER_CREDIT in config), trees stack and fully protect a cell cooled below the threshold; coverage keeps the best credit, so adding a placement never lowers the score.
+- score() and simTimeline() throw PlanError for invalid plans (over budget, wrong-mode type, unknown or repeated site/road, bad cell). Cost comes from the placements; plan.spent is not trusted.
+- The engine caches a typed-array index per bundle object (WeakMap). Treat a loaded DataBundle as immutable.
+- Optimizer: CELF lazy greedy, best of gain-per-dollar greedy, pure-gain greedy and best single placement. Writes optimal_<mode>.json as OptimalPlan {mode, built, budget, plan, score}.
+- Timeline: cut-off cells join the counts at the final step. A protected road does not extend a shelter's precomputed coverFlood.
+- Fixtures: added a dry shelter site south of Rocky Branch (Avent Ferry Road Church) so a usable shelter can reach the cut-off side.

@@ -297,6 +297,8 @@ const sites: Site[] = [
   makeSite('site-dh-hill', 'D. H. Hill Jr. Library', 'library', -78.6697, 35.7874),
   makeSite('site-west-raleigh-pres', 'West Raleigh Presbyterian Church', 'place_of_worship', -78.6806, 35.7893),
   makeSite('site-pullen-cc', 'Pullen Community Center', 'community_centre', -78.6652, 35.7801),
+  // South of the creek and dry: the one shelter that can reach the cut-off side.
+  makeSite('site-avent-ferry', 'Avent Ferry Road Church', 'place_of_worship', -78.6795, 35.7768),
 ];
 
 const meta: DataMeta = {

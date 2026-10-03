@@ -1,5 +1,6 @@
 // Shapes of the static files in app/public/data/ that types.ts does not cover.
 // Written from the "Static data files" table in AGENTS.md.
+import type { Cell, FloodRoad, Mode, Plan, ScoreResult, Site } from './types';
 
 /** roads_graph.json: nodes are [lon, lat]; edges are [from, to, seconds, floodStep | null]. */
 export interface RoadsGraph {
@@ -33,4 +34,26 @@ export interface DataMeta {
   fixture: boolean;
   sources: string[];
   thresholds: Record<string, number>;
+}
+
+/**
+ * Everything the engine reads, loaded from one data folder. The engine needs cells, sites and
+ * flood roads; the rest is optional so the browser can pass only what it fetched.
+ */
+export interface DataBundle {
+  cells: Cell[];
+  sites: Site[];
+  floodRoads: FloodRoad[];
+  graph?: RoadsGraph;
+  hospitals?: Hospital[];
+  meta?: DataMeta;
+}
+
+/** optimal_flood.json / optimal_heat.json, written by `npm run optimize`. */
+export interface OptimalPlan {
+  mode: Mode;
+  built: string;
+  budget: number;
+  plan: Plan;
+  score: ScoreResult;
 }

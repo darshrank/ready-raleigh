@@ -1,0 +1,27 @@
+{
+  "name": "ready-raleigh",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "app",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n app,server -c blue,magenta \"npm run dev -w app\" \"npm run dev -w server\"",
+    "typecheck": "npm run typecheck -w shared -w app -w server",
+    "test": "vitest run",
+    "optimize": "npm run optimize -w shared",
+    "fixtures": "npm run fixtures -w shared"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "concurrently": "^10.0.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

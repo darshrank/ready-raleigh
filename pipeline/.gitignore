@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+cache/*
+!cache/.gitkeep
+out/.mplconfig/
+*.tmp
+
+out/*.log

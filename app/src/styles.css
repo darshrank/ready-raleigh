@@ -1,0 +1,172 @@
+@import "tailwindcss";
+
+/* Design tokens from docs/DESIGN.md. Defined once here; Tailwind reads them through
+   @theme inline below, and deck.gl / MapLibre read them at runtime (src/tokens.ts). */
+:root {
+  --chalk: #dce4e1;
+  --bond: #f7f9f8;
+  --ink: #1e2a47;
+  --flood: #0078bf;
+  --alarm: #ff48b0;
+  --signal: #ffc628;
+  --safe: #00a95c;
+  --flood-deep: #00508a;
+
+  /* Night storm palette (DESIGN.md): the basemap only; the inks above stay the same. */
+  --storm-land: #172440;
+  --storm-street: #2d416b;
+  --storm-building: #22355a;
+  --storm-label: #a6b6d0;
+  --storm-water: #2a9deb;
+  --storm-glow: #7ccbff;
+
+  --font-display: "Big Shoulders Display", "Arial Narrow", sans-serif;
+  --font-body: "Public Sans", system-ui, sans-serif;
+
+  /* Outline weight for pieces, panels and rules. */
+  --rule: 2.5px;
+  /* The only shadows in the system: hard, offset, ink. Map pieces take 3 px; tray pieces and HUD
+     plates take 5 px. */
+  --piece-shadow: 3px 3px 0 var(--ink);
+  --plate-shadow: 5px 5px 0 var(--ink);
+  /* 3 px signal ring with an ink ring outside it. */
+  --focus-ring: 0 0 0 3px var(--signal), 0 0 0 6px var(--ink);
+}
+
+@theme inline {
+  --color-chalk: var(--chalk);
+  --color-bond: var(--bond);
+  --color-ink: var(--ink);
+  --color-flood: var(--flood);
+  --color-alarm: var(--alarm);
+  --color-signal: var(--signal);
+  --color-safe: var(--safe);
+  --color-flood-deep: var(--flood-deep);
+  --color-storm-land: var(--storm-land);
+  --color-storm-label: var(--storm-label);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+
+  /* Type scale (px): text-13 ... text-120. */
+  --text-13: 13px;
+  --text-13--line-height: 1.4;
+  --text-15: 15px;
+  --text-15--line-height: 1.45;
+  --text-18: 18px;
+  --text-18--line-height: 1.35;
+  --text-24: 24px;
+  --text-24--line-height: 1.15;
+  --text-32: 32px;
+  --text-32--line-height: 1;
+  --text-48: 48px;
+  --text-48--line-height: 0.95;
+  --text-72: 72px;
+  --text-72--line-height: 0.9;
+  --text-120: 120px;
+  --text-120--line-height: 0.85;
+
+  --shadow-piece: var(--piece-shadow);
+  --shadow-plate: var(--plate-shadow);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--chalk);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Planning juice (DESIGN.md "Game pieces"): the coverage ring and the +N chip when a piece lands,
+   the timer's last 30 seconds. All of them are anchored by translate(-50%, ...) on their point. */
+@keyframes ring-pulse {
+  from {
+    transform: translate(-50%, -50%) scale(0.25);
+    opacity: 0.95;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+}
+@keyframes chip-float {
+  0% {
+    transform: translate(-50%, -100%) scale(0.5);
+    opacity: 0;
+  }
+  14% {
+    transform: translate(-50%, -112%) scale(1.12);
+    opacity: 1;
+  }
+  28% {
+    transform: translate(-50%, -112%) scale(1);
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -260%) scale(1);
+    opacity: 0;
+  }
+}
+@keyframes chip-pop {
+  from {
+    transform: translate(-50%, -100%) scale(0.6);
+  }
+  to {
+    transform: translate(-50%, -100%) scale(1);
+  }
+}
+@keyframes timer-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.07);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0s !important;
+    transition-duration: 0s !important;
+  }
+}
+
+/* MapLibre's attribution: from a rounded white pill to a flat bond strip. Same selectors as
+   maplibre-gl.css, which loads first, so these win on order. */
+.maplibregl-ctrl.maplibregl-ctrl-attrib,
+.maplibregl-ctrl.maplibregl-ctrl-attrib.maplibregl-compact {
+  margin: 0;
+  border-radius: 0;
+  background: var(--bond);
+  color: var(--ink);
+  font: 13px/1.4 var(--font-body);
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--ink);
+}
+.maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-button {
+  border-radius: 0;
+  background-color: var(--bond);
+}

@@ -1,0 +1,1 @@
+{"buildDate":"2026-10-03","task":"fixtures","fixture":true,"sources":{"fixture":"Hand-made fixture around NC State main campus. Not real data."},"p3":{"thresholds":{"driveSeconds":900,"floodSteps":{"1":"Floodway","2":"100-year flood","3":"500-year flood"}},"limitations":["Hand-made fixture, not real data."]}}

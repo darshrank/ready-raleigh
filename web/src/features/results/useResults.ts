@@ -55,7 +55,7 @@ export function useResults() {
       ctx && bots
         ? [
             { name: "You", simulated: false, score: you!, sim },
-            ...bots.map((b) => ({ name: b.name, style: b.style, simulated: true, score: scoreRun(b.sim, ctx), sim: b.sim })),
+            ...bots.map((b) => ({ name: b.name, style: b.style, simulated: !b.real, score: scoreRun(b.sim, ctx), sim: b.sim })),
           ].sort((a, b) => b.score.total - a.score.total)
         : null;
     const zones = zoneOutcomes(sim, data.zones.length);

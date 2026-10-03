@@ -1,0 +1,17 @@
+name = "ready-raleigh"
+main = "worker/index.ts"
+compatibility_date = "2026-09-01"
+
+# The static Next.js export (cd web && npm run build)
+[assets]
+directory = "./web/out"
+binding = "ASSETS"
+not_found_handling = "404-page"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]

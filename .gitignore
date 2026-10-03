@@ -13,3 +13,8 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# node / cloudflare
+node_modules/
+.wrangler/
+web/out/

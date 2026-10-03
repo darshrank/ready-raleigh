@@ -15,6 +15,7 @@ import { QUADRANT_LABEL, type Quadrant } from "@/lib/engine/crowd";
 import { mapBus } from "@/lib/map-bus";
 import { speak, stopSpeaking } from "@/lib/speech";
 import { cn } from "@/lib/utils";
+import { useRoom } from "@/lib/room/store";
 import { useGame } from "@/stores/game";
 import { debriefText, useResults } from "./useResults";
 
@@ -354,12 +355,14 @@ function RoadNotTaken({ r }: { r: R }) {
 }
 
 function TheRoom({ r }: { r: R }) {
+  const bots = useGame((s) => s.bots);
+  const live = !!bots?.some((b) => b.real);
   return (
     <div>
       <Title kicker="Multiplayer reveal">The room</Title>
       <div className="mb-3 flex items-center gap-2">
-        <DataBadge kind="SIMULATED PLAYERS" />
-        <span className="text-xs text-dim">Stand-ins until realtime rooms run on the backend</span>
+        {live ? <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-300">Live room</span> : <DataBadge kind="SIMULATED PLAYERS" />}
+        <span className="text-xs text-dim">{live ? "Every plan in this room, scored by the same simulation" : "Stand-ins: play in a live room to compare with real players"}</span>
       </div>
       <table className="w-full text-[12.5px]">
         <thead>
@@ -472,6 +475,7 @@ function Debrief({ r, zoneName, cfg }: { r: R; zoneName: (i: number) => string; 
   const newRound = useGame((s) => s.newRound);
   const setPhase = useGame((s) => s.setPhase);
   const backToLanding = useGame((s) => s.backToLanding);
+  const roomHost = useRoom((s) => s.status === "open" && !!s.state && s.state.hostId === s.me);
   return (
     <div>
       <Title kicker="After-action report">Debrief</Title>
@@ -493,6 +497,11 @@ function Debrief({ r, zoneName, cfg }: { r: R; zoneName: (i: number) => string; 
         {BRAND.closing}
       </div>
       <div className="mt-6 grid grid-cols-2 gap-2">
+        {roomHost && (
+          <Button className="col-span-2 bg-[var(--city)] text-[#03140d] hover:bg-[var(--city)]" onClick={() => useRoom.getState().send({ t: "again" })}>
+            <RotateCcw /> Next round with this room
+          </Button>
+        )}
         <Button
           className="bg-[var(--city)] text-[#03140d] hover:bg-[var(--city)]"
           onClick={() => {

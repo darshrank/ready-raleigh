@@ -1,0 +1,21 @@
+{
+  "name": "ready-raleigh",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n web,rooms -c cyan,magenta \"npm run dev:web\" \"npm run dev:rooms\"",
+    "dev:web": "cd web && NEXT_PUBLIC_ROOM_URL=ws://localhost:8787 npm run dev",
+    "dev:rooms": "node -e \"require('fs').mkdirSync('web/out',{recursive:true})\" && wrangler dev --port 8787",
+    "build": "cd web && npm run build",
+    "deploy": "npm run build && wrangler deploy",
+    "typecheck": "cd web && npx tsc --noEmit && cd .. && tsc --noEmit -p worker",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261003.1",
+    "concurrently": "^10.0.5",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3",
+    "wrangler": "^4.147.0"
+  }
+}

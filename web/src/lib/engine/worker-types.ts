@@ -25,4 +25,5 @@ export interface ReferenceResult {
   achilles: AchillesScan;
 }
 
-export type BotResult = BotPlayer & { sim: SimResult };
+/** A crowd member: a simulated bot, or (real: true) another player in a live room. */
+export type BotResult = BotPlayer & { sim: SimResult; real?: boolean };

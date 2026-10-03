@@ -5,6 +5,7 @@ import { ROUND } from "@/config/game";
 import { engine } from "@/lib/engine/client";
 import { toEnginePlan } from "@/lib/engine/plan";
 import { mapBus } from "@/lib/map-bus";
+import { useRoom } from "@/lib/room/store";
 import { useGame } from "@/stores/game";
 
 const STEP_MS = 850;
@@ -49,10 +50,14 @@ export function SimulationController() {
       .reference(city, events, plan.crossings)
       .then((r) => !cancelled && useGame.getState().setReference(r))
       .catch(() => {});
-    engine
-      .bots(city, events)
-      .then((b) => !cancelled && useGame.getState().setBots(b))
-      .catch(() => {});
+    // In a live room with other players, RoomBridge fills the crowd with their real plans at the reveal.
+    const room = useRoom.getState();
+    const livePlayers = room.status === "open" && (room.state?.players.filter((p) => p.connected).length ?? 0) > 1;
+    if (!livePlayers)
+      engine
+        .bots(city, events)
+        .then((b) => !cancelled && useGame.getState().setBots(b))
+        .catch(() => {});
 
     const m = mapBus.get();
     if (m) m.easeTo({ zoom: Math.min(m.getZoom(), 12.4) - 0.5, pitch: 52, duration: s.reducedMotion ? 0 : 2500 });

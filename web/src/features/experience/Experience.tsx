@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { useGame } from "@/stores/game";
 import { CityDataBridge } from "./CityDataBridge";
 import { GameLoop } from "./GameLoop";
+import { RoomBridge } from "./RoomBridge";
 import { SimulationController } from "./SimulationController";
 
 export function Experience() {
@@ -47,6 +48,7 @@ export function Experience() {
       <CityDataBridge />
       <GameLoop />
       <SimulationController />
+      <RoomBridge />
       <AnimatePresence>
         {phase === "landing" && <Landing key="landing" />}
         {phase === "select" && <CitySelect key="select" />}

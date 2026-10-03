@@ -20,3 +20,6 @@ requests==2.34.2
 shapely==2.1.2
 six==1.17.0
 urllib3==2.8.0
+networkx==3.6.1
+osmnx==2.1.1
+scipy==1.17.1

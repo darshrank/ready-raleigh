@@ -103,3 +103,59 @@ the repository root rather than under docs/.
 - H3 centroid-based polygon coverage: https://h3geo.org/docs/api/regions/
 
 Maintain OSM attribution wherever the names are displayed or redistributed.
+
+## P3 flood build
+
+`pipeline/.venv/bin/python -m pipeline.build_flood` builds the real flood datasets
+after P2. `python -m pipeline.build_all` runs both stages; use `--p2-only` for census.
+All network responses, source geometries and full-precision road attributes are
+cached under `pipeline/cache/`; browser artifacts are in `app/public/data/`.
+Use `python -m pipeline.validate_flood` for the artifact contracts and budgets.
+
+- FEMA NFHL layer 28 is queried for Wake/Durham FIRMs over the road search bounds.
+  An ID-first query and exact returned-ID check prevent silent page truncation.
+  Floodway takes precedence over A/AE/AH/AO/AR/A99/V/VE zones, then the explicit
+  0.2% subtype. Minimal hazard and levee-protected X zones are excluded.
+- Roads: OSMnx `drive`, simplified, all components retained. The graph extends 5 km
+  beyond the study area to route to nearby hospitals. Posted OSM speeds override
+  documented road-class fallback speeds (km/h); times are seconds, rounded to .01.
+  Node coordinates use five decimals; full line geometry stays in the cache.
+- Original dissolved hazard geometry determines intersections for roads, cell
+  polygons and site footprints. Only the displayed study-area polygons simplify
+  at 10 m. Bridges close on 2D intersection regardless of deck height.
+- Hospitals: every OSM `amenity=hospital` in the 5 km search margin, deduplicated
+  by name and snapped node. No emergency-department or operating-status guarantee.
+- Dijkstra runs on reversed directed edges to compute resident-to-destination
+  routes. Parallel arcs use the minimum time, never a sparse-matrix sum. `cutOff`
+  follows the requested final-state rule: no hospital reachable at step 3. Existing
+  dry gaps and the count newly disconnected by flooding are separately audited.
+- Sites: one per H3 resolution-8 cell, preference order school, community centre,
+  library, worship. Up to 300 sites are processed with multiprocessing; if their
+  coverage arrays exceed 5 MB, retain the longest prefix that fits. Coverage is
+  the raw 900-second driving catchment. The engine must separately check a site's
+  `floodStep` before using its `coverFlood` array as an available shelter.
+- Road candidates are continuous, unbranched flooded chains of the same street,
+  with reciprocal arcs protected together. Reopening is evaluated independently
+  while all other flooded edges remain closed. Select the top 50 by restored
+  `pop + pop65 + lowInc + 2.5 * noCarHH`. The contract cannot represent joint
+  benefits that require multiple separately protected segments.
+- Dots: 120 m grid in UTM 17N, earliest hazard step, inside the exported polygons.
+  Metadata includes source dates, thresholds, limitations, counts, snap-distance
+  diagnostics, and output byte sizes. Heat/canopy await P10.
+
+Sanity images: `pipeline/out/check_flood_steps.png`, `check_cutoff_cells.png`,
+`check_site_coverage.png`. `flood_sanity_report.json` has counts; raw routing audit
+(node assignments and segment edge membership) is cached for exact verification.
+All files must be below 5,000,000 bytes uncompressed.
+
+### P3 dependency decisions (lane A)
+
+- OSMnx 2.1.1 provides the explicitly requested simplified driving graph, posted
+  speeds and travel times, and OSM facility geometries.
+- NetworkX 3.6.1 (OSMnx dependency) groups connected street segments.
+- SciPy 1.17.1 provides projected nearest-node KD trees, sparse directed Dijkstra,
+  and compact multiprocessing inputs. Its nearest-node support avoids adding
+  scikit-learn. Tests remain stdlib unittest.
+
+These dependency notes stay in the data lane per the explicit folder restriction.
+No contracts or other lanes were changed.

@@ -8,7 +8,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 
 ## Phase 1: flood mode end to end
 - [x] P2 Pipeline: study area, cells, census joins (A)
-- [ ] P3 Pipeline: roads graph, flood steps, sites, coverage, flood roads, hospitals, halftone dots (A)
+- [x] P3 Pipeline: roads graph, flood steps, sites, coverage, flood roads, hospitals, halftone dots (A)
 - [ ] P4 Engine: types, config, coverage, scoring, optimizer, tests (B)
 - [ ] P5 Design tokens and map shell with layers (C)
 - [ ] P6 Planning phase: tray, placing, budget, timer, instant coverage (C)
@@ -53,3 +53,12 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Next exact step:
 - Gotchas:
 -->
+
+### 2026-10-03 12:45 EDT — Codex — lane A — P2/P3
+- Done: Extended the Census block-group join to Durham County (state 37, county 063), rebuilt `cells.json`, and verified all 6,392 study cells have demographic coverage; the former 138 placeholders are now 0. Built FEMA NFHL flood steps, OSMnx directed drive graph with speeds/travel times, OSM hospitals and candidate sites, directed hospital reachability and cut-off cells, multiprocessing site coverage, ranked flood-road protection candidates, and 120 m flood dots.
+- Outputs: `app/public/data/cells.json`, `roads_graph.json`, `flood_steps.geojson`, `hospitals.json`, `sites.json`, `flood_roads.json`, `flood_dots.json`, and enriched `meta.json`. Sanity PNGs: `pipeline/out/check_flood_steps.png`, `check_cutoff_cells.png`, and `check_site_coverage.png`.
+- Validation: P2/P3 artifact validator passes all contracts, relational references, geometry checks, coverage subsets, and 5 MB budgets. Seventeen unit tests pass, including one-way routing, parallel-edge minimum travel times, flood-zone precedence, road reopening equivalence, site catchment limits, and Durham demographic coverage. PNGs were visually inspected.
+- Sanity: 39,285 graph nodes, 91,569 directed edges, 2,183 flooded edges, 5 hospitals, 184 retained sites, 50 flood-road candidates, 3,261 dots, 1,367 final-state cut-off cells (1,351 newly disconnected from a dry route), and 16 dry-disconnected cells.
+- Gotchas: OSMnx cache contains the completed facility Overpass responses recovered after a transient Overpass timeout. Sites are capped at 184 because the coverage arrays reach the 5 MB budget; the preference order is schools, community centres, libraries, then worship. Flood polygons are simplified only for display; original dissolved geometry classifies cells and edges. Heat and canopy remain P10 placeholders.
+- Next exact step: lane B should consume the published contracts and use `floodStep`/`cutOff` plus site `coverDry`/`coverFlood` and `flood_roads.unlocks` in scoring. Re-run `pipeline/.venv/bin/python -m pipeline.validate_flood` after any data edit.
+- Commit: local only; no push.

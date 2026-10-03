@@ -1,4 +1,4 @@
-"""Strict P2 Cell-contract checks, also used by the build and unit tests."""
+"""Strict Cell-contract checks, also used by the build and unit tests."""
 import math
 import h3
 
@@ -25,5 +25,5 @@ def validate_cells(cells):
                 raise ValueError(f"Cell {i}: invalid {field}.")
         if cell["pop65"] > cell["pop"] or cell["lowInc"] > cell["pop"]:
             raise ValueError(f"Cell {i}: demographic count exceeds population.")
-        if cell["floodStep"] is not None or cell["cutOff"] is not False or cell["heatC"] != 0 or cell["treePct"] != 0:
-            raise ValueError(f"Cell {i}: P2 placeholder values changed.")
+        if (cell["floodStep"] is not None and (type(cell["floodStep"]) is not int or cell["floodStep"] not in (1, 2, 3))) or type(cell["cutOff"]) is not bool or cell["treePct"] > 100:
+            raise ValueError(f"Cell {i}: invalid flood, access, or canopy field.")

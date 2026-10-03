@@ -9,3 +9,4 @@ One line each. Newest at the bottom. Do not reopen a decision without writing wh
 - Runtime is TypeScript (app, server, shared); Python only for the offline data pipeline.
 - Scoring and optimizer live in shared/ so the browser and the optimizer use the same math.
 - Solana uses @solana/web3.js v1 on devnet only; play money, never real money.
+- P3 data pipeline uses OSMnx 2.1.1, NetworkX 3.6.1, and SciPy 1.17.1 for the requested directed road graph, sparse routing, and multiprocessing coverage calculations.

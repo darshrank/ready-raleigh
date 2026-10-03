@@ -1,8 +1,9 @@
-"""Run P2 in order: sources -> study area -> cells -> names -> export -> QA.
+"""Run P2 census allocation, then P3 flood/routing exports.
 
 From repository root: pipeline/.venv/bin/python -m pipeline.build_all
 Each stage reuses its completed output. See README.md for intentional invalidation.
 """
+import argparse
 import json
 import os
 import platform
@@ -95,6 +96,9 @@ def sanity_report(cells, allocated, area, releases):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--p2-only", action="store_true", help="Rebuild only population; preserve downstream fields.")
+    args = parser.parse_args()
     if tuple(map(int, platform.python_version_tuple()[:2])) != (3, 11):
         raise RuntimeError("Use the requested Python 3.11 virtual environment (pipeline/.venv).")
     for folder in (CACHE, DATA, OUT):
@@ -154,9 +158,13 @@ def main():
         metadata["p3"] = old["p3"]
         metadata["sources"].update(old["sources"])
         metadata["task"] = "P2+P3"
+        metadata["p2"]["limitations"] = [x for x in metadata["p2"]["limitations"] if not x.startswith("Flood, hospital")]
     write_json(DATA / "meta.json", metadata)
     plot_population(cells, area, report)
     print(json.dumps(report, indent=2), flush=True)
+    if not args.p2_only:
+        from .build_flood import main as build_flood
+        build_flood()
 
 
 if __name__ == "__main__":

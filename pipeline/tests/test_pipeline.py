@@ -80,7 +80,7 @@ class PipelineTests(unittest.TestCase):
 
     def test_cell_contract(self):
         validate_cells([sample_cell()])
-        for field, value in [("pop", float("nan")), ("pop", -1), ("pop65", 101), ("i", True), ("hood", ""), ("floodStep", 1)]:
+        for field, value in [("pop", float("nan")), ("pop", -1), ("pop65", 101), ("i", True), ("hood", ""), ("floodStep", 4)]:
             with self.subTest(field=field, value=value):
                 cell = {**sample_cell(), field: value}
                 with self.assertRaises(ValueError):

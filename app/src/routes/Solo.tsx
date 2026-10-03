@@ -1,11 +1,11 @@
 // Solo flood game (DESIGN.md "Layouts"): the full-bleed map with floating plates in every phase.
 // title (Raleigh orbiting, the briefing) -> intro (the camera flies down) -> planning (day HUD and
 // tray) -> storm (night, weather, the news helicopter) -> results (day again, the card slides up).
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import type { Layer, LayersList, PickingInfo } from '@deck.gl/core';
-import type { FloodRoad } from '@shared/types';
+import type { FloodRoad, Placement } from '@shared/types';
 import { useMapData } from '../data';
 import { floodViewOf } from '../map/flood';
 import { riskFocusPoints } from '../map/frame';
@@ -53,7 +53,27 @@ function useMedia(query: string) {
   return on;
 }
 
-export function Solo() {
+/**
+ * Multiplayer (P9): the same game for one mayoral candidate. No title; planning ends at the room's
+ * clock; "Start the storm" (or 0:00) sends the plan and waits; the storm starts on every phone at
+ * once when the room says everyone is ready (`stormGo`).
+ */
+export interface RoomMode {
+  code: string;
+  /** Planning deadline on this device's clock (server time corrected). */
+  endsAt: number;
+  onLock: (placements: Placement[]) => void;
+  /** Every candidate is ready (or out of time): start the storm now. */
+  stormGo: boolean;
+  /** Shown while this candidate waits for the others. */
+  waiting: ReactNode;
+  /** Shown on the results card instead of "Play again". */
+  footer: ReactNode;
+}
+
+export function Solo({ room }: { room?: RoomMode } = {}) {
+  const roomRef = useRef(room);
+  roomRef.current = room;
   const { data, error } = useMapData();
   const armed = usePlan((s) => s.armed);
   const selectedId = usePlan((s) => s.selectedId);
@@ -70,13 +90,14 @@ export function Solo() {
   const [phone] = useState(() => window.matchMedia(PHONE).matches);
   const compact = useMedia(COMPACT);
   // Dev and scripts: /solo?skip opens straight on the planning board.
-  const [skipTitle] = useState(() => new URLSearchParams(window.location.search).has('skip'));
+  const [skipTitle] = useState(() => !!room || new URLSearchParams(window.location.search).has('skip'));
   const [mapInst, setMapInst] = useState<MapLibreMap | null>(null);
 
   // Opening /solo always starts at the title (the store outlives the route).
   useEffect(() => {
     const s = usePlan.getState();
     s.restart();
+    s.setHold(!!roomRef.current);
     if (skipTitle) s.beginIntro();
   }, [skipTitle]);
 
@@ -116,8 +137,24 @@ export function Solo() {
   const frame = phase === 'title' ? null : cityFrame;
   const onFramed = useCallback(() => {
     const s = usePlan.getState();
-    if (s.phase === 'intro') s.startPlanning();
+    if (s.phase === 'intro') s.startPlanning(roomRef.current?.endsAt);
   }, []);
+
+  // Rooms: the platform goes to the server the moment planning ends here.
+  const lockedPhase = useRef(phase);
+  useEffect(() => {
+    const was = lockedPhase.current;
+    lockedPhase.current = phase;
+    if (was === 'planning' && phase === 'waiting') roomRef.current?.onLock(usePlan.getState().placements);
+  }, [phase]);
+  // Rooms: everyone is ready, so the storm starts here and on every other phone together.
+  const stormGo = room?.stormGo ?? false;
+  useEffect(() => {
+    if (!stormGo) return;
+    const s = usePlan.getState();
+    if (s.phase === 'planning') s.endPlanning(); // the room closed while this phone was still planning
+    usePlan.getState().startStorm();
+  }, [stormGo, phase]);
 
   const coverage = useMemo(() => (data ? coverageLayer(data, floodAtRisk(data), shares) : null), [data, shares]);
   const protectedIds = useMemo(
@@ -300,7 +337,7 @@ export function Solo() {
               <Link to="/" className="font-display text-24 leading-none font-extrabold">
                 Ready Raleigh
               </Link>
-              <span className="block text-13">Flood, solo</span>
+              <span className="block text-13">{room ? `Flood, room ${room.code}` : 'Flood, solo'}</span>
             </motion.p>
             <motion.div {...enter('top', 0.05)} className="flex justify-center">
               <TopHud left={left} result={result} compact={compact} />
@@ -323,6 +360,14 @@ export function Solo() {
             <Status data={data} preview={preview} />
             <Tray data={data} left={left} compact={compact} onArmed={onArmed} onSelect={selectFromList} />
           </motion.div>
+        </div>
+      )}
+
+      {phase === 'waiting' && room && (
+        <div className="pointer-events-none absolute inset-0 flex items-end justify-center p-3 pb-6 lg:items-center">
+          <div className={PLATE + ' pointer-events-auto w-full max-w-md p-4 lg:p-6'} role="status">
+            {room.waiting}
+          </div>
         </div>
       )}
 
@@ -349,7 +394,7 @@ export function Solo() {
           </div>
           {phase === 'results' ? (
             <div className="flex justify-center px-3 pb-4 lg:justify-start lg:px-8 lg:pb-8">
-              <ResultsCard storm={storm} result={result} />
+              <ResultsCard storm={storm} result={result} footer={room?.footer} />
             </div>
           ) : (
             <Counters storm={storm} stormAt={stormAt} />

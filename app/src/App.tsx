@@ -1,4 +1,3 @@
-import { Host } from './routes/Host';
 import { Landing } from './routes/Landing';
 import { Planner } from './routes/Planner';
 import { Play } from './routes/Play';
@@ -12,8 +11,9 @@ export function App() {
   if (matchPath('/', path)) return <Landing />;
   if (matchPath('/solo', path)) return <Solo />;
   if (matchPath('/planner', path)) return <Planner />;
-  if ((params = matchPath('/host/:code', path))) return <Host key={params.code} code={params.code ?? ''} />;
-  if ((params = matchPath('/play/:code', path))) return <Play key={params.code} code={params.code ?? ''} />;
+  // No central screen: an old /host link opens the room like any player.
+  if ((params = matchPath('/host/:code', path))) return <Play key={params.code} code={(params.code ?? '').toUpperCase()} />;
+  if ((params = matchPath('/play/:code', path))) return <Play key={params.code} code={(params.code ?? '').toUpperCase()} />;
 
   return (
     <main className="px-4 py-10">

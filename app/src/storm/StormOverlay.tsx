@@ -1,7 +1,7 @@
 // What sits over the map during the storm: the broadcast band, the counters, and the results card.
 // The band and counters animate from the storm clock with their own rAF loops, writing to the DOM
 // directly, so React renders them once per step at most.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { FINAL_FLOOD_STEP } from '@shared/config';
 import type { ScoreResult } from '@shared/types';
@@ -213,7 +213,8 @@ export function Counters({ storm, stormAt }: { storm: Storm; stormAt: number }) 
 }
 
 /** The end of the storm: score, protected, stranded, and Play again. P8 replaces it with the full results. */
-export function ResultsCard({ storm, result }: { storm: Storm; result: ScoreResult | null }) {
+/** `footer` replaces "Play again" (rooms: the standing; the TV runs the next election). */
+export function ResultsCard({ storm, result, footer }: { storm: Storm; result: ScoreResult | null; footer?: ReactNode }) {
   const reset = usePlan((s) => s.reset);
   const reduce = useReducedMotion();
   const button = useRef<HTMLButtonElement>(null);
@@ -250,14 +251,16 @@ export function ResultsCard({ storm, result }: { storm: Storm; result: ScoreResu
         Your plan reached {Math.round(prot + strand > 0 ? (100 * prot) / (prot + strand) : 0)}% of the residents the
         water put at risk.
       </p>
-      <button
-        ref={button}
-        type="button"
-        onClick={reset}
-        className="mt-4 w-full border-(length:--rule) border-ink bg-ink px-4 py-3 text-left font-display text-24 font-extrabold text-signal hover:bg-bond hover:text-ink"
-      >
-        Play again
-      </button>
+      {footer ?? (
+        <button
+          ref={button}
+          type="button"
+          onClick={reset}
+          className="mt-4 w-full border-(length:--rule) border-ink bg-ink px-4 py-3 text-left font-display text-24 font-extrabold text-signal hover:bg-bond hover:text-ink"
+        >
+          Play again
+        </button>
+      )}
     </motion.section>
   );
 }

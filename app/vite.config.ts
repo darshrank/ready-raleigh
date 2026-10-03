@@ -14,6 +14,8 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Phones on the same Wi-Fi join rooms through the LAN address (the room QR code).
+    host: true,
     proxy: {
       '/api': serverUrl,
       '/ws': { target: serverUrl.replace(/^http/, 'ws'), ws: true },

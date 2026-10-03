@@ -69,8 +69,8 @@ export function Landing() {
         <div>
           <p className="text-15 font-semibold">Run a room</p>
           <div className="mt-2 flex flex-wrap gap-3">
-            <button type="button" onClick={() => navigate(`/host/${newRoomCode()}`)} className={`${button} bg-bond`}>
-              Host on a big screen
+            <button type="button" onClick={() => navigate(`/play/${newRoomCode()}?host`)} className={`${button} bg-ink text-bond`}>
+              Host a game
             </button>
             <Link to="/planner" className={`${button} bg-bond`}>
               Planner view

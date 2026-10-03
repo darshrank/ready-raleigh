@@ -16,7 +16,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [~] P7 Simulation: halftone flood, closing roads, trips, counters (C + B). Pass 1 done (Claude, C); pass 2 = road routing
 - [x] V1 Visual overhaul: title and briefing, game HUD, realistic water, night storm with helicopter camera, daylight end (C)
 - [ ] P8 Results screen with score breakdown and optimal plan side by side (C)
-- [ ] P9 Rooms: server websocket, host and player views, leaderboard, crowd heatmap, perception gap (D + C)
+- [~] P9 Rooms: (aum) done: lobby + QR, mayoral candidates, any player hosts, shared clock, storm starts together, ranked results stored in Tiger Data. Open: crowd heatmap, perception gap
 
 ## Phase 2: heatwave
 - [ ] P10 Pipeline heat and trees, engine heat scoring, heat UI (A + B + C)
@@ -36,6 +36,35 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 
 ## Handoff log
 <!-- Newest first. Template:
+
+### 2026-10-03 18:40 (machine clock) Claude (Opus 5.5) for Aum, lane D + C, P9 rooms (branch feat/multiplayer)
+- Story: every player is a mayoral candidate. Gameplay is the solo game unchanged; rooms only add
+  the lobby, a shared planning clock, a storm that starts for everyone at once, and the ranking.
+- No central screen (Among Us style): anyone taps "Host a game" on the landing page and becomes
+  player 1 with host controls (Start the election, Next election); others scan the QR code shown
+  on any lobby screen, or type the code. Host passes to the next connected player if the host leaves.
+- Server: server/src/rooms.ts (state machine: lobby -> planning -> results, pure, tested),
+  server/src/roomSocket.ts (raw `ws` on /ws/rooms/:code, replaces the P1 echo), server/src/net.ts
+  (LAN address), GET /api/join-base. Locked plans go through buildPlay (same checks + score as
+  POST /api/plays) and store.savePlay, so room games land in Tiger Data `plays` with the new
+  nullable `candidate` column. Room logic ported from the aum branch (pocket-rivals pattern).
+- Protocol: shared/src/room.ts (look, join{create}, resume, pick, start, lock, again; state,
+  joined, error). Candidates: shared CANDIDATES = 16 Open Peeps busts (CC0) in
+  app/public/candidates/, built by app/scripts/candidates.mjs (black -> var(--ink), white ->
+  var(--bond); inlined so the tokens apply).
+- App: routes/Play.tsx (join + candidate picker, lobby with Invite QR, waiting plate, results
+  footer with the ranking); routes/Host.tsx removed (/host/:code opens Play); Solo.tsx takes an
+  optional `room` (no title, server deadline, "Start the storm" sends the plan and waits);
+  store.ts: phase 'waiting', `hold`, `startStorm()`; ResultsCard `footer`; vite `host: true`.
+- Verified: npm test 51/51 (rooms.test.ts: logic, host-only actions, host hand-off, look, a real
+  socket game with resume and Tiger-store write); typecheck; browser run with 3 phones (host from
+  the landing page, join by QR link and by code, reload resumes, two wait while one plans, storm
+  starts on all three within 52 ms, ranked results, Next election); solo unchanged.
+- Next exact step: crowd heatmap and perception gap on the results (rankPlanner with this room's
+  plays); maybe a "room" filter on GET /api/planner.
+- Gotchas: rooms live in server memory (a server restart ends them; plays are already stored).
+  Phones on Wi-Fi need `npm run dev` to expose Vite (host: true is set) and PUBLIC_URL for a tunnel.
+
 ### [time] [agent] [lane] [task id]
 - Done:
 - Half done:

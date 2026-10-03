@@ -9,7 +9,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { cellToLatLng, gridDisk, latLngToCell } from 'h3-js';
-import { FINAL_FLOOD_STEP, SHELTER_DRIVE_LIMIT_S } from '../src/config';
+import { FINAL_FLOOD_STEP, FLOOD_STEP_NAMES, SHELTER_DRIVE_LIMIT_S } from '../src/config';
 import type { DataMeta, FloodStepsCollection, Hospital, RoadsGraph } from '../src/data';
 import type { Cell, FloodRoad, Site } from '../src/types';
 
@@ -302,10 +302,14 @@ const sites: Site[] = [
 ];
 
 const meta: DataMeta = {
-  built: '2026-10-03',
+  buildDate: '2026-10-03',
+  task: 'fixtures',
   fixture: true,
-  sources: ['Hand-made fixture around NC State main campus. Not real data.'],
-  thresholds: { heatPercentile: 80, shelterDriveLimitS: SHELTER_DRIVE_LIMIT_S, finalFloodStep: FINAL_FLOOD_STEP },
+  sources: { fixture: 'Hand-made fixture around NC State main campus. Not real data.' },
+  p3: {
+    thresholds: { driveSeconds: SHELTER_DRIVE_LIMIT_S, floodSteps: { ...FLOOD_STEP_NAMES } },
+    limitations: ['Hand-made fixture, not real data.'],
+  },
 };
 
 // ---------- write ----------

@@ -28,12 +28,19 @@ export interface FloodStepsCollection {
   }[];
 }
 
-/** meta.json */
+/**
+ * meta.json, as the pipeline writes it. Only the fields the app may show are typed; the pipeline
+ * also writes p2 / p3 build details (sanity counts, methods) that stay untyped here.
+ */
 export interface DataMeta {
-  built: string;
-  fixture: boolean;
-  sources: string[];
-  thresholds: Record<string, number>;
+  buildDate: string;
+  task: string;
+  fixture?: boolean;
+  sources: Record<string, string>;
+  p3?: {
+    thresholds: { driveSeconds: number; floodSteps: Record<string, string> };
+    limitations?: string[];
+  };
 }
 
 /**

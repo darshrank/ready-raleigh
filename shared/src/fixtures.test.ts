@@ -3,7 +3,8 @@
 import { readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import type { FloodStepsCollection, Hospital, RoadsGraph } from './data';
+import { SHELTER_DRIVE_LIMIT_S } from './config';
+import type { DataMeta, FloodStepsCollection, Hospital, RoadsGraph } from './data';
 import type { Cell, FloodRoad, Site } from './types';
 
 const DATA_DIR =
@@ -16,6 +17,7 @@ const roads = load<FloodRoad[]>('flood_roads.json');
 const graph = load<RoadsGraph>('roads_graph.json');
 const hospitals = load<Hospital[]>('hospitals.json');
 const steps = load<FloodStepsCollection>('flood_steps.geojson');
+const meta = load<DataMeta>('meta.json');
 
 const validCell = (i: number) => Number.isInteger(i) && i >= 0 && i < cells.length;
 const validStep = (s: number | null) => s === null || [1, 2, 3, 4].includes(s);
@@ -65,6 +67,15 @@ describe(`data files in ${DATA_DIR}`, () => {
     expect(steps.type).toBe('FeatureCollection');
     const tagged = new Set(steps.features.map((f) => f.properties.step));
     expect([...tagged].sort()).toEqual([1, 2, 3]);
+  });
+
+  it('meta names its build, its sources and the drive limit the coverage used', () => {
+    expect(Number.isNaN(Date.parse(meta.buildDate))).toBe(false);
+    expect(typeof meta.task).toBe('string');
+    expect(Object.values(meta.sources).length).toBeGreaterThan(0);
+    for (const v of Object.values(meta.sources)) expect(typeof v).toBe('string');
+    expect(meta.p3?.thresholds.driveSeconds).toBe(SHELTER_DRIVE_LIMIT_S);
+    expect(Object.keys(meta.p3?.thresholds.floodSteps ?? {}).sort()).toEqual(['1', '2', '3']);
   });
 
   it('every file is under the 5 MB budget', () => {

@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+/* Tokens from docs/DESIGN.md. Tailwind classes: bg-chalk, text-ink, font-display, ... */
+@theme {
+  --color-chalk: #dce4e1;
+  --color-bond: #f7f9f8;
+  --color-ink: #1e2a47;
+  --color-flood: #0078bf;
+  --color-alarm: #ff48b0;
+  --color-signal: #ffc628;
+  --color-safe: #00a95c;
+
+  --font-display: "Big Shoulders Display", "Arial Narrow", sans-serif;
+  --font-body: "Public Sans", system-ui, sans-serif;
+}
+
+:root {
+  --chalk: var(--color-chalk);
+  --bond: var(--color-bond);
+  --ink: var(--color-ink);
+  --flood: var(--color-flood);
+  --alarm: var(--color-alarm);
+  --signal: var(--color-signal);
+  --safe: var(--color-safe);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--chalk);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

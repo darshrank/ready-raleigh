@@ -1,0 +1,15 @@
+{
+  "name": "@ready/shared",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "fixtures": "tsx scripts/make-fixtures.ts",
+    "optimize": "tsx scripts/optimize.ts"
+  },
+  "dependencies": {
+    "h3-js": "^4.5.0"
+  }
+}

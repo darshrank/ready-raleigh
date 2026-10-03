@@ -189,3 +189,15 @@ order/times, bridge exemptions, hospital disconnections and road unlocks.
 The optimizer refuses flood datasets above 20% at-risk residents. Shares use actual
 estimated people over all study-area residents (Raleigh plus 1 km), not vulnerability
 weights over a population denominator. Weighted exposure is reported separately.
+
+## Semantic-zoom data (standard library only)
+
+These scripts need no virtualenv (`python3` 3.11+). They write small extra files for the map's
+detail layers and record their sources in `meta.json`. `build_all` keeps `meta.sources` but drops
+the extra blocks, so rerun them after a full rebuild (the downloads are cached).
+
+| Command | Output | Source |
+|---|---|---|
+| `python3 -m pipeline.bus_stops` | `bus_stops.json` `[{id, name, lat, lon}]` | GoRaleigh GTFS, https://goraleigh.org/gr_gtfs (stops.txt, boarding stops) |
+
+Tests: `python3 -m unittest pipeline.tests.test_detail`.

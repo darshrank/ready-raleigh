@@ -5,7 +5,15 @@
 // All of it is part of the basemap style, painted from the same palette as the streets, so the
 // storm re-paints it with the night colors (basemap.ts applyPalette). Icons are signed distance
 // fields drawn on a canvas (there is no sprite), so their color is a paint property too.
-import type { ExpressionSpecification, LayerSpecification, Map as MapLibreMap } from 'maplibre-gl';
+import type {
+  ExpressionSpecification,
+  GeoJSONSource,
+  LayerSpecification,
+  Map as MapLibreMap,
+  SourceSpecification,
+} from 'maplibre-gl';
+import type { FeatureCollection, Point } from 'geojson';
+import { dataBase } from '../story';
 import type { Palette } from './basemap';
 
 const REGULAR = ['Noto Sans Regular'];
@@ -15,6 +23,10 @@ export const PLACE_ZOOM = 14;
 export const PLACE_NAME_ZOOM = 15;
 /** House numbers and building names. */
 export const ADDRESS_ZOOM = 16;
+/** GoRaleigh bus stops show from this zoom; their names from ADDRESS_ZOOM. */
+export const BUS_STOP_ZOOM = 14;
+
+const BUS_STOPS = 'bus-stops';
 
 const is = (key: string, value: string): ExpressionSpecification => ['==', ['get', key], value];
 const among = (key: string, values: string[]): ExpressionSpecification => ['match', ['get', key], values, true, false];
@@ -74,6 +86,12 @@ const badge = (shape: Draw, cut: Draw, keep?: Draw): Draw => (g) => {
   cut(g);
   g.globalCompositeOperation = 'source-over';
   keep?.(g);
+};
+
+const square: Draw = (g) => {
+  g.beginPath();
+  g.roundRect(1, 1, ICON - 2, ICON - 2, 7);
+  g.fill();
 };
 
 const path = (g: CanvasRenderingContext2D, pts: number[]) => {
@@ -150,6 +168,25 @@ export const PLACE_ICONS: Record<string, Draw> = {
   'place-police': badge(disc, (g) => star(g, 16, 17, 11)),
 };
 
+/** A bus stop: a rounded square (places are round) with the front of a bus. */
+const BUS_ICON: Record<string, Draw> = {
+  'bus-stop': badge(
+    square,
+    (g) => {
+      g.beginPath();
+      g.roundRect(8, 5, 16, 19, 3);
+      g.fill();
+      g.fillRect(10, 23, 4, 4);
+      g.fillRect(18, 23, 4, 4);
+    },
+    (g) => {
+      g.fillRect(10.5, 8, 11, 7);
+      g.fillRect(10, 18.5, 3, 2.5);
+      g.fillRect(19, 18.5, 3, 2.5);
+    },
+  ),
+};
+
 const PLACE_ICON_BY_CLASS: ExpressionSpecification = [
   'match',
   ['get', 'class'],
@@ -220,7 +257,16 @@ function sdfImage(draw: Draw, size = ICON): ImageData {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Layers.
+// Sources and layers.
+
+/** GoRaleigh's GTFS feed (pipeline/bus_stops.py), recorded in meta.json. */
+const BUS_ATTRIBUTION = 'Bus stops: <a href="https://goraleigh.org" target="_blank">GoRaleigh GTFS</a>';
+
+export function detailSources(): Record<string, SourceSpecification> {
+  return {
+    [BUS_STOPS]: { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, attribution: BUS_ATTRIBUTION },
+  };
+}
 
 /**
  * Detail labels, in draw order: house numbers (z16+, the lowest priority), building names (z16+),
@@ -260,6 +306,33 @@ export function detailLabelLayers(P: Palette): LayerSpecification[] {
       paint: { 'text-color': P.placeLabel, 'text-halo-color': P.halo, 'text-halo-width': 1.5 },
     },
     {
+      id: BUS_STOPS,
+      type: 'symbol',
+      source: BUS_STOPS,
+      minzoom: BUS_STOP_ZOOM,
+      layout: {
+        'icon-image': 'bus-stop',
+        'icon-size': ['interpolate', ['linear'], ['zoom'], BUS_STOP_ZOOM, 0.75, 17, 1],
+        'icon-padding': 1,
+        'text-field': ['step', ['zoom'], '', ADDRESS_ZOOM, ['get', 'name']],
+        'text-font': REGULAR,
+        'text-size': 10,
+        'text-max-width': 8,
+        'text-variable-anchor': ['left', 'right', 'top', 'bottom'],
+        'text-radial-offset': 0.9,
+        'text-justify': 'auto',
+        'text-optional': true,
+      },
+      paint: {
+        'icon-color': P.busIcon,
+        'icon-halo-color': P.halo,
+        'icon-halo-width': 1.2,
+        'text-color': P.placeLabel,
+        'text-halo-color': P.halo,
+        'text-halo-width': 1.5,
+      },
+    },
+    {
       id: 'places',
       type: 'symbol',
       source: 'omt',
@@ -292,12 +365,46 @@ export function detailLabelLayers(P: Palette): LayerSpecification[] {
   ];
 }
 
+interface BusStop {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+}
+
+/** Fill a GeoJSON source of the style once both the data and the style are there. */
+function fill(map: MapLibreMap, id: string, data: FeatureCollection) {
+  const set = () => (map.getSource(id) as GeoJSONSource | undefined)?.setData(data);
+  if (map.getSource(id)) set();
+  else map.once('load', set);
+}
+
+async function getJson<T>(file: string): Promise<T> {
+  const res = await fetch(`${dataBase()}/${file}`);
+  if (!res.ok) throw new Error(`${file}: ${res.status}`);
+  return (await res.json()) as T;
+}
+
 /**
- * Adds the detail icons to `map` (now, and again if the style ever asks for one it lacks). Returns
- * a cleanup.
+ * Adds the detail icons to `map` (now, and again if the style ever asks for one it lacks) and loads
+ * the detail data files into their sources. A missing file only leaves its layer empty. Returns a
+ * cleanup.
  */
 export function installDetail(map: MapLibreMap): () => void {
-  const icons: Record<string, Draw> = { ...PLACE_ICONS };
+  let live = true;
+  getJson<BusStop[]>('bus_stops.json').then(
+    (stops) => {
+      if (!live) return;
+      const fc: FeatureCollection<Point, { name: string }> = {
+        type: 'FeatureCollection',
+        features: stops.map((s, i) => ({ type: 'Feature', id: i, properties: { name: s.name }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })),
+      };
+      fill(map, BUS_STOPS, fc);
+    },
+    (e: unknown) => console.warn('Bus stops did not load:', e),
+  );
+
+  const icons: Record<string, Draw> = { ...PLACE_ICONS, ...BUS_ICON };
   const add = (id: string) => {
     const draw = icons[id];
     if (draw && !map.hasImage(id)) map.addImage(id, sdfImage(draw), { sdf: true, pixelRatio: 2 });
@@ -306,6 +413,7 @@ export function installDetail(map: MapLibreMap): () => void {
   map.on('styleimagemissing', onMissing);
   for (const id of Object.keys(icons)) add(id);
   return () => {
+    live = false;
     map.off('styleimagemissing', onMissing);
   };
 }

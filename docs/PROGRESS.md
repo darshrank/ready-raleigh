@@ -29,7 +29,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [~] P11 Tiger Data storage and planner dashboard (D + C). Lane D done (Claude, D); /planner page (C) next
 
 ## Semantic zoom (branch sakhi/semantic-zoom)
-- [~] SZ Detail by zoom on the planning map (Claude, C + A): S1 places, S2 addresses done; S3 GoRaleigh stops, S4 NC OneMap aerial, S5 site buildings, S6 hex fade
+- [~] SZ Detail by zoom on the planning map (Claude, C + A): S1 places, S2 addresses, S3 GoRaleigh stops done; S4 NC OneMap aerial, S5 site buildings, S6 hex fade
 
 ## Phase 4: bonus challenges
 - [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
@@ -424,6 +424,26 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - Rooms, the planner and POST /api/plays still use Raleigh data.
   - The automated browser pane stops drawing frames after ~10 s, so flights and animations look
     frozen there; judge motion in a real browser.
+
+### 2026-10-03 19:45 EDT Claude (Opus 5.5) lanes A+C, semantic zoom S3 (GoRaleigh bus stops)
+- Done: pipeline/bus_stops.py (stdlib, cached in pipeline/cache/goraleigh_gtfs.zip + .json) wrote
+  app/public/data/bus_stops.json: 1,386 stops, 116,584 bytes, feed S1000098 resolved to
+  goraleigh.org/sites/default/files/2026-09/goraleighgtfs_sept062026.zip. meta.json gains
+  `sources.busStops` and `busStops` {url, resolvedUrl, lastModified, downloaded, feedVersion,
+  feedStart, feedEnd, count}. pipeline/tests/test_detail.py (3 tests). pipeline/README.md section.
+- Done (app): detail.ts `detailSources()` (GeoJSON `bus-stops` with attribution "Bus stops: GoRaleigh
+  GTFS"), a bus SDF badge, layer `bus-stops` (z14+, names z16+). `installDetail` fetches
+  `${DATA_BASE}/bus_stops.json`; a failed fetch only warns. Palette `busIcon` per mood.
+- Verified: typecheck, 43 tests, python unittest. z12: 0; z15: 29-32 stops; z17: 8-9 with names.
+  Attribution shows GoRaleigh once stops are in view. Day, storm (1440) and 390 shots. No errors.
+- Next exact step: S4. Add raster source `aerial` to `detailSources()`:
+  tiles `https://services.nconemap.gov/secure/rest/services/Imagery/Orthoimagery_Latest_cached/ImageServer/tile/{z}/{y}/{x}`,
+  tileSize 256, minzoom 16, maxzoom 20, attribution "Imagery: NC OneMap / NC CGIA". Layer
+  `aerial` (minzoom 16) in basemap.ts groundLayers after `water`/`waterway`, before `buildings`:
+  raster-opacity z16 0 -> z17 0.85; palette `aerialBrightnessMax`/`aerialSaturation` per mood and
+  widen applyPalette's regex to raster-brightness|raster-saturation. Then GPU=1 pan test at z17.
+- Gotchas: in fixture mode (VITE_DATA_BASE=/data/fixtures) bus_stops.json does not exist; the map
+  warns and shows no stops. `build_all` drops meta.busStops; rerun `python3 -m pipeline.bus_stops`.
 
 ### 2026-10-03 19:25 EDT Claude (Opus 5.5) lane C, semantic zoom S2 (addresses, building names)
 - Done: detail.ts `detailLabelLayers(P)` (replaces placeLayers): `addresses` (housenumber, z16+,

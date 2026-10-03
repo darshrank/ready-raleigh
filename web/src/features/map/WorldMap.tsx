@@ -12,6 +12,7 @@ import { useGame } from "@/stores/game";
 import type { Phase } from "@/types";
 import { CityMarker } from "./CityMarker";
 import { applyDaylight, daylightAt } from "./daylight";
+import { useFloodWater } from "./useFloodWater";
 import { useDeckLayers, handleDeckClick, handleDeckHover, deckTooltip } from "./layers";
 import { buildMapStyle } from "./style";
 
@@ -80,6 +81,8 @@ export function WorldMap() {
   }, [map]);
 
   useEffect(() => () => mapBus.set(null), []);
+
+  useFloodWater(map, daylightFor);
 
   useEffect(() => {
     const m = map();

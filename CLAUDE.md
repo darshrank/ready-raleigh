@@ -32,6 +32,7 @@ Skip anything marked (stretch) unless asked.
 - Planned: Tiger Data (PostgreSQL + PostGIS + Timescale), Gemini, ElevenLabs, Solana devnet. Secrets for those go through a Worker route or a small API, never the static frontend.
 - Map look: planning and briefing use the light street-map palette (from the sakhi/visual-overhaul branch) with neighbourhood fills off by default; the storm uses the night palette.
 - Storm effects (`web/src/features/storm/`, from sakhi/visual-overhaul): wipe, rain canvas, lightning, Web Audio sounds (toggle remembered in localStorage), and a director that flies the camera to up to 6 located warning/critical sim events, keyed to the simulation clock so pause, speed and scrub still work. Rain and lightning only for flood and coastal hazards; reduced motion keeps only the LIVE caption. The player grabbing the map stops the camera director for that run.
+- Flood water for `hazard.type === "flood"` is drawn natively in MapLibre by `web/src/features/map/water.ts` (from sakhi/visual-overhaul), replacing the deck `hazard-zones` / `flood-cells` layers for that type: per-class fills with shimmer and waterline, 3D water while tilted in the storm, streets under water clipped from the vector tiles with flowing dashes, and road-closed barriers. Each water part arrives at t0[class] + distance to earlier water / spread[class], the engine's own formula, on the simulation clock. `useFloodWater.ts` drives it from the store.
 
 ## Conventions
 

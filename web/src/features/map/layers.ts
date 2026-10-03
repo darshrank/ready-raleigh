@@ -254,7 +254,8 @@ export function useDeckLayers(): Layer[] {
           highPrecision: false,
         }),
       );
-    } else {
+    } else if (type !== "flood") {
+      // flood water is drawn natively by features/map/water.ts
       out.push(
         new GeoJsonLayer({
           id: "hazard-zones",
@@ -366,7 +367,7 @@ export function useDeckLayers(): Layer[] {
           }),
         );
       }
-    } else {
+    } else if (type !== "flood") {
       out.push(
         new H3HexagonLayer<number>({
           id: "flood-cells",

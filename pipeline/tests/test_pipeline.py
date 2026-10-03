@@ -52,6 +52,18 @@ class PipelineTests(unittest.TestCase):
         self.assertAlmostEqual(sum(c["pop"] for c in cells), 900 * len(cells) / denominator, places=3)
         self.assertEqual([c["i"] for c in cells], list(range(len(cells))))
 
+    def test_durham_demographics_are_joined(self):
+        whole = box(-78.70, 35.75, -78.64, 35.81)
+        area = gpd.GeoDataFrame(geometry=[whole, whole], crs=4326)
+        groups = gpd.GeoDataFrame({"GEOID": ["370630001001"], "COUNTYFP": ["063"], "TRACTCE": ["000100"]}, geometry=[whole], crs=4326)
+        row = {v: "1" for ids in VARIABLES.values() for v in ids}
+        row.update({"B01003_001E": "900", "NAME": "Block Group 1; Census Tract 1; Durham County",
+                    "state": "37", "county": "063", "tract": "000100", "block group": "1"})
+        with tempfile.TemporaryDirectory() as temp, patch("pipeline.geography.CACHE", Path(temp)), patch("pipeline.geography.census_data", return_value=[row]):
+            cells = allocate_cells({"acs_year": 2024}, area, groups)
+        self.assertTrue(all(c["acs_available"] and c["pop"] > 0 for c in cells))
+        self.assertAlmostEqual(sum(c["pop"] for c in cells), 900, delta=.001)
+
     def test_neighborhood_fallback(self):
         cell = {**sample_cell(), "tract": "Census Tract 1"}
         names, report = name_cells([cell], {"elements": []})

@@ -50,7 +50,7 @@ def plot_population(cells, area, report):
                     bbox={"facecolor": "white", "edgecolor": "none", "alpha": .8})
     ax.legend(handles=[Line2D([0], [0], color="#25354a", label="Raleigh city boundary"),
                        Line2D([0], [0], color="#3973ac", linestyle="--", label="1 km buffer"),
-                       Patch(facecolor="#cbd1d8", label="Outside Wake: demographics unavailable")], loc="upper left", fontsize=8)
+                       Patch(facecolor="#cbd1d8", label="Demographics unavailable")], loc="upper left", fontsize=8)
     ax.annotate("N", xy=(.95, .96), xytext=(.95, .88), xycoords="axes fraction", ha="center",
                 arrowprops={"arrowstyle": "->", "color": "#25354a"})
     minx, miny, maxx, maxy = boundaries.total_bounds
@@ -60,7 +60,7 @@ def plot_population(cells, area, report):
     ax.set_title(f"Ready Raleigh | Population check\n{len(cells):,} H3 resolution 9 cells · {report['population_total']:,.0f} estimated residents", loc="left", fontsize=15)
     ax.set_axis_off()
     fig.text(.02, .004, f"ACS {report['acs_year']} 5-year · TIGER {report['tiger_year']} city / {report['acs_year']} block groups · NAD83 / UTM 17N\n"
-             f"Wake estimates only. {report['outside_wake_cells']} cells outside Wake have no ACS coverage (encoded as zero). Not a household-location map.", fontsize=8)
+             f"Wake and Durham estimates. {report['missing_demographic_cells']} cells have no ACS coverage (encoded as zero). Not a household-location map.", fontsize=8)
     fig.savefig(path, dpi=160, facecolor="white")
     plt.close(fig)
 
@@ -76,7 +76,7 @@ def sanity_report(cells, allocated, area, releases):
         "age_65_plus": round(sum(c["pop65"] for c in cells), 3),
         "below_poverty": round(sum(c["lowInc"] for c in cells), 3),
         "no_vehicle_households": round(sum(c["noCarHH"] for c in cells), 3),
-        "outside_wake_cells": sum(not c["acs_available"] for c in allocated),
+        "missing_demographic_cells": sum(not c["acs_available"] for c in allocated),
         "block_groups_intersected": len({c["geoid"] for c in allocated}),
         "file_bytes": (DATA / "cells.json").stat().st_size,
         "tiger_year": releases["tiger_year"], "acs_year": releases["acs_year"],
@@ -90,7 +90,7 @@ def sanity_report(cells, allocated, area, releases):
     if not .70 <= ratio <= 1.30:
         raise ValueError(f"Population allocation needs inspection: city/place ratio {ratio:.3f}.")
     report["city_to_acs_place_ratio"] = round(ratio, 4)
-    report["note"] = "Fractional uniform block-group estimates; boundary vintages differ. Outside-Wake cells lack demographics."
+    report["note"] = "Fractional uniform block-group estimates; boundary vintages differ. Wake and Durham counties included."
     return report
 
 
@@ -119,42 +119,42 @@ def main():
         write_json(named_path, named)
     print("[5/6] Export and validate Cell contract", flush=True)
     destination = DATA / "cells.json"
-    if not destination.exists():
-        cells = [{"i": c["i"], "h3": c["h3"], "hood": named["names"][c["h3"]],
-                  **{key: c[key] for key in ("pop", "pop65", "lowInc", "noCarHH")},
-                  "floodStep": None, "cutOff": False, "heatC": 0, "treePct": 0} for c in allocated]
-        validate_cells(cells)
-        write_json(destination, cells)
-    else:
-        print("  cached: cells.json", flush=True)
-        cells = read_json(destination)
-        validate_cells(cells)
+    previous = {c["h3"]: c for c in read_json(destination)} if destination.exists() else {}
+    cells = [{"i": c["i"], "h3": c["h3"], "hood": named["names"][c["h3"]],
+              **{key: c[key] for key in ("pop", "pop65", "lowInc", "noCarHH")},
+              **{k: previous.get(c["h3"], {}).get(k, default) for k, default in
+                 (("floodStep", None), ("cutOff", False), ("heatC", 0), ("treePct", 0))}} for c in allocated]
+    validate_cells(cells)
+    write_json(destination, cells)
     if [c["h3"] for c in cells] != [c["h3"] for c in allocated]:
         raise ValueError("cells.json and allocation cache disagree; invalidate derived outputs together.")
     print("[6/6] Population sanity report, provenance, and PNG", flush=True)
     report = sanity_report(cells, allocated, area, releases)
-    if not (OUT / "sanity_report.json").exists():
-        write_json(OUT / "sanity_report.json", report)
-    if not (DATA / "meta.json").exists():
-        metadata = {
-            "buildDate": datetime.now(timezone.utc).isoformat(), "task": "P2", "sources": {
-                "city": f"https://www2.census.gov/geo/tiger/TIGER{releases['tiger_year']}/PLACE/tl_{releases['tiger_year']}_37_place.zip",
-                "blockGroups": f"https://www2.census.gov/geo/tiger/TIGER{releases['acs_year']}/BG/tl_{releases['acs_year']}_37_bg.zip",
-                "census": f"https://api.census.gov/data/{releases['acs_year']}/acs/acs5",
-                "osm": "https://www.openstreetmap.org/copyright",
-            }, "p2": {
-                "releases": releases, "resolution": RESOLUTION, "bufferMeters": 1000, "metricCRS": METRIC_CRS,
-                "verifiedVariables": labels, "names": named["report"], "sanity": report,
-                "censusTransport": read_json(CACHE / "acs_transport.json") if (CACHE / "acs_transport.json").exists() else {"method": "Census API"},
-                "allocation": "BG counts / all centroid-contained H3 cells in the complete BG; then retain study-area centers. Six decimal places.",
-                "missingDemographicCells": [c["i"] for c in allocated if not c["acs_available"]],
-                "limitations": ["Uniform spatial allocation is not observed household geography.",
-                    "Only Wake County ACS estimates are requested; outside-Wake cells use zero placeholders, not observed zero population.",
-                    "Age, poverty and no-car measures overlap; noCarHH counts households, not people.",
-                    "Flood, hospital access, heat and canopy fields remain P2 placeholders.",
-                    "Nearest OSM place names are labels, not authoritative neighborhood boundaries.",
-                    "ACS margins of error are not modeled by the Cell contract."]}}
-        write_json(DATA / "meta.json", metadata)
+    write_json(OUT / "sanity_report.json", report)
+    metadata = {
+        "buildDate": datetime.now(timezone.utc).isoformat(), "task": "P2", "sources": {
+            "city": f"https://www2.census.gov/geo/tiger/TIGER{releases['tiger_year']}/PLACE/tl_{releases['tiger_year']}_37_place.zip",
+            "blockGroups": f"https://www2.census.gov/geo/tiger/TIGER{releases['acs_year']}/BG/tl_{releases['acs_year']}_37_bg.zip",
+            "census": f"https://api.census.gov/data/{releases['acs_year']}/acs/acs5",
+            "osm": "https://www.openstreetmap.org/copyright",
+        }, "p2": {
+            "releases": releases, "resolution": RESOLUTION, "bufferMeters": 1000, "metricCRS": METRIC_CRS,
+            "verifiedVariables": labels, "names": named["report"], "sanity": report,
+            "censusTransport": read_json(CACHE / "acs_transport.json") if (CACHE / "acs_transport.json").exists() else {"method": "Census API"},
+            "allocation": "BG counts / all centroid-contained H3 cells in the complete BG; then retain study-area centers. Six decimal places.",
+            "missingDemographicCells": [c["i"] for c in allocated if not c["acs_available"]],
+            "limitations": ["Uniform spatial allocation is not observed household geography.",
+                "Wake and Durham County ACS estimates are included; missing coverage is explicitly listed.",
+                "Age, poverty and no-car measures overlap; noCarHH counts households, not people.",
+                "Flood, hospital access, heat and canopy fields remain P2 placeholders.",
+                "Nearest OSM place names are labels, not authoritative neighborhood boundaries.",
+                "ACS margins of error are not modeled by the Cell contract."]}}
+    old = read_json(DATA / "meta.json") if (DATA / "meta.json").exists() else {}
+    if "p3" in old:
+        metadata["p3"] = old["p3"]
+        metadata["sources"].update(old["sources"])
+        metadata["task"] = "P2+P3"
+    write_json(DATA / "meta.json", metadata)
     plot_population(cells, area, report)
     print(json.dumps(report, indent=2), flush=True)
 

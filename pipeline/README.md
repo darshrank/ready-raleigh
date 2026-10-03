@@ -11,7 +11,7 @@ pipeline/.venv/bin/python -m unittest discover -s pipeline/tests -v
 
 The first build needs internet access. A completed build reruns without network access.
 `CENSUS_API_KEY` is optional: when set, the estimates use the Census API. Otherwise,
-the pipeline streams the Census public table-based summary files and keeps just Wake
+the pipeline streams the Census public table-based summary files and keeps Wake and Durham
 block groups and the Raleigh place estimate. Variable IDs and labels are always
 verified against the selected year's Census API group-variable lists before use.
 Keys are never written to cache, metadata, or logs.
@@ -27,7 +27,7 @@ Keys are never written to cache, metadata, or logs.
    Retain full polygons intersecting the study area, including adjacent counties.
 4. Generate H3 resolution 9 cells whose centers lie inside the buffered city.
    Sort H3 IDs for stable sequential integer indices. Join centers to block groups.
-5. Distribute Wake counts evenly over **all** H3 centers in each full block group,
+5. Distribute Wake and Durham counts evenly over **all** H3 centers in each full block group,
    then retain study-area cells. This avoids allocating an entire outside block
    group's population into the few cells overlapping the buffer. Values remain
    fractional, rounded to six decimals; no household/person conversion is applied.
@@ -60,17 +60,15 @@ measures overlap. ACS uncertainty is not represented in the current Cell contrac
 
 ## Coverage and interpretation
 
-Only **Wake County (37183)** estimates are requested. The Raleigh buffer crosses
-into other counties. Those cells keep their geometry/index/name and use zero
-demographic placeholders. `meta.json` explicitly lists their indices; zero there
-means **unavailable**, not uninhabited. Extending county coverage is a separate scope
-change. The map footer and sanity report disclose this limitation.
+**Wake (37183) and Durham (37063)** estimates are joined. All 6,392 study
+cells now have demographic coverage; the former 138 missing cells are filled
+without changing indices. Missing coverage remains explicit in metadata.
 
 Uniform allocation is a coarse model, not household locations. Population in lakes,
 parks, and industrial cells is possible under this requested allocation method.
 The unbuffered city estimate is checked against the ACS Raleigh place estimate as
 a broad sanity check, not an exact equality: uniform allocation, geography vintage,
-and Wake-only coverage differ from the place estimate.
+and estimation methods differ from the place estimate.
 
 ## Cache behavior
 

@@ -165,7 +165,7 @@ def verify_variables(year):
 
 def census_data(year, geography="block group"):
     from .config import COUNTY, PLACE
-    path = CACHE / f"acs_{year}_{'wake_bg' if geography == 'block group' else 'raleigh_place'}.json"
+    path = CACHE / f"acs_{year}_{'wake_durham_bg' if geography == 'block group' else 'raleigh_place'}.json"
     if path.exists():
         data = read_json(path)
         return [dict(zip(data[0], row, strict=True)) for row in data[1:]]
@@ -173,7 +173,7 @@ def census_data(year, geography="block group"):
         return bulk_census_data(year, geography)
     ids = [v for variables in VARIABLES.values() for v in variables]
     params = {"get": ",".join(["NAME"] + ids), "for": "block group:*",
-              "in": f"state:{STATE} county:{COUNTY} tract:*"}
+              "in": f"state:{STATE} county:183,063 tract:*"}
     if geography == "place":
         params = {"get": "NAME,B01003_001E", "for": f"place:{PLACE}", "in": f"state:{STATE}"}
     if os.environ.get("CENSUS_API_KEY"):
@@ -185,8 +185,8 @@ def census_data(year, geography="block group"):
 
 
 def bulk_table(year, group):
-    """Stream official nationwide table, caching only Wake BG and Raleigh place rows."""
-    path = CACHE / f"acs_{year}_{group}_bulk_subset.json"
+    """Stream official nationwide table, caching Wake/Durham BG and Raleigh rows."""
+    path = CACHE / f"acs_{year}_{group}_wake_durham_subset.json"
     if path.exists():
         return read_json(path)
     url = (f"https://www2.census.gov/programs-surveys/acs/summary_file/{year}/"
@@ -200,7 +200,7 @@ def bulk_table(year, group):
         columns = {v: header.index(v.split("_")[0] + "_E" + v.split("_")[1][:3]) for v in variables}
         selected = {}
         for raw in lines:
-            if raw.startswith((b"1500000US37183", b"1600000US3755000|")):
+            if raw.startswith((b"1500000US37183", b"1500000US37063", b"1600000US3755000|")):
                 row = raw.decode().split("|")
                 selected[row[0]] = {v: row[index] for v, index in columns.items()}
     if not selected or "1600000US3755000" not in selected:
@@ -218,21 +218,21 @@ def bulk_census_data(year, geography):
     groups = ("B01003", "B01001", "C17002", "B25044")
     with ThreadPoolExecutor(max_workers=4) as executor:
         tables = list(executor.map(lambda group: bulk_table(year, group), groups))
-    geoids = sorted(g for g in tables[0]["rows"] if g.startswith("1500000US37183"))
-    if any({g for g in t["rows"] if g.startswith("1500000US37183")} != set(geoids) for t in tables):
+    geoids = sorted(g for g in tables[0]["rows"] if g.startswith(("1500000US37183", "1500000US37063")))
+    if any({g for g in t["rows"] if g.startswith(("1500000US37183", "1500000US37063"))} != set(geoids) for t in tables):
         raise ValueError("Bulk table block-group geographies do not agree.")
     rows = []
     for geographic_id in geoids:
         geoid = geographic_id[9:]
         tract_code = geoid[5:11]
         tract = str(int(tract_code[:4])) + ("." + tract_code[4:] if tract_code[4:] != "00" else "")
-        record = {"NAME": f"Block Group {geoid[-1]}; Census Tract {tract}; Wake County; North Carolina",
-                  "state": STATE, "county": COUNTY, "tract": tract_code, "block group": geoid[-1]}
+        record = {"NAME": f"Block Group {geoid[-1]}; Census Tract {tract}; {('Wake' if geoid[2:5] == '183' else 'Durham')} County; North Carolina",
+                  "state": STATE, "county": geoid[2:5], "tract": tract_code, "block group": geoid[-1]}
         for table in tables:
             record.update(table["rows"][geographic_id])
         rows.append(record)
     header = list(rows[0])
-    write_json(CACHE / f"acs_{year}_wake_bg.json", [header] + [[r[k] for k in header] for r in rows])
+    write_json(CACHE / f"acs_{year}_wake_durham_bg.json", [header] + [[r[k] for k in header] for r in rows])
     write_json(CACHE / "acs_transport.json", {"method": "Census public table-based summary files",
                "reason": "Census API requires a key; bulk files provide the same estimates without authentication.",
                "sources": [t["url"] for t in tables]})

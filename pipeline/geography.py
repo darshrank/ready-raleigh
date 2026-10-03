@@ -5,7 +5,7 @@ import geopandas as gpd
 import h3
 from shapely.geometry import Point, mapping
 
-from .config import BUFFER_METERS, CACHE, COUNTY, METRIC_CRS, PLACE, RESOLUTION
+from .config import BUFFER_METERS, CACHE, COUNTIES, METRIC_CRS, PLACE, RESOLUTION
 from .sources import VARIABLES, census_data, read_json, tiger_zip, write_json
 
 
@@ -65,7 +65,9 @@ def allocate_cells(releases, area, groups):
     path = CACHE / "allocated_cells.json"
     if path.exists():
         print("  cached: allocated_cells.json", flush=True)
-        return read_json(path)
+        cached = read_json(path)
+        if all(c["acs_available"] for c in cached if c["geoid"][2:5] in COUNTIES):
+            return cached
     ids = sorted(h3.geo_to_cells(mapping(area.geometry.iloc[1]), RESOLUTION))
     coordinates = [h3.cell_to_latlng(cell) for cell in ids]
     centers = gpd.GeoDataFrame({"h3": ids}, geometry=[Point(lon, lat) for lat, lon in coordinates], crs=4326)
@@ -77,18 +79,18 @@ def allocate_cells(releases, area, groups):
     denominators = {row.GEOID: len(h3.geo_to_cells(mapping(row.geometry), RESOLUTION)) for row in groups.itertuples()}
     allocated = []
     for i, row in enumerate(joined.itertuples()):
-        wake = row.COUNTYFP == COUNTY
-        if wake and row.GEOID not in estimates:
-            raise ValueError(f"Wake block group missing ACS estimates: {row.GEOID}")
-        counts = parse_counts(estimates[row.GEOID]) if wake else {field: 0 for field in VARIABLES}
+        available = row.COUNTYFP in COUNTIES
+        if available and row.GEOID not in estimates:
+            raise ValueError(f"Requested block group missing ACS estimates: {row.GEOID}")
+        counts = parse_counts(estimates[row.GEOID]) if available else {field: 0 for field in VARIABLES}
         denominator = denominators[row.GEOID]
         if denominator <= 0:
             raise ValueError(f"Invalid H3 denominator for {row.GEOID}")
         fallback_name = tract_name(row.TRACTCE)
-        if wake:
+        if available:
             fallback_name = estimates[row.GEOID]["NAME"].split("; ")[1]
         allocated.append({"i": i, "h3": row.h3, "geoid": row.GEOID,
-                          "tract": fallback_name, "acs_available": wake,
+                          "tract": fallback_name, "acs_available": available,
                           **split_counts(counts, denominator)})
     # Validate the center join and H3 polygon fill agree on their denominator.
     inside_counts = Counter(row["geoid"] for row in allocated)

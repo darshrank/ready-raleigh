@@ -4,3 +4,5 @@ cache/*
 !cache/.gitkeep
 out/.mplconfig/
 *.tmp
+
+out/*.log

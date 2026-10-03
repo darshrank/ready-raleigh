@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { CONFIG } from './config'
 import { FloodModel, type Evaluation } from './engine/flood'
-import type { OptimizeResult } from './engine/optimize'
+import { configHash, type OptimizeResult } from './engine/optimize'
 import type { RevealAnalysis } from './engine/reveal'
 import { buildSimulation, type Simulation } from './engine/simulation'
 import { distanceM, loadWorld, nearestNode, type World } from './engine/world'
@@ -121,12 +121,7 @@ let uid = 0
 const newId = () => `p${Date.now().toString(36)}${(uid++).toString(36)}`
 
 /** Optimal plans are cached per config + data build, since they take ~30 s. */
-const optimalKey = (w: World) => `rr:opt:${w.meta.generated}:${hash(JSON.stringify(CONFIG))}`
-function hash(s: string) {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0
-  return (h >>> 0).toString(36)
-}
+const optimalKey = (w: World) => `rr:opt:${w.meta.generated}:${configHash(CONFIG)}`
 
 let optWorker: Worker | null = null
 let toastTimer: ReturnType<typeof setTimeout> | null = null
@@ -142,7 +137,14 @@ export const useStore = create<Store>((set, get) => {
     }
     const conn = local ? new LocalRoom(code, playerId, name, cb) : new RemoteRoom(code, { playerId, name }, cb)
     set({ conn, connStatus: local ? null : 'connecting' })
-    if (!local) history.replaceState(null, '', `?room=${code}`)
+    if (!local) {
+      history.replaceState(null, '', `?room=${code}`)
+      setTimeout(() => {
+        if (get().conn === conn && get().connStatus !== 'open') {
+          get().showToast("Can't reach the room server. Run `npm run dev` (it starts the server), or play solo.")
+        }
+      }, 5000)
+    }
   }
 
   const onRoomState = (state: RoomState, off: number) => {
@@ -173,6 +175,10 @@ export const useStore = create<Store>((set, get) => {
       set({ optimal: res, optimalEval: model.evaluate(res.placements), optProgress: null })
       return
     }
+    if (world.optimal && world.optimal.configHash === configHash(CONFIG) && world.optimal.generated === world.meta.generated) {
+      set({ optimal: world.optimal, optimalEval: model.evaluate(world.optimal.placements), optProgress: null })
+      return
+    }
     optWorker = new Worker(new URL('./engine/optimizer.worker.ts', import.meta.url), { type: 'module' })
     optWorker.onmessage = (e) => {
       const m = e.data
@@ -199,8 +205,9 @@ export const useStore = create<Store>((set, get) => {
       playerId, name, placements, score: evaluation.score, protectedPeople: evaluation.protected,
       atRiskPeople: evaluation.atRisk, spent: evaluation.spent, submittedAt: Date.now(),
     }
-    conn.send({ t: 'submit', submission })
+    // mark first: a LocalRoom answers synchronously and re-enters onRoomState
     set({ submittedRound: room.round, tool: null, selectedId: null })
+    conn.send({ t: 'submit', submission })
     if (conn.local) {
       // solo: remember plays on this device so the reveal has a crowd to compare with
       const history = [...get().history, submission].slice(-30)

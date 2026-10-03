@@ -10,6 +10,14 @@ import type { Placement, PlacementKind } from '../shared/types'
 import type { FloodModel } from './flood'
 import { distanceM, handAt } from './world'
 
+/** Stable hash of the game config, to know whether a cached optimal plan still applies. */
+export function configHash(cfg: unknown) {
+  const s = JSON.stringify(cfg)
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0
+  return (h >>> 0).toString(36)
+}
+
 export interface OptimizeResult {
   placements: Placement[]
   score: number

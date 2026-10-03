@@ -8,5 +8,7 @@ export default defineConfig({
     proxy: { '/room': { target: 'http://localhost:8787', ws: true } },
   },
   worker: { format: 'es' },
+  // maplibre-gl 6 loads its tile worker relative to its own module; pre-bundling breaks that URL
+  optimizeDeps: { exclude: ['maplibre-gl'] },
   test: { environment: 'node' },
 })

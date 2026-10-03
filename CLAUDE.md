@@ -48,4 +48,5 @@ Skip anything marked (stretch) unless asked.
 - Test: `npm test` (engine on the real data, room state machine). Typecheck: `npm run typecheck`.
 - Data: `npm run data` (fetch Overture + DEM, hydrology, build). `npm run data:census` (needs api.census.gov + tigerweb.geo.census.gov). `npm run data:build` to rebuild outputs from cache.
 - Deploy: `npm run deploy` (Cloudflare account needed: `npx wrangler login`).
+- Optimal plan: `npm run optimal` precomputes `public/data/raleigh/optimal.json`. Rerun after changing `src/config.ts` or the data (otherwise browsers recompute it in a worker, ~30 s).
 - Balance exploration: `TUNE=1 npx vitest run test/tune.test.ts`.

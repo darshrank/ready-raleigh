@@ -15,7 +15,8 @@
     "data": "npm run data:fetch && npm run data:build",
     "data:fetch": ".venv/bin/python data-prep/fetch_overture.py && .venv/bin/python data-prep/fetch_dem.py && .venv/bin/python data-prep/hydrology.py",
     "data:census": ".venv/bin/python data-prep/fetch_census.py && .venv/bin/python data-prep/build.py",
-    "data:build": ".venv/bin/python data-prep/build.py"
+    "data:build": ".venv/bin/python data-prep/build.py",
+    "optimal": "tsx scripts/optimal.ts"
   },
   "dependencies": {
     "@deck.gl/aggregation-layers": "^9.4.0",
@@ -36,10 +37,13 @@
     "@cloudflare/workers-types": "^5.20261003.1",
     "@types/geojson": "^7946.0.16",
     "@types/node": "^26.6.4",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "concurrently": "^10.0.5",
+    "pngjs": "^7.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",
     "vitest": "^5.0.3",

@@ -7,3 +7,6 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 )
+
+// handy for debugging and browser tests
+if (import.meta.env.DEV) import('./store').then(({ useStore }) => ((window as any).__store = useStore))

@@ -8,20 +8,37 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Map as MapGL } from 'react-map-gl/maplibre'
 import { CONFIG } from '../config'
 import { levelAt } from '../engine/simulation'
-import { edgeCoords, type World } from '../engine/world'
+import { edgeCoords, type HandRaster, type World } from '../engine/world'
 import type { Placement } from '../shared/types'
 import { useStore } from '../store'
-import { iconFor } from './icons'
+import { ICON_ATLAS, ICON_MAPPING } from './icons'
 import { waterImage } from './water'
 
 const BASEMAP = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
-const BLANK_STYLE = { version: 8 as const, sources: {}, layers: [{ id: 'bg', type: 'background' as const, paint: { 'background-color': '#0e1621' } }] }
+
+const ATTRIBUTION = { compact: true }
 
 type RGBA = [number, number, number, number]
 const lerp = (a: number[], b: number[], t: number): RGBA =>
   [0, 1, 2, 3].map((i) => Math.round(a[i] + (b[i] - a[i]) * Math.max(0, Math.min(1, t)))) as RGBA
 
 const MODE_COLOR: Record<string, RGBA> = { car: [255, 214, 102, 255], walk: [120, 230, 255, 255], bus: [80, 240, 150, 255] }
+
+/** Half-resolution HAND raster (min of each 2x2 block) for fast per-frame water painting. */
+function downsample(h: HandRaster): HandRaster {
+  const w = h.width >> 1
+  const ht = h.height >> 1
+  const code = new Uint8Array(w * ht)
+  const water = new Uint8Array(w * ht)
+  for (let y = 0; y < ht; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = 2 * y * h.width + 2 * x
+      code[y * w + x] = Math.min(h.code[i], h.code[i + 1], h.code[i + h.width], h.code[i + h.width + 1])
+      water[y * w + x] = h.water[i] | h.water[i + 1] | h.water[i + h.width] | h.water[i + h.width + 1]
+    }
+  }
+  return { ...h, width: w, height: ht, code, water }
+}
 
 function useWorldStatics(world: World | null) {
   return useMemo(() => {
@@ -42,7 +59,8 @@ function useWorldStatics(world: World | null) {
       const cl = graph.hand[e] + CONFIG.flood.roadClosureDepth
       if (cl <= peak) floodEdges.push({ e, path: edgeCoords(graph, e), closeLevel: cl, grp: graph.grp[e] })
     }
-    return { popHexes, maxDensity, floodEdges }
+    const edgeIds = [...Array(graph.nEdges).keys()]
+    return { popHexes, maxDensity, floodEdges, edgeIds, halfHand: world.hand ? downsample(world.hand) : null }
   }, [world])
 }
 
@@ -76,12 +94,18 @@ export default function MapView() {
     const key = (inSim ? Math.round(level * 10) / 10 : level).toFixed(1) + (inSim ? 's' : 'p')
     let img = waterCache.current.get(key)
     if (!img) {
-      img = waterImage(world.hand, inSim ? Math.round(level * 10) / 10 : level, { alpha: inSim ? 1 : 0.75 })
+      img = inSim && statics?.halfHand
+        ? waterImage(statics.halfHand, Math.round(level * 10) / 10)
+        : waterImage(world.hand, level, { alpha: 0.75 })
       if (waterCache.current.size > 60) waterCache.current.clear()
       waterCache.current.set(key, img)
     }
     return img
-  }, [world, level, inSim])
+  }, [world, level, inSim, statics])
+
+  const covHexes = useMemo(() => (statics && shownEval ? statics.popHexes.filter((h) => shownEval.coverageHexes[h]) : []), [statics, shownEval])
+  const riskHexes = useMemo(() => (statics && shownEval ? statics.popHexes.filter((h) => shownEval.hexAtRisk[h] > 0) : []), [statics, shownEval])
+  const gapHexes = useMemo(() => (statics && reveal ? statics.popHexes.filter((h) => reveal.optimalCoverage[h] - reveal.crowdCoverage[h] > 0.25) : []), [statics, reveal])
 
   const protectedGroups = useMemo(() => new Set(shownPlan.filter((p) => p.kind === 'road').map((p) => p.road)), [shownPlan])
 
@@ -93,7 +117,7 @@ export default function MapView() {
 
     if (styleFailed) {
       L.push(new PathLayer({
-        id: 'base-roads', data: [...Array(world.graph.nEdges).keys()], getPath: (e: number) => edgeCoords(world.graph, e) as any,
+        id: 'base-roads', data: statics.edgeIds, getPath: (e: number) => edgeCoords(world.graph, e) as any,
         getColor: [70, 85, 105, 255], widthMinPixels: 1, getWidth: 1,
       }))
     }
@@ -127,10 +151,9 @@ export default function MapView() {
 
     // shelter reach
     if (layers.coverage && shownEval && showPlanningLayers && !inReveal) {
-      const cov = shownEval.coverageHexes
       L.push(new H3HexagonLayer({
-        id: 'coverage', data: statics.popHexes.filter((h) => cov[h]), getHexagon: (h: number) => hex.id[h], stroked: false,
-        getFillColor: [80, 200, 140, 38], updateTriggers: { data: [cov] },
+        id: 'coverage', data: covHexes, getHexagon: (h: number) => hex.id[h], stroked: false,
+        getFillColor: [80, 200, 140, 38],
       }))
     }
 
@@ -139,7 +162,7 @@ export default function MapView() {
       const at = shownEval.hexAtRisk
       const pr = shownEval.hexProtected
       L.push(new H3HexagonLayer({
-        id: 'at-risk', data: statics.popHexes.filter((h) => at[h] > 0), getHexagon: (h: number) => hex.id[h], stroked: true,
+        id: 'at-risk', data: riskHexes, getHexagon: (h: number) => hex.id[h], stroked: true,
         lineWidthMinPixels: 1, getLineColor: (h: number) => (pr[h] / at[h] > 0.95 ? [80, 230, 140, 255] : [255, 90, 80, 255]),
         getFillColor: (h: number) => {
           const f = pr[h] / at[h]
@@ -204,15 +227,14 @@ export default function MapView() {
     if (inReveal && reveal) {
       L.push(new HeatmapLayer({ id: 'crowd', data: reveal.points, getPosition: (d: any) => d.position, getWeight: (d: any) => d.weight,
         radiusPixels: 60, intensity: 1.2, threshold: 0.04 }))
-      const gapHexes = statics.popHexes.filter((h) => reveal.optimalCoverage[h] - reveal.crowdCoverage[h] > 0.25)
       L.push(new H3HexagonLayer({ id: 'gap', data: gapHexes, getHexagon: (h: number) => hex.id[h], stroked: true,
         getFillColor: [230, 70, 255, 120], getLineColor: [240, 140, 255, 255], lineWidthMinPixels: 1 }))
-      L.push(new TextLayer({ id: 'gap-labels', data: reveal.gaps, getPosition: (d: any) => [d.lon, d.lat], getText: (d: any) => d.hood,
+      L.push(new TextLayer({ id: 'gap-labels', data: reveal.gaps, getPosition: (d: any) => [d.lon, d.lat], getText: (d: any) => d.district,
         getSize: 13, getColor: [255, 210, 255, 255], outlineWidth: 3, outlineColor: [20, 0, 30, 255], fontSettings: { sdf: true },
         fontWeight: 700, getPixelOffset: [0, -18] }))
       if (optimal) {
         L.push(new IconLayer({ id: 'optimal', data: optimal.placements, getPosition: (p: any) => [p.lon, p.lat],
-          getIcon: () => iconFor('optimal'), getSize: 28, sizeUnits: 'pixels', pickable: true }))
+          iconAtlas: ICON_ATLAS, iconMapping: ICON_MAPPING, getIcon: () => 'optimal', getSize: 28, sizeUnits: 'pixels', pickable: true }))
       }
     }
 
@@ -220,13 +242,13 @@ export default function MapView() {
     if (!inReveal) {
       const selected = selectedId
       L.push(new IconLayer({
-        id: 'placements', data: shownPlan, getPosition: (p: any) => [p.lon, p.lat], getIcon: (p: any) => iconFor(p.kind),
+        id: 'placements', data: shownPlan, getPosition: (p: any) => [p.lon, p.lat], iconAtlas: ICON_ATLAS, iconMapping: ICON_MAPPING, getIcon: (p: any) => p.kind,
         getSize: (p: any) => (p.id === selected ? 44 : 34), sizeUnits: 'pixels', pickable: !inSim,
         updateTriggers: { getSize: [selected] },
       }))
     }
     return L
-  }, [world, statics, model, layers, water, shownEval, shownPlan, protectedGroups, tool, inSim, inReveal, sim, simTime, level, styleFailed, selectedId, reveal, optimal])
+  }, [world, statics, model, layers, water, shownEval, shownPlan, protectedGroups, tool, inSim, inReveal, sim, simTime, level, styleFailed, selectedId, reveal, optimal, covHexes, riskHexes, gapHexes])
 
   const onClick = (info: PickingInfo) => {
     const st = useStore.getState()
@@ -272,6 +294,15 @@ export default function MapView() {
     return null
   }
 
+  // The basemap must not re-render on every animation frame. If the basemap
+  // style can't load (offline, blocked), drop MapLibre entirely: deck.gl draws
+  // our own road network, and an empty MapLibre canvas still costs a composite
+  // every frame.
+  const basemap = useMemo(
+    () => (styleFailed ? null : <MapGL mapStyle={BASEMAP} onError={() => setStyleFailed(true)} attributionControl={ATTRIBUTION} />),
+    [styleFailed],
+  )
+
   const cursor = tool || moving ? 'crosshair' : 'grab'
   return (
     <DeckGL
@@ -279,15 +310,12 @@ export default function MapView() {
       onViewStateChange={(e: any) => setViewState(e.viewState)}
       controller={{ doubleClickZoom: false }}
       layers={layerList}
+      style={{ background: '#0e1621' }}
       onClick={onClick}
       getTooltip={getTooltip as any}
       getCursor={({ isHovering }) => (isHovering && (tool === 'road' || !tool) ? 'pointer' : cursor)}
     >
-      <MapGL
-        mapStyle={styleFailed ? (BLANK_STYLE as any) : BASEMAP}
-        onError={() => setStyleFailed(true)}
-        attributionControl={{ compact: true }}
-      />
+      {basemap}
     </DeckGL>
   )
 }

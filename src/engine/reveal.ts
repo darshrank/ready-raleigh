@@ -8,6 +8,7 @@ import type { Placement, Submission } from '../shared/types'
 import type { Evaluation, FloodModel } from './flood'
 
 export interface GapArea {
+  /** worst-hit neighbourhood in the district */
   hood: string
   district: string
   lon: number
@@ -44,15 +45,15 @@ export function analyseReveal(model: FloodModel, subs: Submission[], optimal: Ev
   const need = new Float32Array(n)
   for (const u of model.units) need[u.hex] += u.pop * (u.w + u.nocar)
 
-  // aggregate gap by neighbourhood
-  const byHood = new Map<number, GapArea & { wsum: number }>()
+  // aggregate the gap by district, labelled with its worst-hit neighbourhood
+  const byDistrict = new Map<number, GapArea & { wsum: number; hoodNeed: Map<number, number> }>()
   for (let h = 0; h < n; h++) {
     if (need[h] <= 0) continue
     const gap = Math.max(0, opt[h] - crowd[h])
     if (gap <= 0.25) continue
-    const k = hex.hood[h]
-    const r = byHood.get(k) ?? { hood: hex.hoods[k], district: hex.districts[hex.district[h]], lon: 0, lat: 0, need: 0, people: 0,
-      crowdCoverage: 0, optimalCoverage: 0, wsum: 0 }
+    const k = hex.district[h]
+    const r = byDistrict.get(k) ?? { hood: '', district: hex.districts[k], lon: 0, lat: 0, need: 0, people: 0,
+      crowdCoverage: 0, optimalCoverage: 0, wsum: 0, hoodNeed: new Map() }
     r.need += need[h] * gap
     r.people += optimal.hexAtRisk[h]
     r.lon += hex.lon[h] * need[h]
@@ -60,11 +61,12 @@ export function analyseReveal(model: FloodModel, subs: Submission[], optimal: Ev
     r.crowdCoverage += crowd[h] * need[h]
     r.optimalCoverage += opt[h] * need[h]
     r.wsum += need[h]
-    byHood.set(k, r)
+    r.hoodNeed.set(hex.hood[h], (r.hoodNeed.get(hex.hood[h]) ?? 0) + need[h] * gap)
+    byDistrict.set(k, r)
   }
-  const gaps = [...byHood.values()]
-    .map(({ wsum, ...r }) => ({ ...r, lon: r.lon / wsum, lat: r.lat / wsum, crowdCoverage: r.crowdCoverage / wsum,
-      optimalCoverage: r.optimalCoverage / wsum }))
+  const gaps = [...byDistrict.values()]
+    .map(({ wsum, hoodNeed, ...r }) => ({ ...r, hood: hex.hoods[[...hoodNeed.entries()].sort((a, b) => b[1] - a[1])[0][0]],
+      lon: r.lon / wsum, lat: r.lat / wsum, crowdCoverage: r.crowdCoverage / wsum, optimalCoverage: r.optimalCoverage / wsum }))
     .sort((a, b) => b.need - a.need)
     .slice(0, 6)
 

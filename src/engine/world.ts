@@ -100,6 +100,8 @@ export interface World {
   facilities: Facility[]
   boundary: GeoJSON.Feature
   hand: HandRaster | null
+  /** precomputed optimal plan (scripts/optimal.ts), if present */
+  optimal?: { configHash: string; generated: string; placements: import('../shared/types').Placement[]; score: number; evaluations: number; ms: number }
 }
 
 const BASE = `${import.meta.env?.BASE_URL ?? '/'}data/raleigh/`
@@ -268,7 +270,8 @@ export async function loadWorld(onProgress?: (msg: string) => void): Promise<Wor
   ])
   onProgress?.('Building road network')
   const hand = await decodeHand(BASE + 'hand.png', meta).catch(() => null)
-  return { meta, hex: parseHexes(hexJ), graph: parseGraph(graphJ), roads, facilities, boundary, hand }
+  const optimal = await get('optimal.json').catch(() => undefined)
+  return { meta, hex: parseHexes(hexJ), graph: parseGraph(graphJ), roads, facilities, boundary, hand, optimal }
 }
 
 /** Snap a point to the nearest graph node (linear scan; ~40k nodes, fast enough). */

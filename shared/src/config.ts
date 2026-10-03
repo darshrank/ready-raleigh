@@ -39,3 +39,10 @@ export const SHELTER_CAPACITY: number | null = null;
 export function weightedPeople(c: Pick<Cell, 'pop' | 'pop65' | 'lowInc' | 'noCarHH'>): number {
   return c.pop + c.pop65 + c.lowInc + 2.5 * c.noCarHH;
 }
+
+/** Plain names for the flood steps, for cards, legends and the broadcast band. */
+export const FLOOD_STEP_NAMES: Record<number, string> = {
+  1: 'Floodway',
+  2: '100-year flood',
+  3: '500-year flood',
+};

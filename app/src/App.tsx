@@ -1,27 +1,25 @@
-import { useEffect, useState } from 'react';
-import type { Cell } from '@shared/types';
-import { loadCells } from './data';
-import { MapView } from './map/MapView';
+import { Host } from './routes/Host';
+import { Landing } from './routes/Landing';
+import { Planner } from './routes/Planner';
+import { Play } from './routes/Play';
+import { Solo } from './routes/Solo';
+import { Link, matchPath, usePath } from './router';
 
 export function App() {
-  const [cells, setCells] = useState<Cell[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const path = usePath();
+  let params: Record<string, string> | null;
 
-  useEffect(() => {
-    loadCells().then(setCells, (e: unknown) => setError(String(e)));
-  }, []);
+  if (matchPath('/', path)) return <Landing />;
+  if (matchPath('/solo', path)) return <Solo />;
+  if (matchPath('/planner', path)) return <Planner />;
+  if ((params = matchPath('/host/:code', path))) return <Host key={params.code} code={params.code ?? ''} />;
+  if ((params = matchPath('/play/:code', path))) return <Play key={params.code} code={params.code ?? ''} />;
 
   return (
-    <main className="relative h-full w-full">
-      <MapView cells={cells} />
-      <div className="absolute left-4 top-4 border-[2.5px] border-ink bg-bond px-4 py-3">
-        <h1 className="font-display text-[32px] font-extrabold leading-none">Ready Raleigh</h1>
-        <p className="mt-1 text-[13px]">
-          {error ? `Could not load the map data. ${error}` : (
-            <span className="tabular">{cells.length} cells loaded</span>
-          )}
-        </p>
-      </div>
+    <main className="px-4 py-10">
+      <p className="text-18">
+        This page does not exist. <Link to="/" className="underline">Go to the start.</Link>
+      </p>
     </main>
   );
 }

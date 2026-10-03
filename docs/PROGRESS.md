@@ -10,7 +10,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [ ] P2 Pipeline: study area, cells, census joins (A)
 - [ ] P3 Pipeline: roads graph, flood steps, sites, coverage, flood roads, hospitals, halftone dots (A)
 - [ ] P4 Engine: types, config, coverage, scoring, optimizer, tests (B)
-- [ ] P5 Design tokens and map shell with layers (C)
+- [x] P5 Design tokens and map shell with layers (C)
 - [ ] P6 Planning phase: tray, placing, budget, timer, instant coverage (C)
 - [ ] P7 Simulation: halftone flood, closing roads, trips, counters (C + B)
 - [ ] P8 Results screen with score breakdown and optimal plan side by side (C)
@@ -40,6 +40,40 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Next exact step:
 - Gotchas:
 -->
+
+### 2026-10-03 12:25 Claude (Opus 5.5) lanes B+C, P5
+- Done: tokens live once as :root vars in app/src/styles.css (7 colors, --rule, --piece-shadow,
+  --focus-ring); Tailwind reads them via `@theme inline`; deck.gl/MapLibre read them through
+  `tokens()` in app/src/tokens.ts. Type scale is `text-13` ... `text-120`. Focus ring is global
+  (`:focus-visible`). Basemap is our own style on OpenFreeMap tiles (map/basemap.ts): chalk land,
+  flood water at 35%, thin ink roads, no sprite (so no POI icons), only place names and major road
+  names. Camera (map/frame.ts) binary-searches the largest zoom where every data vertex (hex
+  corners, sites, flood rings) projects inside the padded viewport at pitch 45, and re-fits on
+  resize until the user moves the map. Layers (map/layers.ts): H3 hexes extruded up to 60 m, 4
+  stepped ink tints by vulnerable share, height toggle Everyone / 65+ / No car; flood halftone
+  dots (map/halftone.ts makes a 120 m grid from flood_steps.geojson, radius by step) sitting on top
+  of the hexes; sites as ink squares (hollow when the site floods). Neighborhood card on click
+  (hood totals + first flood step), signal fill on the selected hood, Esc or empty click clears.
+  Routes via a 40-line router (app/src/router.tsx): /, /solo, /host/:code, /play/:code, /planner.
+  Added `FLOOD_STEP_NAMES` to shared/src/config.ts.
+  Verified: typecheck, 7 tests, `vite build`, screenshots of every route at 1440 and 390, clicks
+  on hexes at both widths. Critique fixes: site squares were clipped by hex tops (now
+  depthCompare always, 16 px); MapLibre's white pill attribution restyled flat and folded on
+  idle; framing switched from bbox corners to data vertices. Removed the doubled legend dots.
+- Half done: nothing. /host, /play and /planner are skeletons (static timer and budget, no server).
+- Next exact step: P6 planning phase. Put the tray in the /solo rail under the height toggle (the
+  rail has room at 1440) and in the bottom sheet at 390. Use `--piece-shadow` and `shadow-piece`
+  for tokens. When pipeline P3 lands, swap `halftoneDots()` for the exported dot grid.
+- Gotchas:
+  - deck.gl billboard icons must use `parameters: { depthCompare: 'always' }` or the hex they
+    sit on clips their lower half.
+  - Dots and squares get z = height of their H3 cell (`cellHeights`), so they ride on the pieces.
+    Anything new drawn over cells must do the same, or it hides under the extrusions.
+  - Screenshot script (CDP, Node's built-in WebSocket): send a `mouseMoved` before
+    `mousePressed`/`mouseReleased`, or deck.gl ignores the click. Run shots one at a time; two
+    swiftshader Chromes in parallel leave the basemap blank at 7 s.
+  - MapLibre re-opens the compact attribution when the source's attribution arrives, which can be
+    after 'load'; fold it on 'idle' (MapView.tsx).
 
 ### 2026-10-03 12:05 Claude (Opus 5.5) lanes B+C, P1
 - Done: npm workspaces (shared, app, server), strict TS 7 via tsconfig.base.json, `@shared` alias

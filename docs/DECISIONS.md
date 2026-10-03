@@ -26,3 +26,4 @@ One line each. Newest at the bottom. Do not reopen a decision without writing wh
 - Optimizer: CELF lazy greedy, best of gain-per-dollar greedy, pure-gain greedy and best single placement. Writes optimal_<mode>.json as OptimalPlan {mode, built, budget, plan, score}.
 - Timeline: cut-off cells join the counts at the final step. A protected road does not extend a shelter's precomputed coverFlood.
 - Fixtures: added a dry shelter site south of Rocky Branch (Avent Ferry Road Church) so a usable shelter can reach the cut-off side.
+- P3 data pipeline uses OSMnx 2.1.1, NetworkX 3.6.1, and SciPy 1.17.1 for the requested directed road graph, sparse routing, and multiprocessing coverage calculations.

@@ -199,5 +199,6 @@ the extra blocks, so rerun them after a full rebuild (the downloads are cached).
 | Command | Output | Source |
 |---|---|---|
 | `python3 -m pipeline.bus_stops` | `bus_stops.json` `[{id, name, lat, lon}]` | GoRaleigh GTFS, https://goraleigh.org/gr_gtfs (stops.txt, boarding stops) |
+| `python3 -m pipeline.site_buildings` | `site_buildings.json` `[{id, match, osm, polygons}]` | OSM building footprints via Overpass (overpass-api.de; needs a User-Agent; `out geom`, not `out tags geom`, or relations lose their members) |
 
 Tests: `python3 -m unittest pipeline.tests.test_detail`.

@@ -1,8 +1,9 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { PickingInfo } from '@deck.gl/core';
 import type { Cell, Site } from '@shared/types';
 import type { MapData } from '../data';
 import { useMapUi } from '../store';
+import { SITE_BUILDING_ZOOM, loadSiteBuildings } from './detail';
 import { dataPoints } from './frame';
 import { HOSPITAL_LABEL_ZOOM, cellsLayer, existingSheltersLayers, hoodLayer, hospitalLayers, sitesLayer } from './layers';
 
@@ -21,12 +22,26 @@ export function useFloodMap(data: MapData | null, { targetingSites = false, nigh
   const selectHood = useMapUi((s) => s.selectHood);
 
   const frame = useMemo(() => (data ? dataPoints(data) : null), [data]);
+  // From z15 a site with a real building draws as that building (map/detail.ts); its square hides.
+  const closeUp = useMapUi((s) => s.zoom >= SITE_BUILDING_ZOOM);
+  const [outlined, setOutlined] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadSiteBuildings().then(
+      (b) => live && setOutlined(new Set(b.map((x) => x.id))),
+      () => {}, // detail.ts warns; every site keeps its square
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
   // Candidate sites are the shelter targets: they show only while a shelter is being placed, and
   // only the ones that stay dry (a shelter in a building that floods helps no one).
-  const sites = useMemo(
-    () => sitesLayer((data?.sites ?? []).filter((s) => s.floodStep === null || s.floodStep > 3), { targeting: targetingSites, visible: targetingSites }),
-    [data, targetingSites],
-  );
+  const sites = useMemo(() => {
+    const dry = (data?.sites ?? []).filter((s) => s.floodStep === null || s.floodStep > 3);
+    const shown = closeUp && outlined ? dry.filter((s) => !outlined.has(s.id)) : dry;
+    return sitesLayer(shown, { targeting: targetingSites, visible: targetingSites });
+  }, [data, targetingSites, closeUp, outlined]);
   const hospitals = useMemo(
     () => hospitalLayers(data?.hospitals ?? [], showFacilities, labelZoom ? HOSPITAL_LABEL_ZOOM : 0, night),
     [data, showFacilities, labelZoom, night],

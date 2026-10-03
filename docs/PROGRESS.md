@@ -29,7 +29,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [~] P11 Tiger Data storage and planner dashboard (D + C). Lane D done (Claude, D); /planner page (C) next
 
 ## Semantic zoom (branch sakhi/semantic-zoom)
-- [~] SZ Detail by zoom on the planning map (Claude, C + A): S1 places, S2 addresses, S3 GoRaleigh stops, S4 NC OneMap aerial done; S5 site buildings, S6 hex fade
+- [~] SZ Detail by zoom on the planning map (Claude, C + A): S1 places, S2 addresses, S3 GoRaleigh stops, S4 NC OneMap aerial, S5 site buildings done; S6 hex fade
 
 ## Phase 4: bonus challenges
 - [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
@@ -424,6 +424,31 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - Rooms, the planner and POST /api/plays still use Raleigh data.
   - The automated browser pane stops drawing frames after ~10 s, so flights and animations look
     frozen there; judge motion in a real browser.
+
+### 2026-10-03 20:40 EDT Claude (Opus 5.5) lanes A+C, semantic zoom S5 (shelter sites as buildings)
+- Done (data): pipeline/site_buildings.py (stdlib; two Overpass queries cached in
+  pipeline/cache/site_elements_overpass.json and site_nearby_buildings_overpass.json) wrote
+  app/public/data/site_buildings.json `[{id, match, osm, polygons}]` (MultiPolygon coords, 5
+  decimals): **162 of 216 sites matched** (contains 50, self 51, grounds 61; osm-node 50/104,
+  osm-way 100/100, osm-relation 12/12), 126,406 bytes. The 54 unmatched are nodes outside every
+  footprint (e.g. Ravenscroft School, East Garner Elementary); they keep their square. meta.json
+  gains `sources.siteBuildings` and `siteBuildings`. 2 more unit tests (rings, holes, rules).
+- Done (app): detail.ts source + `siteBuildingLayers(P)` (fill + outline, z15+, placed after
+  `buildings`), feature-state hover, `loadSiteBuildings()` (shared with useFloodMap, which hides the
+  square of matched sites at z15+), `installDetail(map, onSite)` wires mousemove/click/mouseleave
+  and closes on any other click or zoomstart. store `siteCard`; ui/SiteCard.tsx (name, type,
+  "Shelter for up to 10,000 people", flood note) rendered by MapView. Palette siteFill/siteHover/
+  siteLine per mood. Status text now says "marked building" (Hud.tsx, usePlanning.ts, DESIGN).
+- Verified: typecheck, 43 tests, 5 python tests. z12 0 site buildings; z15 6-7; z17 Broughton
+  outlined, square hidden. Hover at 1440 and tap at 390 show the card; a tap elsewhere closes it.
+  Day/storm 1440, 390 shots. No console errors.
+- Next exact step: S6. In useFloodMap/Solo, fade the H3 fills at z15+: deck.gl `opacity` on
+  `cells` (who-lives-here), `hood` tint and the cursor hex fill (plan/layers.ts cursorLayer), from
+  1 at z14.5 to 0.35 at z16 using the store's zoom. Keep `coverage` (plan/layers.ts coverageLayer)
+  at full alpha and add a thin ink rim from z15 so it reads over the aerial. Then the full DONE
+  check (z12/15/17 x day/storm x 1440/390), data sizes, attribution, and a final handoff.
+- Gotchas: with 3D on (pitch > 20) the 3D buildings cover the flat site outlines; fine for the storm
+  (DESIGN hides sites there), but a tilted planning view shows sites only as place icons.
 
 ### 2026-10-03 20:05 EDT Claude (Opus 5.5) lane C, semantic zoom S4 (NC OneMap aerial)
 - Done: detail.ts raster source `aerial` (NC OneMap Orthoimagery_Latest_cached tiles, minzoom 16,

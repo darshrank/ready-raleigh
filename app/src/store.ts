@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { SiteCardInfo } from './map/detail';
 import type { PeopleMetric } from './map/layers';
 
 const SATELLITE_KEY = 'ready-raleigh:satellite';
@@ -31,6 +32,9 @@ interface MapUi {
   setTilt: (on: boolean) => void;
   setSatellite: (on: boolean) => void;
   selectHood: (hood: string | null) => void;
+  /** The shelter site building under the pointer or last tapped (z15+), for the site card. */
+  siteCard: SiteCardInfo | null;
+  setSiteCard: (card: SiteCardInfo | null) => void;
 }
 
 export const useMapUi = create<MapUi>((set) => ({
@@ -55,4 +59,6 @@ export const useMapUi = create<MapUi>((set) => ({
     }
   },
   selectHood: (selectedHood) => set({ selectedHood }),
+  siteCard: null,
+  setSiteCard: (siteCard) => set({ siteCard }),
 }));

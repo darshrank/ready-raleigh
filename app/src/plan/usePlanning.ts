@@ -19,7 +19,7 @@ const TAP_SLOP_PX = 6;
 const PIECE_HIT_PX = { mouse: 20, touch: 28 };
 
 const MISSED: Record<FloodPiece, () => string> = {
-  shelter: () => `Tap closer to a building square to open a ${pieceName('shelter').toLowerCase()} there.`,
+  shelter: () => `Tap closer to a marked building to open a ${pieceName('shelter').toLowerCase()} there.`,
   bus_pickup: () => 'Bus pickups go inside the study area. Tap a street near the people it serves.',
   road_protection: () => `Tap one of the pink ${currentStory().roadKind} roads to protect it.`,
 };

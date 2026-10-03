@@ -8,7 +8,7 @@
 import type { ExpressionSpecification, LayerSpecification, Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
 import { rgba, type Tokens } from '../tokens';
 import { floodFlatLayers, floodSources, flood3dLayers, closuresLayer } from './flood';
-import { aerialLayer, detailLabelLayers, detailSources } from './detail';
+import { aerialLayer, detailLabelLayers, detailSources, siteBuildingLayers } from './detail';
 
 export const TILES = 'https://tiles.openfreemap.org/planet';
 export const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
@@ -65,6 +65,10 @@ export interface Palette {
   address: string;
   /** GoRaleigh bus stop badges. */
   busIcon: string;
+  /** Shelter sites as buildings (z15+): fill, fill under the pointer, outline. */
+  siteFill: string;
+  siteHover: string;
+  siteLine: string;
   /** Aerial imagery from z16 (map/detail.ts): full opacity at z17 and the photo's tone. */
   aerial: { opacity: number; saturation: number; contrast: number; brightnessMin: number; brightnessMax: number };
 }
@@ -115,6 +119,9 @@ function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
       placeLabel: rgba(rgb['storm-label'], 0.9),
       address: rgba(rgb['storm-label'], 0.6),
       busIcon: rgba(rgb['storm-label'], 0.85),
+      siteFill: rgba(rgb['storm-label'], 0.14),
+      siteHover: rgba(rgb['storm-label'], 0.3),
+      siteLine: rgba(rgb['storm-label'], 0.55),
       aerial: { opacity: 0.8, saturation: -0.6, contrast: -0.1, brightnessMin: 0, brightnessMax: 0.38 },
     };
   return {
@@ -139,6 +146,9 @@ function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
     placeLabel: rgba(rgb.ink, 0.85),
     address: rgba(rgb.ink, 0.55),
     busIcon: rgba(rgb.ink, 0.85),
+    siteFill: rgba(rgb.ink, 0.3),
+    siteHover: rgba(rgb.signal, 0.75),
+    siteLine: hex.ink,
     aerial: { opacity: 0.85, saturation: -0.35, contrast: -0.12, brightnessMin: 0.12, brightnessMax: 1 },
   };
 }
@@ -229,6 +239,7 @@ function groundLayers(P: Palette): LayerSpecification[] {
       minzoom: 13,
       paint: { 'fill-color': P.building },
     },
+    ...siteBuildingLayers(P),
     {
       id: 'rail',
       type: 'line',

@@ -10,9 +10,12 @@ import type {
   GeoJSONSource,
   LayerSpecification,
   Map as MapLibreMap,
+  MapLayerMouseEvent,
+  MapMouseEvent,
   SourceSpecification,
 } from 'maplibre-gl';
-import type { FeatureCollection, Point } from 'geojson';
+import type { FeatureCollection, MultiPolygon, Point } from 'geojson';
+import { loadMapData } from '../data';
 import { dataBase } from '../story';
 import type { Palette } from './basemap';
 
@@ -27,6 +30,10 @@ export const ADDRESS_ZOOM = 16;
 export const BUS_STOP_ZOOM = 14;
 
 const BUS_STOPS = 'bus-stops';
+
+/** Shelter sites draw as their real buildings from this zoom (their squares hide). */
+export const SITE_BUILDING_ZOOM = 15;
+const SITE_BUILDINGS = 'site-buildings';
 
 /** Aerial imagery fades in over this zoom range. */
 export const AERIAL_ZOOM: [number, number] = [16, 17];
@@ -279,6 +286,8 @@ const AERIAL_ATTRIBUTION =
 export function detailSources(): Record<string, SourceSpecification> {
   return {
     [BUS_STOPS]: { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, attribution: BUS_ATTRIBUTION },
+    // OpenStreetMap footprints (pipeline/site_buildings.py); OSM is already credited by the tiles.
+    [SITE_BUILDINGS]: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
     // minzoom: no tile is ever requested below the zoom where the imagery starts to show.
     [AERIAL]: { type: 'raster', tiles: [AERIAL_TILES], tileSize: 256, minzoom: AERIAL_ZOOM[0], maxzoom: 20, attribution: AERIAL_ATTRIBUTION },
   };
@@ -304,6 +313,39 @@ export function aerialLayer(P: Palette): LayerSpecification {
       'raster-fade-duration': 200,
     },
   };
+}
+
+const hovered: ExpressionSpecification = ['boolean', ['feature-state', 'hover'], false];
+
+/**
+ * Shelter sites as their real buildings (z15+), just above the other building footprints: a bold
+ * printed fill inside an ink outline, hollow when the building floods (like the hollow square).
+ * The fill is also the hover / tap target for the site card, so flooded ones keep it at opacity 0.
+ */
+export function siteBuildingLayers(P: Palette): LayerSpecification[] {
+  return [
+    {
+      id: SITE_BUILDINGS,
+      type: 'fill',
+      source: SITE_BUILDINGS,
+      minzoom: SITE_BUILDING_ZOOM,
+      paint: {
+        'fill-color': ['case', hovered, P.siteHover, P.siteFill],
+        'fill-opacity': ['case', hovered, 1, ['get', 'floods'], 0, 1],
+      },
+    },
+    {
+      id: `${SITE_BUILDINGS}-line`,
+      type: 'line',
+      source: SITE_BUILDINGS,
+      minzoom: SITE_BUILDING_ZOOM,
+      layout: { 'line-join': 'round' },
+      paint: {
+        'line-color': P.siteLine,
+        'line-width': ['interpolate', ['linear'], ['zoom'], SITE_BUILDING_ZOOM, 1.5, 18, 3],
+      },
+    },
+  ];
 }
 
 /**
@@ -403,6 +445,30 @@ export function detailLabelLayers(P: Palette): LayerSpecification[] {
   ];
 }
 
+/** A matched site's footprint, from pipeline/site_buildings.py. */
+export interface SiteBuilding {
+  id: string;
+  match: 'contains' | 'self' | 'grounds';
+  osm: string;
+  polygons: number[][][][];
+}
+
+let siteBuildings: Promise<SiteBuilding[]> | null = null;
+/** site_buildings.json, fetched once per page load (the map and the site squares both need it). */
+export function loadSiteBuildings(): Promise<SiteBuilding[]> {
+  siteBuildings ??= getJson<SiteBuilding[]>('site_buildings.json');
+  return siteBuildings;
+}
+
+/** What the site card shows: the building under the pointer, where it is on screen. */
+export interface SiteCardInfo {
+  name: string;
+  kind: string;
+  floodStep: number | null;
+  x: number;
+  y: number;
+}
+
 interface BusStop {
   id: string;
   name: string;
@@ -428,8 +494,56 @@ async function getJson<T>(file: string): Promise<T> {
  * the detail data files into their sources. A missing file only leaves its layer empty. Returns a
  * cleanup.
  */
-export function installDetail(map: MapLibreMap): () => void {
+export function installDetail(map: MapLibreMap, onSite: (card: SiteCardInfo | null) => void): () => void {
   let live = true;
+  Promise.all([loadSiteBuildings(), loadMapData()]).then(
+    ([buildings, data]) => {
+      if (!live) return;
+      const sites = new Map(data.sites.map((s) => [s.id, s]));
+      const fc: FeatureCollection<MultiPolygon> = { type: 'FeatureCollection', features: [] };
+      buildings.forEach((b, i) => {
+        const s = sites.get(b.id);
+        if (!s) return;
+        fc.features.push({
+          type: 'Feature',
+          id: i,
+          properties: { name: s.name, kind: s.kind, floodStep: s.floodStep, floods: s.floodStep !== null },
+          geometry: { type: 'MultiPolygon', coordinates: b.polygons },
+        });
+      });
+      fill(map, SITE_BUILDINGS, fc);
+    },
+    (e: unknown) => console.warn('Site buildings did not load:', e),
+  );
+
+  // The site card: hover with a mouse, tap on a phone. Tapping anywhere else closes it.
+  let hover: string | number | null = null;
+  const setHover = (id: string | number | null) => {
+    if (id === hover) return;
+    if (hover !== null) map.setFeatureState({ source: SITE_BUILDINGS, id: hover }, { hover: false });
+    hover = id;
+    if (id !== null) map.setFeatureState({ source: SITE_BUILDINGS, id }, { hover: true });
+  };
+  const show = (e: MapLayerMouseEvent) => {
+    const f = e.features?.[0];
+    if (!f || f.id === undefined) return;
+    setHover(f.id);
+    const p = f.properties as { name: string; kind: string; floodStep?: number | null };
+    onSite({ name: p.name, kind: p.kind, floodStep: p.floodStep ?? null, x: e.point.x, y: e.point.y });
+  };
+  const hide = () => {
+    setHover(null);
+    onSite(null);
+  };
+  const onMapClick = (e: MapMouseEvent) => {
+    if (!map.getLayer(SITE_BUILDINGS) || !map.queryRenderedFeatures(e.point, { layers: [SITE_BUILDINGS] }).length) hide();
+  };
+  map.on('mousemove', SITE_BUILDINGS, show);
+  map.on('click', SITE_BUILDINGS, show);
+  map.on('mouseleave', SITE_BUILDINGS, hide);
+  map.on('click', onMapClick);
+  map.on('zoomstart', hide);
+
   getJson<BusStop[]>('bus_stops.json').then(
     (stops) => {
       if (!live) return;
@@ -453,5 +567,10 @@ export function installDetail(map: MapLibreMap): () => void {
   return () => {
     live = false;
     map.off('styleimagemissing', onMissing);
+    map.off('mousemove', SITE_BUILDINGS, show);
+    map.off('click', SITE_BUILDINGS, show);
+    map.off('mouseleave', SITE_BUILDINGS, hide);
+    map.off('click', onMapClick);
+    map.off('zoomstart', hide);
   };
 }

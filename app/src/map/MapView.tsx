@@ -7,6 +7,7 @@ import { currentStory } from '../story';
 import { tokens } from '../tokens';
 import { basemapStyle } from './basemap';
 import { installDetail } from './detail';
+import { SiteCard } from '../ui/SiteCard';
 import { FloodView } from './flood';
 import { cameraForPoints, framePadding, framePoints, type Pad } from './frame';
 
@@ -108,7 +109,7 @@ export function MapView({
     // The water (DESIGN.md "Water") lives in the style; its animator starts once the style is in.
     let flood: FloodView | null = null;
     // Icons for the detail that appears as the player zooms in (map/detail.ts).
-    const detail = installDetail(map);
+    const detail = installDetail(map, (card) => useMapUi.getState().setSiteCard(card));
     map.once('load', () => {
       flood = new FloodView(map, tokens(), reducedMotion());
     });
@@ -188,6 +189,7 @@ export function MapView({
   return (
     <div className="absolute inset-0">
       <div ref={containerRef} className="h-full w-full" role="region" aria-label={label} />
+      <SiteCard />
       {tiltControl && (
         <button
           type="button"

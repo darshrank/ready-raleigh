@@ -123,8 +123,18 @@ const hospitalIcon = ({ ink, bond }: { ink: string; bond: string }) =>
       `</svg>`,
   );
 
-/** Hospitals (hospitals.json): a cross and the name. Part of the Facilities layer. */
-export function hospitalLayers(hospitals: Hospital[], visible: boolean) {
+/** "WakeMed Health & Hospitals: Raleigh Campus" reads as "WakeMed Raleigh Campus" on a map. */
+const hospitalName = (h: Hospital) => h.name.replace(/ Health & Hospitals:/, '');
+
+/** Label above the cross when another hospital sits just east, so close neighbors don't overprint. */
+const labelAbove = (h: Hospital, all: Hospital[]) =>
+  all.some((o) => o !== h && o.lon > h.lon && o.lon - h.lon < 0.02 && Math.abs(o.lat - h.lat) < 0.01);
+
+/** Below this zoom the whole city is on screen and hospital names crowd the place names. */
+export const HOSPITAL_LABEL_ZOOM = 10.5;
+
+/** Hospitals (hospitals.json): a cross, and the name from HOSPITAL_LABEL_ZOOM. Part of the Facilities layer. */
+export function hospitalLayers(hospitals: Hospital[], visible: boolean, zoom: number) {
   const { hex, rgb } = tokens();
   return [
     new IconLayer<Hospital>({
@@ -140,14 +150,14 @@ export function hospitalLayers(hospitals: Hospital[], visible: boolean) {
     new TextLayer<Hospital>({
       id: 'hospital-names',
       data: hospitals,
-      visible,
+      visible: visible && zoom >= HOSPITAL_LABEL_ZOOM,
       getPosition: (h) => [h.lon, h.lat],
-      getText: (h) => h.name,
+      getText: hospitalName,
       getSize: 13,
       getColor: rgb.ink,
-      getTextAnchor: 'start',
-      getAlignmentBaseline: 'center',
-      getPixelOffset: [14, 0],
+      getTextAnchor: (h) => (labelAbove(h, hospitals) ? 'middle' : 'start'),
+      getAlignmentBaseline: (h) => (labelAbove(h, hospitals) ? 'bottom' : 'center'),
+      getPixelOffset: (h) => (labelAbove(h, hospitals) ? [0, -12] : [14, 0]),
       fontFamily: '"Public Sans", system-ui, sans-serif',
       fontWeight: 600,
       characterSet: 'auto',

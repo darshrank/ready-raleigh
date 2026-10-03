@@ -1,4 +1,4 @@
-// Pieces of the map rail: "Who lives here" layer, legend, neighborhood card.
+// Pieces of the map rail: "Who lives here" and Facilities layers, legend, neighborhood card.
 import { useEffect, useMemo } from 'react';
 import type { Cell } from '@shared/types';
 import { FLOOD_STEP_NAMES } from '@shared/config';
@@ -69,10 +69,22 @@ export function PeopleLayerControl() {
   );
 }
 
+/** Facilities: hospitals and shelter sites. On by default; sites still show while placing a shelter. */
+export function FacilitiesControl() {
+  const on = useMapUi((s) => s.showFacilities);
+  const set = useMapUi((s) => s.setShowFacilities);
+  return (
+    <button type="button" aria-pressed={on} onClick={() => set(!on)} className="flex items-center gap-2 text-15 font-semibold">
+      <span aria-hidden className={'size-4 shrink-0 border-(length:--rule) border-ink ' + (on ? 'bg-ink' : 'bg-bond')} />
+      Hospitals and shelter sites
+    </button>
+  );
+}
+
 /** Legend dot radius in px per meter of DOT_RADIUS_M (36 m prints as a 6 px dot). */
 const LEGEND_PX_PER_M = 6 / 36;
 
-export function Legend() {
+export function Legend({ planning = false }: { planning?: boolean }) {
   return (
     <div className="grid gap-3 text-13">
       <div>
@@ -88,16 +100,49 @@ export function Legend() {
           ))}
         </ul>
       </div>
+      {planning && (
+        <div>
+          <p className="text-15 font-semibold">Your plan</p>
+          <ul className="mt-1.5 grid gap-1">
+            <li className="flex items-center gap-2">
+              <svg width="24" height="14" aria-hidden className="shrink-0 fill-safe">
+                <circle cx="6" cy="7" r="3" />
+                <circle cx="17" cy="7" r="5" />
+              </svg>
+              Residents covered (bigger dot, more of the block)
+            </li>
+            <li className="flex items-center gap-2">
+              <svg width="24" height="14" aria-hidden className="shrink-0">
+                <line x1="2" y1="7" x2="22" y2="7" className="stroke-alarm" strokeWidth="3.5" strokeLinecap="round" />
+              </svg>
+              Flood-prone road, closes in the flood
+            </li>
+            <li className="flex items-center gap-2">
+              <svg width="24" height="14" aria-hidden className="shrink-0">
+                <line x1="3" y1="7" x2="21" y2="7" className="stroke-ink" strokeWidth="8" strokeLinecap="round" />
+                <line x1="3" y1="7" x2="21" y2="7" className="stroke-safe" strokeWidth="4.5" strokeLinecap="round" />
+              </svg>
+              Protected road, stays open
+            </li>
+          </ul>
+        </div>
+      )}
       <div>
-        <p className="text-15 font-semibold">Shelter sites</p>
+        <p className="text-15 font-semibold">Facilities</p>
         <ul className="mt-1.5 grid gap-1">
           <li className="flex items-center gap-2">
+            <svg width="24" height="16" viewBox="0 0 40 40" aria-hidden className="shrink-0">
+              <path d="M14 3h12v11h11v12H26v11H14V26H3V14h11z" className="fill-ink" />
+            </svg>
+            Hospital
+          </li>
+          <li className="flex items-center gap-2">
             <span aria-hidden className="mx-1.5 size-3 shrink-0 bg-ink" />
-            Stays dry, can open as a shelter
+            Shelter site, stays dry
           </li>
           <li className="flex items-center gap-2">
             <span aria-hidden className="mx-1.5 size-3 shrink-0 border-[3px] border-ink bg-bond" />
-            Floods, cannot open
+            Shelter site that floods, cannot open
           </li>
         </ul>
       </div>

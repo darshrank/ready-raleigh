@@ -19,10 +19,25 @@ interface Props {
   tiltControl?: boolean;
   /** Clicks on the map. `info.object` is null when nothing pickable was hit. */
   onClick?: (info: PickingInfo) => void;
+  /** Called once the map exists; may return a cleanup. Lets a route add its own input handling. */
+  onReady?: (map: MapLibreMap, overlay: MapboxOverlay) => void | (() => void);
+  /** MapLibre's own arrow-key panning. Off when the route uses the arrows (keyboard play). */
+  keyboard?: boolean;
+  /** Cursor override (for example 'crosshair' while placing). */
+  cursor?: string | null;
   label?: string;
 }
 
-export function MapView({ layers, frame, tiltControl = true, onClick, label = 'Map of Raleigh' }: Props) {
+export function MapView({
+  layers,
+  frame,
+  tiltControl = true,
+  onClick,
+  onReady,
+  keyboard = true,
+  cursor = null,
+  label = 'Map of Raleigh',
+}: Props) {
   const tilt = useMapUi((s) => s.tilt);
   const setTilt = useMapUi((s) => s.setTilt);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -31,6 +46,10 @@ export function MapView({ layers, frame, tiltControl = true, onClick, label = 'M
   const userMoved = useRef(false);
   const onClickRef = useRef(onClick);
   onClickRef.current = onClick;
+  const cursorRef = useRef(cursor);
+  cursorRef.current = cursor;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -47,6 +66,7 @@ export function MapView({ layers, frame, tiltControl = true, onClick, label = 'M
     map.once('idle', () => {
       map.getContainer().querySelector('.maplibregl-compact-show')?.classList.remove('maplibregl-compact-show');
     });
+    map.on('zoomend', () => useMapUi.getState().setZoom(map.getZoom()));
     map.on('movestart', (e) => {
       if ('originalEvent' in e && e.originalEvent) userMoved.current = true;
     });
@@ -54,23 +74,34 @@ export function MapView({ layers, frame, tiltControl = true, onClick, label = 'M
       interleaved: true,
       layers: [],
       onClick: (info) => onClickRef.current?.(info),
-      getCursor: ({ isHovering, isDragging }) => (isDragging ? 'grabbing' : isHovering ? 'pointer' : 'grab'),
+      getCursor: ({ isHovering, isDragging }) =>
+        cursorRef.current ?? (isDragging ? 'grabbing' : isHovering ? 'pointer' : 'grab'),
     });
     map.addControl(overlay);
+    if (!keyboard) map.keyboard.disable();
     // Dev only: lets screenshot scripts and the console inspect the map.
     if (import.meta.env.DEV) (window as unknown as { __map?: MapLibreMap }).__map = map;
     mapRef.current = map;
     overlayRef.current = overlay;
+    const cleanup = onReadyRef.current?.(map, overlay);
     return () => {
+      cleanup?.();
       mapRef.current = null;
       overlayRef.current = null;
       map.remove();
     };
+    // The map is created once; `keyboard` is read at creation.
   }, []);
 
   useEffect(() => {
     overlayRef.current?.setProps({ layers });
   }, [layers]);
+
+  // deck.gl only asks getCursor on pointer moves; apply a changed override right away.
+  useEffect(() => {
+    const canvas = mapRef.current?.getCanvas();
+    if (canvas && cursor) canvas.style.cursor = cursor;
+  }, [cursor]);
 
   // Frame the data on load, and again on resize (rail opening, rotation) until the user takes over.
   useEffect(() => {

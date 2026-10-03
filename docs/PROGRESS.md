@@ -11,7 +11,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [x] P3 Pipeline: roads graph, flood steps, sites, coverage, flood roads, hospitals, halftone dots (A)
 - [x] P4 Engine: types, config, coverage, scoring, optimizer, tests (B)
 - [x] P5 Design tokens and map shell with layers (C)
-- [ ] P6 Planning phase: tray, placing, budget, timer, instant coverage (C)
+- [x] P6 Planning phase: tray, placing, budget, timer, instant coverage (C)
 - [ ] P7 Simulation: halftone flood, closing roads, trips, counters (C + B)
 - [ ] P8 Results screen with score breakdown and optimal plan side by side (C)
 - [ ] P9 Rooms: server websocket, host and player views, leaderboard, crowd heatmap, perception gap (D + C)
@@ -40,6 +40,52 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Next exact step:
 - Gotchas:
 -->
+
+### 2026-10-03 15:40 Claude (Opus 5.5) lane C, flood dots + P6
+- Priority from the user: a playable /solo for teammates. Balance (capacity / drive limit) is ON HOLD,
+  Codex will do the data and capacity changes later. Nothing in pipeline/ or the engine math changed.
+- Done, flood dots (a4257fe): the app loads the pipeline's flood_dots.json (`FloodDot` in
+  shared/src/data.ts). halftone.ts is gone; make-fixtures writes a fixture flood_dots.json (other
+  fixture files byte-identical). Measured in headless Chrome on real data: framed map 52.5 s -> 5.7 s,
+  worst main-thread stall 1.6 s -> 9 ms. The app no longer fetches flood_steps.geojson; it now loads
+  cells, sites, flood_roads, hospitals, flood_dots. `MapData` extends the engine's `DataBundle` (built once).
+- Done, P6 planning on /solo (real data):
+  - app/src/plan/: store.ts (zustand: phase, placements, armed, selected, hover/movingId, cursor,
+    endsAt, notice; refuses over-budget and duplicate site/road), targets.ts (screen-px snapping,
+    road labels "Unnamed road in <hood>", cursor steps), pieces.ts (disc SVGs for tray and map atlas),
+    layers.ts (flood roads, protected roads, --safe coverage halftone, hollow preview rings, target
+    highlight, cursor hex, pieces with the 1.15 -> 1 stamp, ghost), usePlanScore.ts (score(),
+    per-cell protected share, hover preview with +N), usePlanning.ts (pointer + keyboard input).
+  - app/src/ui/PlanPanel.tsx: budget chip stack, timer, residents covered (score().protectedPeople),
+    tray (dimmed at 40% with cost in --alarm when unaffordable), status line, plan list (keyboard
+    select + Remove), Start the storm, storm placeholder (alert band + summary, Back to planning,
+    Start over). routes/Solo.tsx lays it out: rail at lg, top bar + map + bottom sheet at 390.
+  - Facilities toggle (hospitals from hospitals.json + sites). Sites scale with zoom (5-14 px), so the
+    opening view has no downtown blob; hospital names from z10.5. MapView got onReady / keyboard /
+    cursor props (Host and Play unchanged and checked).
+- Verified (scripted with app/scripts/drive.mjs on real data): mouse: place all three pieces, hover
+  previews (+114,992 for Boylan Chapel), drag shelter to Mount Olivet, click + Delete. Touch at 390:
+  tap-place all three, touch-drag move, tap + Remove, one-finger pan still pans. Keyboard: tray via
+  Enter (focus jumps to the map), 1/2/3, arrows, Enter places, list select + arrows + Enter moves,
+  Delete removes. Budget to $0 refuses a road with a notice. Timer expiry ends planning. Counters
+  update on each action. Fixtures data path checked. typecheck, 30 tests, vite build.
+- Half done: nothing in P6. The storm phase is a placeholder (StormPlaceholder in ui/PlanPanel.tsx).
+- Next exact step: P7 simulation. Hook into `usePlan` phase 'storm' (store.endPlanning), replace
+  StormPlaceholder, drive the steps from `simTimeline(soloPlan(placements), data)` (usePlanScore.ts
+  has soloPlan). Load flood_steps/roads_graph only if the sim needs them (data.ts no longer does).
+- Gotchas:
+  - Game balance is still off (one shelter covers ~115k of 174k people, see the 14:30 entry). Waiting on
+    Codex's capacity work; rebuild optimal_flood.json after it lands.
+  - Pointer input is capture-phase on the map container (usePlanning.ts). A press on a piece calls
+    stopPropagation on pointerdown/mousedown/touchstart so MapLibre does not pan; after a placing tap
+    the next click is swallowed so deck.gl does not also open the neighborhood card.
+  - Coverage dots use the fixed list of at-risk cells as data (radius/alpha 0 for uncovered) so deck.gl
+    transitions per index; pieces are appended so only the new one "enters" (the stamp).
+  - Dev: `window.__plan` is the plan store, `window.__map` the map. drive.mjs takes "G(lon,lat)" and
+    "B(button text)" as coordinates. Do not edit files while a drive run is going: Vite reloads.
+  - Phone opening view is z9.4 (whole city), below DESIGN's z13 target; pinch to zoom works and snapping
+    is generous (48 px for sites on touch). Revisit framing if the demo is phone-first.
+  - Headless "time to framed map" is ~5.5 s, mostly fetching 5 MB sites.json + 1.1 MB cells.json.
 
 ### 2026-10-03 14:30 Claude (Opus 5.5) lanes A+B, real data + shelter rule
 - Done:

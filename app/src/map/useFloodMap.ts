@@ -4,7 +4,7 @@ import type { Cell, Site } from '@shared/types';
 import type { MapData } from '../data';
 import { useMapUi } from '../store';
 import { dataPoints } from './frame';
-import { cellsLayer, floodDotsLayer, hoodLayer, hospitalLayers, sitesLayer } from './layers';
+import { HOSPITAL_LABEL_ZOOM, cellsLayer, floodDotsLayer, hoodLayer, hospitalLayers, sitesLayer } from './layers';
 
 /**
  * Layers, framing points and click handling for the flood map, shared by every route that shows it.
@@ -14,6 +14,7 @@ export function useFloodMap(data: MapData | null, { targetingSites = false } = {
   const metric = useMapUi((s) => s.metric);
   const showPeople = useMapUi((s) => s.showPeople);
   const showFacilities = useMapUi((s) => s.showFacilities);
+  const labelZoom = useMapUi((s) => s.zoom >= HOSPITAL_LABEL_ZOOM);
   const selectedHood = useMapUi((s) => s.selectedHood);
   const selectHood = useMapUi((s) => s.selectHood);
 
@@ -25,7 +26,10 @@ export function useFloodMap(data: MapData | null, { targetingSites = false } = {
     () => sitesLayer(data?.sites ?? [], { targeting: targetingSites, visible: showFacilities || targetingSites }),
     [data, showFacilities, targetingSites],
   );
-  const hospitals = useMemo(() => hospitalLayers(data?.hospitals ?? [], showFacilities), [data, showFacilities]);
+  const hospitals = useMemo(
+    () => hospitalLayers(data?.hospitals ?? [], showFacilities, labelZoom ? HOSPITAL_LABEL_ZOOM : 0),
+    [data, showFacilities, labelZoom],
+  );
 
   // Order: invisible pick target / people fill, selected neighborhood, water.
   const base = useMemo(() => {

@@ -1,5 +1,6 @@
 /** $10M, $2.5M, $250K. */
 export function money(dollars: number): string {
+  if (dollars <= 0) return '$0';
   if (dollars >= 1_000_000) return `$${+(dollars / 1_000_000).toFixed(2)}M`;
   return `$${Math.round(dollars / 1000)}K`;
 }

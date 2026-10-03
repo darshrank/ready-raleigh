@@ -6,12 +6,11 @@ import type { Map as MaplibreMap } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import Map, { Marker, useControl, type MapRef } from "react-map-gl/maplibre";
 import { BASEMAP_ATTRIBUTION, CITY_ORDER, CITY_PACKS } from "@/cities";
-import { CITY_SCENARIOS } from "@/config/game";
 import { mapBus } from "@/lib/map-bus";
 import { useGame } from "@/stores/game";
 import type { Phase } from "@/types";
 import { CityMarker } from "./CityMarker";
-import { applyDaylight, daylightAt } from "./daylight";
+import { applyDaylight, daylightFor, GLOBE_PHASES } from "./daylight";
 import { useDeckLayers, handleDeckClick, handleDeckHover, deckTooltip } from "./layers";
 import { buildMapStyle } from "./style";
 
@@ -21,19 +20,8 @@ function DeckOverlay(props: MapboxOverlayProps) {
   return null;
 }
 
-const GLOBE_PHASES: Phase[] = ["landing", "select"];
 const GAME_PHASES: Phase[] = ["briefing", "planning", "locking", "simulating", "results"];
 const GLOBE_HOME = { center: [-88, 30] as [number, number], zoom: 2.05, pitch: 0, bearing: 0 };
-
-/** 0 night ... 1 day, from the theme setting or the scenario clock. */
-function daylightFor(s: ReturnType<typeof useGame.getState>): number {
-  if (s.theme === "day") return 1;
-  if (s.theme === "night") return 0;
-  if (!s.cityId || GLOBE_PHASES.includes(s.phase)) return 0;
-  const cfg = CITY_SCENARIOS[s.cityId];
-  const hour = s.phase === "simulating" || s.phase === "results" || s.phase === "locking" ? s.simHour : 0;
-  return Math.round(daylightAt(cfg.startClock + hour) * 20) / 20;
-}
 
 function DeckLayers() {
   const layers = useDeckLayers();
@@ -44,7 +32,7 @@ function DeckLayers() {
       onClick={handleDeckClick}
       onHover={handleDeckHover}
       getTooltip={deckTooltip}
-      pickingRadius={6}
+      pickingRadius={10}
     />
   );
 }
@@ -69,6 +57,8 @@ export function WorldMap() {
     if (!m) return;
     mapBus.set(m);
     applyDaylight(m, daylightFor(useGame.getState()));
+    // phones: keep the attribution behind its (i) button instead of over the HUD
+    if (window.innerWidth < 640) m.getContainer().querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
     m.on("dragstart", () => (interacting.current = true));
     m.on("dragend", () => setTimeout(() => (interacting.current = false), 2500));
   }, [map]);
@@ -99,11 +89,28 @@ export function WorldMap() {
     return () => cancelAnimationFrame(raf);
   }, [phase, map, reducedMotion]);
 
-  // projection: globe for the world view, mercator in the city
+  // projection: globe for the world view, flat in the city. Switch before the phase's first camera
+  // move: the deck.gl overlay can't follow the globe, and switching mid-flight wedges MapLibre.
   useEffect(() => {
     const m = map();
-    if (!m || !m.isStyleLoaded()) return;
-    if (GLOBE_PHASES.includes(phase)) m.setProjection({ type: "globe" });
+    const want = GLOBE_PHASES.includes(phase) ? "globe" : GAME_PHASES.includes(phase) ? "mercator" : null;
+    if (!m || !want) return;
+    const apply = () => {
+      try {
+        if (m.getProjection()?.type === want) return true;
+        m.stop();
+        m.setProjection({ type: want });
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    if (apply()) return;
+    const retry = () => setTimeout(apply, 0);
+    m.once("idle", retry);
+    return () => {
+      m.off("idle", retry);
+    };
   }, [phase, map]);
 
   // camera director
@@ -130,15 +137,11 @@ export function WorldMap() {
     const c = CITY_PACKS[cityId];
     if (GAME_PHASES.includes(phase) && phase !== "briefing" && m.getZoom() < 9) {
       const b = c.cameraBookmarks.find((x) => x.id === "overview") ?? c.cameraBookmarks[0];
-      m.setProjection({ type: "mercator" });
       m.flyTo({ center: b.center, zoom: b.zoom + 0.3, pitch: 48, bearing: b.bearing, padding: noPad, duration: duration ?? 2000, essential: true });
       return;
     }
-    if (phase === "mode" || phase === "preview" || phase === "loading") {
+    if (phase === "mode" || phase === "loading") {
       m.flyTo({ center: c.center, zoom: c.initialZoom, pitch: c.initialPitch, bearing: c.initialBearing, padding: noPad, duration: duration ?? 4200, curve: 1.6, essential: true });
-      const setMerc = () => m.setProjection({ type: "mercator" });
-      if (duration === 0) setMerc();
-      else m.once("moveend", setMerc);
     }
   }, [phase, hoverCity, cityId, map, reducedMotion]);
 
@@ -153,9 +156,15 @@ export function WorldMap() {
       ease();
       return;
     }
-    m.once("moveend", ease);
+    // defer out of MapLibre's frame: starting a camera move inside its moveend breaks its render loop
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const later = () => {
+      t = setTimeout(() => !m.isMoving() && ease(), 0);
+    };
+    m.once("moveend", later);
     return () => {
-      m.off("moveend", ease);
+      m.off("moveend", later);
+      clearTimeout(t);
     };
   }, [cameraMode, phase, map, reducedMotion]);
 
@@ -169,6 +178,7 @@ export function WorldMap() {
   const showDeck = dataReady && GAME_PHASES.includes(phase);
 
   return (
+    <div id="map-shell" className="absolute inset-0 will-change-transform">
     <Map
       ref={mapRef}
       initialViewState={{ longitude: GLOBE_HOME.center[0], latitude: GLOBE_HOME.center[1], zoom: 1.6, pitch: 0, bearing: 0 }}
@@ -187,5 +197,6 @@ export function WorldMap() {
         ))}
       {showDeck && <DeckLayers />}
     </Map>
+    </div>
   );
 }

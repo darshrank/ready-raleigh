@@ -1,4 +1,25 @@
 import type { Map as MaplibreMap } from "maplibre-gl";
+import { CITY_SCENARIOS } from "@/config/game";
+import type { CityId, Phase } from "@/types";
+
+export const GLOBE_PHASES: Phase[] = ["landing", "select"];
+
+/** 0 night ... 1 day, from the theme setting or the scenario clock. */
+export function daylightFor(s: { theme: "auto" | "day" | "night"; cityId: CityId | null; phase: Phase; simHour: number }): number {
+  if (s.theme === "day") return 1;
+  if (s.theme === "night") return 0;
+  if (!s.cityId || GLOBE_PHASES.includes(s.phase)) return 0;
+  const cfg = CITY_SCENARIOS[s.cityId];
+  const hour = s.phase === "simulating" || s.phase === "results" || s.phase === "locking" ? s.simHour : 0;
+  return Math.round(daylightAt(cfg.startClock + hour) * 20) / 20;
+}
+
+/** Basemap building colour for a daylight level, for things drawn to match the buildings. */
+export function buildingRGB(d: number): [number, number, number] {
+  const night = [27, 42, 72];
+  const day = [201, 208, 218];
+  return night.map((v, i) => Math.round(v + (day[i] - v) * d)) as [number, number, number];
+}
 
 /** Paint values for the night and day looks of the basemap. Only colours change, so the deck overlay stays attached. */
 const NIGHT = {
@@ -89,10 +110,12 @@ export function applyDaylight(map: MaplibreMap, d: number) {
   } catch {
     if (waiting) return;
     waiting = true;
-    map.once("styledata", () => {
-      waiting = false;
-      applyDaylight(map, latest);
-    });
+    map.once("styledata", () =>
+      setTimeout(() => {
+        waiting = false;
+        applyDaylight(map, latest);
+      }, 0),
+    );
   }
 }
 

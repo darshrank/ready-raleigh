@@ -6,10 +6,11 @@ import { movingFlag, placeOrMove } from "@/features/map/layers";
 import { candidateSets } from "@/lib/engine/optimize";
 import { useGame } from "@/stores/game";
 import { AchillesScan, runAchillesScan } from "./AchillesScan";
+import { AiCommander } from "./AiCommander";
 import { BottomDock } from "./BottomDock";
 import { Inspector } from "./Inspector";
 import { Toolbar } from "./Toolbar";
-import { TopBar } from "./TopBar";
+import { lockPlan, TopBar } from "./TopBar";
 
 export function PlanningHud() {
   const demo = useGame((s) => s.demo);
@@ -62,10 +63,7 @@ export function PlanningHud() {
         placeOrMove(protect.id, c.id, c.lon, c.lat, c.label);
       }
     });
-    at(11800, () => {
-      useGame.setState({ timerRunning: false, activeTool: null, hover: null });
-      useGame.getState().setPhase("locking");
-    });
+    at(11800, lockPlan);
     return () => timers.forEach(clearTimeout);
   }, [demo]);
 
@@ -76,6 +74,7 @@ export function PlanningHud() {
       <Inspector />
       <AchillesScan />
       <BottomDock />
+      <AiCommander />
     </motion.div>
   );
 }

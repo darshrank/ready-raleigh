@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ROUND } from "@/config/game";
+import { sfx } from "@/lib/audio/sfx";
 import { useGame } from "@/stores/game";
 
 /** 3-2-1, PLAN LOCKED. Display only: the SimulationController runs the engine. */
@@ -14,7 +15,12 @@ export function LockOverlay() {
   const reducedMotion = useGame((s) => s.reducedMotion);
 
   useEffect(() => {
-    if (count <= 0) return;
+    if (count <= 0) {
+      sfx.lock();
+      sfx.buzz([30, 40, 120]);
+      return;
+    }
+    sfx.tick();
     const t = setTimeout(() => setCount((c) => c - 1), reducedMotion ? 250 : 850);
     return () => clearTimeout(t);
   }, [count, reducedMotion]);

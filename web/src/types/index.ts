@@ -4,6 +4,7 @@ export type CityId = "raleigh" | "miami" | "new-york" | "san-francisco";
 
 export type Phase =
   | "landing"
+  | "join"
   | "select"
   | "mode"
   | "preview"

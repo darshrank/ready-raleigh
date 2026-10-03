@@ -173,6 +173,20 @@
   outline: 2px solid #38bdf8;
 }
 
+.heat-haze {
+  animation: heat-pulse 4.5s ease-in-out infinite;
+}
+@keyframes heat-pulse {
+  0%, 100% { filter: saturate(1); transform: scale(1); }
+  50% { filter: saturate(1.35); transform: scale(1.03); }
+}
+
+/* phones: no rubber-band scroll or double-tap zoom on the game surface */
+html, body {
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;

@@ -826,7 +826,7 @@ function eventFeed(data: CityData, plan: EnginePlan, events: ResolvedEvents, x: 
     evs.push(...isolated.sort((a, b) => pop(b) - pop(a)).slice(0, 6));
     if (isolated.length > 6) {
       const first = Math.min(...isolated.map((e) => e.hour));
-      evs.push({ hour: first, level: "critical", title: `${isolated.length} neighborhoods losing access`, detail: "Use Shadow City to see which parts of the city can still reach help." });
+      evs.push({ hour: first, level: "critical", title: `${isolated.length} neighborhoods losing access`, detail: "Purple neighborhoods can no longer reach a hospital, shelter or safe ground within 30 minutes." });
     }
   }
   const peakTitle = H.type === "heat" ? "Heat index peaks" : H.type === "quake" ? "Fires at their largest extent" : H.type === "coastal" ? "Surge and rain peak together" : "Flood peak";

@@ -3,6 +3,17 @@
 # local agent tooling (DevRelay)
 .agents/
 
+# root-level tool installs (the app's packages live in web/)
+/node_modules/
+
+# backend: virtualenv and generated audio cache
+backend/.venv/
+backend/.cache/
+.mypy_cache/
+
+# Next.js build output, wherever it lands
+.next/
+
 # data prep: virtualenv and raw downloads (regenerate with the build script)
 data-prep/.venv/
 data-prep/cache/

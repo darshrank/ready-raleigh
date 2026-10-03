@@ -79,7 +79,10 @@ interface GameState {
 
   reducedMotion: boolean;
   highContrast: boolean;
+  /** Voice narration of critical events during the simulation. */
   radio: boolean;
+  /** Master switch for sound effects, voice and vibration. */
+  sound: boolean;
   theme: Theme;
   /** Judge demo: auto-plays a seeded round end to end. */
   demo: boolean;
@@ -91,6 +94,8 @@ interface GameState {
   setHoverCity: (c: CityId | null) => void;
   chooseCity: (c: CityId) => void;
   setMode: (m: GameMode) => void;
+  /** Shared room seed: every player faces the same random events. */
+  setSeed: (seed: number) => void;
   setData: (d: CityData) => void;
   setTool: (k: InterventionKind | null) => void;
   setHover: (h: GameState["hover"]) => void;
@@ -114,7 +119,7 @@ interface GameState {
   setReference: (r: ReferenceResult | null) => void;
   setBots: (b: BotResult[] | null) => void;
   setResultsStep: (n: number) => void;
-  setPref: (k: "reducedMotion" | "highContrast" | "radio", v: boolean) => void;
+  setPref: (k: "reducedMotion" | "highContrast" | "radio" | "sound", v: boolean) => void;
   setTheme: (t: Theme) => void;
   newRound: () => void;
   backToLanding: () => void;
@@ -181,7 +186,8 @@ export const useGame = create<GameState>((set, get) => ({
 
   reducedMotion: false,
   highContrast: false,
-  radio: false,
+  radio: true,
+  sound: true,
   theme: "auto",
   demo: false,
   planningSeconds: ROUND.planningSeconds,
@@ -202,6 +208,10 @@ export const useGame = create<GameState>((set, get) => ({
       seed: mode === "daily" ? dailySeed() : mode === "solo" ? 20261003 : Math.floor(Math.random() * 1e9),
       roomCode: mode === "multiplayer" ? randomCode() : "",
     }),
+  setSeed: (seed) => {
+    const data = get().data;
+    set({ seed, ...(data ? { events: resolveEvents(data, seed) } : {}) });
+  },
   setData: (data) => {
     const coverage = createCoverageContext(data);
     const events = resolveEvents(data, get().seed);

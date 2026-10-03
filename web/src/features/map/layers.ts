@@ -4,10 +4,15 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { HeatmapLayer } from "@deck.gl/aggregation-layers";
 import { DataFilterExtension } from "@deck.gl/extensions";
 import { H3HexagonLayer, TripsLayer } from "@deck.gl/geo-layers";
-import { ArcLayer, GeoJsonLayer, IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
+import { ArcLayer, ColumnLayer, GeoJsonLayer, IconLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
 import { useMemo } from "react";
-import { specFor, type InterventionKind, type InterventionSpec, type SnapTarget } from "@/config/game";
+import { ROUND, specFor, type InterventionKind, type InterventionSpec, type SnapTarget } from "@/config/game";
+import { standing } from "@/features/fx/collapse";
+import { useFx, type Collapse } from "@/features/fx/fx-store";
+import { useRoom } from "@/features/room/room-store";
+import { sfx } from "@/lib/audio/sfx";
 import type { CityData, ZoneProps } from "@/lib/data/city-data";
+import { metersBetween } from "@/lib/engine/geo";
 import { busReach, crossingDependents, shelterReach } from "@/lib/engine/coverage";
 import { crowdAnalysis } from "@/lib/engine/crowd";
 import { toEnginePlan, type EnginePlan } from "@/lib/engine/plan";
@@ -15,7 +20,16 @@ import { KIND, TRIP_DELAYED, TRIP_REROUTED, type AgentRecord, type SimResult, ty
 import { cfgOf, useGame } from "@/stores/game";
 import type { PlacedIntervention } from "@/types";
 import { AGENT, FLOOD, FLOOD_ZONE_FILL, QUADRANT_COLOR, riskRamp, type RGBA } from "./colors";
+import { buildingRGB, daylightFor } from "./daylight";
 import { deckIcon } from "./icons";
+
+/** Shaking intensity colours (MMI VII yellow ... IX+ deep red). */
+function mmiColor(mmi: number, alpha: number): RGBA {
+  if (mmi >= 8.8) return [190, 18, 60, alpha];
+  if (mmi >= 8.3) return [239, 68, 68, alpha];
+  if (mmi >= 7.8) return [249, 115, 22, alpha];
+  return [250, 204, 21, alpha];
+}
 
 const timeFilter = new DataFilterExtension({ filterSize: 1 });
 const timeFilter2 = new DataFilterExtension({ filterSize: 2 });
@@ -104,6 +118,7 @@ export function useDeckLayers(): Layer[] {
   const simHour = useGame((s) => s.simHour);
   const cameraMode = useGame((s) => s.cameraMode);
   const resultsStep = useGame((s) => s.resultsStep);
+  const mode = useGame((s) => s.mode);
   const reference = useGame((s) => s.reference);
   const bots = useGame((s) => s.bots);
   const flood = coverage?.flood;
@@ -170,16 +185,36 @@ export function useDeckLayers(): Layer[] {
     return { spec, ring: { lon, lat, r: spec.radiusM ?? 300 } };
   }, [data, coverage, hover, selected, placements, plan]);
 
+  const collapses = useFx((s) => s.collapses);
+  const daylight = useGame(daylightFor);
+  /** Strong-shaking cells and when the seismic wave reaches each (hours after the mainshock). */
+  const shaking = useMemo(() => {
+    if (!data || data.cfg.hazard.type !== "quake") return null;
+    const [elon, elat] = data.cfg.hazard.quake!.epicenter;
+    const idx: number[] = [];
+    const arrive = new Float32Array(data.cells.h3.length);
+    let far = 1;
+    for (let i = 0; i < data.cells.h3.length; i++) {
+      if (data.cells.v[i] < 740) continue;
+      idx.push(i);
+      arrive[i] = metersBetween(elon, elat, data.cells.lon[i], data.cells.lat[i]);
+      far = Math.max(far, arrive[i]);
+    }
+    for (const i of idx) arrive[i] = (arrive[i] / far) * 0.12;
+    return { idx, arrive };
+  }, [data]);
   const simDerived = useMemo(() => (sim && data ? deriveSim(data, sim) : null), [sim, data]);
   const blackoutFC = useMemo(() => {
     const zones = new Set(sim?.blackout?.zones ?? []);
     if (!data || !zones.size) return null;
     return { ...data.zoneFC, features: data.zoneFC.features.filter((f) => zones.has(f.properties.id)) };
   }, [data, sim]);
+  const room = useRoom((s) => s.room);
   const crowd = useMemo(() => {
-    if (!data || !bots || !baseline || phase !== "results" || !plan) return null;
-    return crowdAnalysis(data, [...bots.map((b) => b.plan), plan], baseline);
-  }, [data, bots, baseline, plan, phase]);
+    if (!data || !baseline || phase !== "results" || !plan) return null;
+    const others = mode === "multiplayer" ? (room?.players.filter((p) => p.result).map((p) => p.result!.plan) ?? []) : (bots?.map((b) => b.plan) ?? []);
+    return others.length ? crowdAnalysis(data, [...others, plan], baseline) : null;
+  }, [data, bots, baseline, plan, phase, mode, room]);
 
   if (!data || !flood || !cfg || !plan) return [];
   const out: Layer[] = [];
@@ -194,7 +229,7 @@ export function useDeckLayers(): Layer[] {
   // ---------- zones
   if (layers.zones) {
     const checkpoint = simDerived ? Math.min(sim!.zoneAccess.hours.length - 1, Math.floor(simHour / 2)) : -1;
-    const quad = crowd && phase === "results" && resultsStep === 4 ? new Map(crowd.zones.map((z) => [z.zone, z.quadrant])) : null;
+    const quad = null as Map<number, keyof typeof QUADRANT_COLOR> | null;
     out.push(
       new GeoJsonLayer({
         id: "zones",
@@ -349,20 +384,106 @@ export function useDeckLayers(): Layer[] {
         } as never),
       );
       const q = cfg.hazard.quake!;
-      if (t < 0.6) {
+      // impact zone: the scenario's strong-shaking cells light up as the wave passes, then fade
+      if (shaking && t < 1.8) {
+        const fade = t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 1.1);
+        out.push(
+          new H3HexagonLayer<number>({
+            id: "shaking",
+            data: shaking.idx,
+            getHexagon: (i: number) => data.cells.h3[i],
+            getFillColor: (i: number) => mmiColor(data.cells.v[i] / 100, 95),
+            extruded: false,
+            stroked: false,
+            highPrecision: false,
+            opacity: fade * (0.75 + 0.25 * Math.sin(t * 90)),
+            getFilterValue: (i: number) => shaking.arrive[i],
+            filterRange: [0, t],
+            extensions: [timeFilter],
+          } as never),
+        );
+      }
+      if (t < 1.2) {
+        const waves = [0, 0.05, 0.1, 0.15, 0.22, 0.3];
         out.push(
           new ScatterplotLayer({
             id: "seismic-wave",
             ...ON_TOP,
-            data: [0, 0.2, 0.4],
+            data: waves.filter((d) => t >= d && t - d < 0.45),
             getPosition: () => q.epicenter,
-            getRadius: (d: number) => Math.max(0, (t - d * 0.3) / 0.6) * 30000,
+            getRadius: (d: number) => ((t - d) / 0.45) * 42000,
             radiusUnits: "meters",
             filled: false,
             stroked: true,
-            getLineColor: (d: number) => [251, 191, 36, Math.max(0, 255 * (1 - (t - d * 0.3) / 0.6))],
-            lineWidthMinPixels: 3,
+            getLineColor: (d: number) => [251, 146, 60, Math.max(0, 255 * (1 - (t - d) / 0.45))],
+            lineWidthMinPixels: 4,
             updateTriggers: { getRadius: [t], getLineColor: [t] },
+          }),
+          new ScatterplotLayer({
+            id: "epicenter",
+            ...ON_TOP,
+            data: [q.epicenter],
+            getPosition: (d: [number, number]) => d,
+            getRadius: 900 + 500 * Math.abs(Math.sin(t * 40)),
+            radiusUnits: "meters",
+            getFillColor: [244, 63, 94, 170],
+            getLineColor: [255, 255, 255, 230],
+            lineWidthMinPixels: 2,
+            stroked: true,
+            updateTriggers: { getRadius: [t] },
+          }),
+          new TextLayer({
+            id: "epicenter-label",
+            ...ON_TOP,
+            data: [q.epicenter],
+            getPosition: (d: [number, number]) => d,
+            getText: () => "EPICENTER - M7.8",
+            getColor: [255, 228, 230, 255],
+            getSize: 13,
+            getPixelOffset: [0, -26],
+            fontFamily: "monospace",
+            fontWeight: 700,
+            outlineColor: [5, 8, 16, 255],
+            outlineWidth: 4,
+            fontSettings: { sdf: true },
+          }),
+        );
+      }
+      if (collapses.length) {
+        const base = buildingRGB(daylight);
+        const falling = (c: Collapse) => t >= c.start - 0.02 && t < c.start + 0.5;
+        out.push(
+          new SolidPolygonLayer<Collapse>({
+            id: "collapse",
+            data: collapses,
+            getPolygon: (c) => c.polygon as [number, number][],
+            extruded: true,
+            getElevation: (c) => c.height * standing(t, c.start),
+            getFillColor: (c) => {
+              const k = 1 - standing(t, c.start);
+              return [base[0] * (1 - k) + 120 * k, base[1] * (1 - k) + 104 * k, base[2] * (1 - k) + 88 * k, 255];
+            },
+            updateTriggers: { getElevation: [t], getFillColor: [t, daylight] },
+          }),
+          new ColumnLayer<Collapse>({
+            id: "dust-plume",
+            data: collapses.filter(falling),
+            getPosition: (c) => [c.lon, c.lat],
+            radius: 26,
+            diskResolution: 10,
+            extruded: true,
+            getElevation: (c) => Math.max(0, (t - c.start) / 0.5) * (30 + c.height * 0.8),
+            getFillColor: (c) => [176, 158, 132, Math.max(0, 150 * (1 - (t - c.start) / 0.5))],
+            updateTriggers: { getElevation: [t], getFillColor: [t] },
+          }),
+          new ScatterplotLayer<Collapse>({
+            id: "dust-ground",
+            data: collapses.filter(falling),
+            getPosition: (c) => [c.lon, c.lat],
+            getRadius: (c) => 15 + Math.max(0, (t - c.start) / 0.5) * 90,
+            radiusUnits: "meters",
+            getFillColor: (c) => [190, 172, 146, Math.max(0, 130 * (1 - (t - c.start) / 0.5))],
+            updateTriggers: { getRadius: [t], getFillColor: [t] },
           }),
         );
       }
@@ -376,6 +497,7 @@ export function useDeckLayers(): Layer[] {
           extruded: false,
           stroked: false,
           highPrecision: false,
+          opacity: 0.84 + 0.12 * Math.sin(t * 6),
           getFilterValue: (i: number) => arrival[i],
           filterRange: [0, t],
           filterSoftRange: [0, Math.max(0, t - 0.8)],
@@ -417,6 +539,8 @@ export function useDeckLayers(): Layer[] {
     );
   }
   if (simDerived && simMode && type !== "heat") {
+    // flooded streets read as water; quake damage reads as broken red road
+    const wet = type === "flood" || type === "coastal";
     out.push(
       new PathLayer({
         id: "closed-glow",
@@ -424,11 +548,12 @@ export function useDeckLayers(): Layer[] {
         data: simDerived.closed,
         getPath: (d: ClosedItem) => d.path,
         positionFormat: "XY",
-        getColor: [244, 63, 94, 70],
-        getWidth: 10,
+        getColor: wet ? [30, 144, 255, 110] : [244, 63, 94, 70],
+        getWidth: wet ? 13 + 3 * Math.sin(t * 8) : 10,
         widthUnits: "pixels",
         getFilterValue: (d: ClosedItem) => d.t,
         filterRange: [0, t],
+        filterSoftRange: wet ? [0, Math.max(0, t - 0.4)] : undefined,
         extensions: [timeFilter],
       } as never),
       new PathLayer({
@@ -437,8 +562,8 @@ export function useDeckLayers(): Layer[] {
         data: simDerived.closed,
         getPath: (d: ClosedItem) => d.path,
         positionFormat: "XY",
-        getColor: [255, 92, 120, 255],
-        getWidth: 3,
+        getColor: wet ? [125, 211, 252, 245] : [255, 92, 120, 255],
+        getWidth: wet ? 4 : 3,
         widthUnits: "pixels",
         pickable: true,
         getFilterValue: (d: ClosedItem) => d.t,
@@ -755,13 +880,13 @@ export function useDeckLayers(): Layer[] {
   }
 
   // ---------- results overlays
-  if (phase === "results" && simDerived && (resultsStep <= 1 || resultsStep === 5)) {
+  if (phase === "results" && simDerived && resultsStep !== 1) {
     out.push(
       new ScatterplotLayer({ id: "final-stranded", ...ON_TOP, data: simDerived.strandedPts.filter((d) => d.rescue >= 1e6), getPosition: (d) => d.pos, getRadius: (d) => 2 + Math.sqrt(d.w) / 4, radiusUnits: "pixels", getFillColor: [...AGENT.stranded, 230] as RGBA, pickable: true }),
       new ScatterplotLayer({ id: "final-isolated", ...ON_TOP, data: simDerived.isolatedPts, getPosition: (d) => d.pos, getRadius: (d) => 2 + Math.sqrt(d.w) / 4, radiusUnits: "pixels", getFillColor: [...AGENT.isolated, 230] as RGBA }),
     );
   }
-  if (phase === "results" && crowd && resultsStep === 3) {
+  if (phase === "results" && crowd && resultsStep === 1) {
     out.push(
       new HeatmapLayer({
         id: "crowd-heat",
@@ -807,7 +932,7 @@ export function useDeckLayers(): Layer[] {
       }),
     );
   }
-  if (bots && phase === "results" && resultsStep === 3) {
+  if (bots && mode !== "multiplayer" && phase === "results" && resultsStep === 1) {
     const botItems = bots.flatMap((b) => planIcons(data, b.plan));
     out.push(new IconLayer({ id: "bot-placements", ...ON_TOP, data: botItems, getPosition: (d) => [d.lon, d.lat], getIcon: (d) => deckIcon(d.icon, "#94a3b8"), getSize: 22 }));
   }
@@ -823,7 +948,7 @@ export function useDeckLayers(): Layer[] {
       updateTriggers: { getSize: [selected] },
     }),
   );
-  if (phase === "results" && reference && resultsStep === 2) {
+  if (phase === "results" && reference && resultsStep === 1) {
     const refItems = planIcons(data, reference.plan);
     out.push(
       new IconLayer({ id: "reference-placements", ...ON_TOP, data: refItems, getPosition: (p) => [p.lon, p.lat], getIcon: (p) => deckIcon(p.icon, "#c084fc"), getSize: 34, pickable: true }),
@@ -987,9 +1112,25 @@ export function placeOrMove(kind: InterventionKind, target: number, lon: number,
     s.pushFeed(`Moved ${label}`, "info");
     return;
   }
-  const ok = s.place({ kind, target, lon, lat, label });
-  if (ok) s.pushFeed(`Placed: ${label}`, "success");
-  else s.pushFeed("Not enough budget, or already placed there.", "warning");
+  const spec = specFor(cfgOf(s), kind);
+  const before = s.estimate?.protected ?? 0;
+  const left = ROUND.budget - s.placements.reduce((sum, p) => sum + specFor(cfgOf(s), p.kind).cost, 0);
+  if (spec.cost > left) {
+    sfx.deny();
+    useFx.getState().toast("Over budget", false);
+    return;
+  }
+  if (s.placements.some((p) => p.kind === kind && p.target === target)) {
+    sfx.deny();
+    useFx.getState().toast("Already placed there", false);
+    return;
+  }
+  if (!s.place({ kind, target, lon, lat, label })) return;
+  sfx.place();
+  sfx.buzz(18);
+  const gain = Math.round((useGame.getState().estimate?.protected ?? before) - before);
+  useFx.getState().toast(gain > 0 ? `+${gain.toLocaleString()} protected` : `${spec.short} placed`, true);
+  s.pushFeed(`Placed: ${label}`, "success");
 }
 
 /** Set by the inspector's Move button: the next valid click moves this placement. */
@@ -1042,7 +1183,8 @@ export function deckTooltip(info: PickingInfo) {
   if (id === "hospitals") return { html: `<b>${obj.name}</b>`, style };
   if (id === "closed") {
     const cid = data.edgeCrossing[obj.e as number];
-    return { html: `<b>${cid >= 0 ? data.crossings[cid].label : data.graph.edgeName(obj.e as number)}</b><br/><span style="color:#fb7185">Closed at hour ${(obj.t as number).toFixed(1)}</span>`, style };
+    const wet = cfg.hazard.type === "flood" || cfg.hazard.type === "coastal";
+    return { html: `<b>${cid >= 0 ? data.crossings[cid].label : data.graph.edgeName(obj.e as number)}</b><br/><span style="color:${wet ? "#7dd3fc" : "#fb7185"}">${wet ? "Flooded" : "Closed"} at hour ${(obj.t as number).toFixed(1)}</span>`, style };
   }
   if (id === "placements" || id === "reference-placements") return { html: `<b>${obj.label}</b>`, style };
   return null;

@@ -27,7 +27,7 @@ export function Inspector() {
   if (hover) return <RipplePreview />;
   if (!selected) return null;
   return (
-    <motion.div key={JSON.stringify(selected)} initial={{ x: 24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="pointer-events-none absolute right-3 top-24 z-20 w-[300px] sm:right-4">
+    <motion.div key={JSON.stringify(selected)} initial={{ x: 24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="pointer-events-none absolute right-3 top-24 z-20 hidden w-[300px] sm:right-4 md:block">
       <Panel className="pointer-events-auto max-h-[calc(100vh-12rem)] overflow-y-auto p-4">
         <button type="button" onClick={() => select(null)} className="absolute right-3 top-3 text-dim hover:text-white" aria-label="Close inspector">
           <X className="size-4" />
@@ -255,7 +255,7 @@ function RipplePreview() {
   const failAt = spec.snapsTo === "shelterSite" ? coverage.flood.shelterFlood[hover.target] : Infinity;
   const simOnly = spec.effect === "rescue" || spec.effect === "medical" || (spec.effect === "shield" && spec.sources?.includes(5));
   return (
-    <div className="pointer-events-none absolute right-3 top-24 z-20 w-[300px] sm:right-4">
+    <div className="pointer-events-none absolute right-3 top-24 z-20 hidden w-[300px] sm:right-4 md:block">
       <Panel className="p-4">
         <div className="hud-label text-[var(--city)]">See the ripple</div>
         <div className="mt-1 font-display text-lg font-extrabold uppercase tracking-wide text-white">{pt?.label}</div>

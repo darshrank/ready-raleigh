@@ -18,7 +18,7 @@ export const BRAND = {
 
 export const ROUND = {
   budget: 10_000_000,
-  planningSeconds: 180,
+  planningSeconds: 120,
   timeFreezeSeconds: 10,
   intelTokens: 3,
   lockCountdown: 3,
@@ -382,9 +382,9 @@ const SAN_FRANCISCO: ScenarioParams = {
   olderAdultExtraDelayHours: 1,
   refHours: [0.5, 2],
   playback: [
-    { untilHour: 0.5, secondsPerHour: 8 },
-    { untilHour: 6, secondsPerHour: 4.2 },
-    { untilHour: 24, secondsPerHour: 1.4 },
+    { untilHour: 0.6, secondsPerHour: 14 },
+    { untilHour: 6, secondsPerHour: 4 },
+    { untilHour: 24, secondsPerHour: 1.3 },
   ],
   phases: [
     { untilHour: 0.2, label: "Shaking" },

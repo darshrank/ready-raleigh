@@ -72,7 +72,7 @@ export function AchillesScan() {
   return (
     <AnimatePresence>
       {state === "scanning" && (
-        <motion.div key="scan" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="pointer-events-none absolute left-1/2 top-28 z-30 w-[440px] -translate-x-1/2">
+        <motion.div key="scan" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="pointer-events-none absolute left-1/2 top-24 z-30 w-[min(440px,calc(100vw-2rem))] -translate-x-1/2 sm:top-28">
           <Panel className="relative overflow-hidden border-rose-400/40 p-5">
             <div className="pointer-events-none absolute inset-0 overflow-hidden">
               <div className="absolute inset-x-0 h-1/2 animate-scan bg-gradient-to-b from-transparent via-rose-400/15 to-transparent" />
@@ -91,7 +91,7 @@ export function AchillesScan() {
         </motion.div>
       )}
       {state === "done" && !dismissed && (top || gap) && (
-        <motion.div key="found" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="pointer-events-none absolute bottom-28 left-1/2 z-30 w-[560px] max-w-[calc(100vw-2rem)] -translate-x-1/2">
+        <motion.div key="found" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="pointer-events-none absolute bottom-40 left-1/2 z-30 max-h-[60vh] w-[560px] max-w-[calc(100vw-1.5rem)] -translate-x-1/2 overflow-y-auto md:bottom-28">
           <Panel className="pointer-events-auto border-rose-400/50 p-5">
             <button type="button" onClick={() => setDismissed(true)} className="absolute right-3 top-3 text-dim hover:text-white" aria-label="Dismiss">
               <X className="size-4" />

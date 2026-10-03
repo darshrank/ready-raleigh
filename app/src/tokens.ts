@@ -2,8 +2,24 @@
 // Read from the :root custom properties in styles.css, so the hex values live in one place.
 
 export type RGB = [number, number, number];
-export type TokenName = 'chalk' | 'bond' | 'ink' | 'flood' | 'alarm' | 'signal' | 'safe';
-const NAMES: TokenName[] = ['chalk', 'bond', 'ink', 'flood', 'alarm', 'signal', 'safe'];
+const NAMES = [
+  'chalk',
+  'bond',
+  'ink',
+  'flood',
+  'flood-deep',
+  'alarm',
+  'signal',
+  'safe',
+  // Night storm palette (basemap only).
+  'storm-land',
+  'storm-street',
+  'storm-building',
+  'storm-label',
+  'storm-water',
+  'storm-glow',
+] as const;
+export type TokenName = (typeof NAMES)[number];
 
 export interface Tokens {
   hex: Record<TokenName, string>;
@@ -32,6 +48,9 @@ export function tokens(): Tokens {
   cached = { hex, rgb };
   return cached;
 }
+
+/** CSS rgba() of a token color at alpha `a`, for MapLibre paint values. */
+export const rgba = ([r, g, b]: RGB, a: number) => `rgba(${r},${g},${b},${+a.toFixed(3)})`;
 
 /** Flat screen tint of `b` over `a` (t = 0 is a, t = 1 is b), like a print shop's percent tint. */
 export const tint = (a: RGB, b: RGB, t: number): RGB => [

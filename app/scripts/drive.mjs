@@ -5,7 +5,8 @@
 //        [{key:"ArrowLeft"}] [{eval:"expr"}] [{shot:"out.png"}] [{probe:ms}] (main-thread latency log)
 //        [{waitFor:"expr", timeout:ms}]
 // Coordinates may be strings: "G(lon,lat)" is a map point, "B(text)" the first visible button with that text.
-// Chrome path is macOS; set CHROME to override.
+// Chrome path is macOS; set CHROME to override. GPU=1 renders on the GPU (Metal) instead of
+// swiftshader: use it for frame rates and for the storm, which swiftshader runs at about 2 fps.
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,9 +15,14 @@ const [url, w, h, stepsArg] = process.argv.slice(2);
 const steps = JSON.parse(existsSync(stepsArg) ? readFileSync(stepsArg, 'utf8') : stepsArg);
 const port = 9300 + Math.floor(Math.random() * 500);
 const chrome = spawn(process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
-  '--headless=new', `--remote-debugging-port=${port}`, '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
+  '--headless=new', `--remote-debugging-port=${port}`,
+  ...(process.env.GPU ? ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']),
   '--no-first-run', '--no-default-browser-check', `--user-data-dir=${mkdtempSync(join(tmpdir(), 'chr'))}`, 'about:blank',
 ], { stdio: 'ignore' });
+// Never leave a headless Chrome running (an orphan keeps animating and loads the machine).
+process.on('exit', () => chrome.kill());
+process.on('uncaughtException', (e) => { console.error(e); process.exit(1); });
+process.on('unhandledRejection', (e) => { console.error(e); process.exit(1); });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let target;
 for (let k = 0; k < 50 && !target; k++) {

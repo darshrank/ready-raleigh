@@ -12,8 +12,11 @@ export type Target =
   | { type: 'bus_pickup'; cell: number }
   | { type: 'road_protection'; roadId: string };
 
-/** planning -> storm (the flood simulation plays) -> results (the card). */
-export type Phase = 'planning' | 'storm' | 'results';
+/**
+ * title (the orbiting city and the briefing) -> intro (the camera flies down) -> planning ->
+ * storm (the flood simulation plays) -> results (the card). Play again goes back to planning.
+ */
+export type Phase = 'title' | 'intro' | 'planning' | 'storm' | 'results';
 
 export const sameTarget = (a: Target | null, b: Target | null) =>
   a === b || (!!a && !!b && JSON.stringify(a) === JSON.stringify(b));
@@ -32,6 +35,9 @@ export const targetOf = (p: Placement): Target | null =>
         : null;
 
 export const budgetLeft = (placements: Placement[]) => BUDGET - planCost(placements);
+
+/** When a piece last landed (performance.now() ms): the tap that placed it must not also open a card. */
+export let lastLandingAt = -Infinity;
 
 /** Why `t` cannot take a piece (`movingId` is the piece being moved, which may stay where it is). */
 export function targetProblem(placements: Placement[], t: Target, movingId: string | null = null): string | null {
@@ -74,14 +80,21 @@ interface PlanStore {
   place: (t: Target) => boolean;
   move: (id: string, t: Target) => boolean;
   remove: (id: string) => void;
+  /** "Start planning" on the title: the camera flies down; startPlanning follows when it lands. */
+  beginIntro: () => void;
   startPlanning: () => void;
   endPlanning: () => void;
+  /** Move the storm clock to `endMs` (the storm's length): it clears and the results follow. */
+  skipStorm: (endMs: number) => void;
   endStorm: () => void;
+  /** Another round: straight back to planning with an empty board. */
   reset: () => void;
+  /** Back to the title, as on a fresh page load. */
+  restart: () => void;
 }
 
 const fresh = () => ({
-  phase: 'planning' as Phase,
+  phase: 'title' as Phase,
   placements: [] as Placement[],
   armed: null,
   selectedId: null,
@@ -124,6 +137,7 @@ export const usePlan = create<PlanStore>((set, get) => ({
       return false;
     }
     const id = `${t.type}-${s.nextId}`;
+    lastLandingAt = performance.now();
     set({
       placements: [...s.placements, placementFor(id, t)],
       nextId: s.nextId + 1,
@@ -145,6 +159,7 @@ export const usePlan = create<PlanStore>((set, get) => ({
       set({ notice: problem });
       return false;
     }
+    lastLandingAt = performance.now();
     set({
       placements: s.placements.map((p) => (p.id === id ? placementFor(id, t) : p)),
       hover: null,
@@ -167,16 +182,24 @@ export const usePlan = create<PlanStore>((set, get) => ({
     });
   },
 
+  beginIntro: () => {
+    if (get().phase === 'title') set({ phase: 'intro' });
+  },
   startPlanning: () =>
     set({ phase: 'planning', stormAt: null, endsAt: Date.now() + PLANNING_SECONDS * 1000, armed: null, hover: null, notice: null }),
   endPlanning: () => {
     if (get().phase !== 'planning') return;
     set({ phase: 'storm', stormAt: performance.now(), armed: null, selectedId: null, hover: null, movingId: null, dragging: false });
   },
+  skipStorm: (endMs) => {
+    const s = get();
+    if (s.phase === 'storm' && s.stormAt !== null) set({ stormAt: Math.min(s.stormAt, performance.now() - endMs) });
+  },
   endStorm: () => {
     if (get().phase === 'storm') set({ phase: 'results' });
   },
-  reset: () => set({ ...fresh(), endsAt: Date.now() + PLANNING_SECONDS * 1000 }),
+  reset: () => set({ ...fresh(), phase: 'planning', endsAt: Date.now() + PLANNING_SECONDS * 1000 }),
+  restart: () => set(fresh()),
 }));
 
 // Dev only: lets screenshot scripts and the console read and drive the plan.

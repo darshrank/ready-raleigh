@@ -5,7 +5,8 @@ import type { LayersList, PickingInfo } from '@deck.gl/core';
 import { useMapUi } from '../store';
 import { tokens } from '../tokens';
 import { basemapStyle } from './basemap';
-import { framePoints } from './frame';
+import { FloodView } from './flood';
+import { cameraForPoints, framePadding, framePoints, type Pad } from './frame';
 
 /** DESIGN.md: top-down by default; the Tilt toggle tilts to 45 degrees. */
 const TILT_PITCH = 45;
@@ -18,8 +19,17 @@ interface Props {
    * every frame, outside React, and `layers` is ignored. Returning null keeps the last frame.
    */
   frameLayers?: ((now: number) => LayersList | null) | null;
-  /** Points to frame. The camera fits them on load and on resize until the user moves the map. */
+  /**
+   * Points to frame. The camera fits them on load and on resize until the user moves the map.
+   * Null leaves the camera alone (the title orbit, the storm's camera).
+   */
   frame: [number, number][] | null;
+  /** Fly to the frame instead of jumping (the camera coming down from the title). */
+  flyToFrame?: boolean;
+  /** Room to keep clear for plates over the map; default 5% of the width, at most 40 px. */
+  framePad?: Pad | null;
+  /** Called when the camera has reached the frame. */
+  onFramed?: () => void;
   /** Show the Tilt toggle (bottom left). The projector view turns it off. */
   tiltControl?: boolean;
   /** Clicks on the map. `info.object` is null when nothing pickable was hit. */
@@ -37,6 +47,9 @@ export function MapView({
   layers,
   frameLayers = null,
   frame,
+  flyToFrame = false,
+  framePad = null,
+  onFramed,
   tiltControl = true,
   onClick,
   onReady,
@@ -56,6 +69,12 @@ export function MapView({
   cursorRef.current = cursor;
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const onFramedRef = useRef(onFramed);
+  onFramedRef.current = onFramed;
+  const flyRef = useRef(flyToFrame);
+  flyRef.current = flyToFrame;
+  const padRef = useRef(framePad);
+  padRef.current = framePad;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -84,6 +103,11 @@ export function MapView({
         cursorRef.current ?? (isDragging ? 'grabbing' : isHovering ? 'pointer' : 'grab'),
     });
     map.addControl(overlay);
+    // The water (DESIGN.md "Water") lives in the style; its animator starts once the style is in.
+    let flood: FloodView | null = null;
+    map.once('load', () => {
+      flood = new FloodView(map, tokens(), reducedMotion());
+    });
     if (!keyboard) map.keyboard.disable();
     // Dev only: lets screenshot scripts and the console inspect the map.
     if (import.meta.env.DEV) (window as unknown as { __map?: MapLibreMap }).__map = map;
@@ -92,6 +116,7 @@ export function MapView({
     const cleanup = onReadyRef.current?.(map, overlay);
     return () => {
       cleanup?.();
+      flood?.destroy();
       mapRef.current = null;
       overlayRef.current = null;
       map.remove();
@@ -122,15 +147,22 @@ export function MapView({
     if (canvas && cursor) canvas.style.cursor = cursor;
   }, [cursor]);
 
-  // Frame the data on load, and again on resize (rail opening, rotation) until the user takes over.
+  // Frame the data on load, and again on resize (rotation) until the user takes over.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !frame) return;
-    const padding = () => Math.round(Math.min(40, map.getContainer().clientWidth * 0.05));
     userMoved.current = false;
-    framePoints(map, frame, map.getPitch(), padding());
+    const pad = () => padRef.current ?? framePadding(map);
+    const camera = flyRef.current ? cameraForPoints(map, frame, 0, pad()) : null;
+    if (camera && !reducedMotion()) {
+      map.flyTo({ ...camera, duration: 2600, curve: 1.3, essential: true });
+      map.once('moveend', () => onFramedRef.current?.());
+    } else {
+      framePoints(map, frame, camera ? 0 : map.getPitch(), pad());
+      onFramedRef.current?.();
+    }
     const refit = () => {
-      if (!userMoved.current) framePoints(map, frame, map.getPitch(), padding());
+      if (!userMoved.current && !map.isMoving()) framePoints(map, frame, map.getPitch(), pad());
     };
     map.on('resize', refit);
     return () => {

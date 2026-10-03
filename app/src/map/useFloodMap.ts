@@ -4,7 +4,7 @@ import type { Cell, Site } from '@shared/types';
 import type { MapData } from '../data';
 import { useMapUi } from '../store';
 import { dataPoints } from './frame';
-import { HOSPITAL_LABEL_ZOOM, cellsLayer, floodDotsLayer, hoodLayer, hospitalLayers, sitesLayer } from './layers';
+import { HOSPITAL_LABEL_ZOOM, cellsLayer, hoodLayer, hospitalLayers, sitesLayer } from './layers';
 
 /**
  * Layers, framing points and click handling for the flood map, shared by every route that shows it.
@@ -19,7 +19,6 @@ export function useFloodMap(data: MapData | null, { targetingSites = false } = {
   const selectHood = useMapUi((s) => s.selectHood);
 
   const frame = useMemo(() => (data ? dataPoints(data) : null), [data]);
-  const dots = useMemo(() => floodDotsLayer(data?.floodDots ?? []), [data]);
   // Sites are the shelter targets, so they show while a shelter is being placed even with the
   // Facilities layer off.
   const sites = useMemo(
@@ -31,13 +30,13 @@ export function useFloodMap(data: MapData | null, { targetingSites = false } = {
     [data, showFacilities, labelZoom],
   );
 
-  // Order: invisible pick target / people fill, selected neighborhood, water. The storm draws its
-  // own water, so it takes `under` only.
+  // Order: invisible pick target / people fill, selected neighborhood. The water is part of the
+  // basemap style (map/flood.ts), under every deck.gl layer.
   const under = useMemo(() => {
     if (!data) return [];
     return [cellsLayer(data.cells, metric, showPeople), hoodLayer(data.cells, selectedHood)];
   }, [data, metric, showPeople, selectedHood]);
-  const base = useMemo(() => (data ? [...under, dots] : []), [data, under, dots]);
+  const base = under;
 
   // Facilities on top: hospitals, then sites.
   const layers = useMemo(() => (data ? [...base, ...hospitals, sites] : []), [data, base, hospitals, sites]);

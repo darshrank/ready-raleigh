@@ -10,14 +10,25 @@
   --alarm: #ff48b0;
   --signal: #ffc628;
   --safe: #00a95c;
+  --flood-deep: #00508a;
+
+  /* Night storm palette (DESIGN.md): the basemap only; the inks above stay the same. */
+  --storm-land: #172440;
+  --storm-street: #2d416b;
+  --storm-building: #22355a;
+  --storm-label: #a6b6d0;
+  --storm-water: #2a9deb;
+  --storm-glow: #7ccbff;
 
   --font-display: "Big Shoulders Display", "Arial Narrow", sans-serif;
   --font-body: "Public Sans", system-ui, sans-serif;
 
   /* Outline weight for pieces, panels and rules. */
   --rule: 2.5px;
-  /* The only shadow in the system, for game pieces: hard, offset, ink. */
+  /* The only shadows in the system: hard, offset, ink. Map pieces take 3 px; tray pieces and HUD
+     plates take 5 px. */
   --piece-shadow: 3px 3px 0 var(--ink);
+  --plate-shadow: 5px 5px 0 var(--ink);
   /* 3 px signal ring with an ink ring outside it. */
   --focus-ring: 0 0 0 3px var(--signal), 0 0 0 6px var(--ink);
 }
@@ -30,6 +41,9 @@
   --color-alarm: var(--alarm);
   --color-signal: var(--signal);
   --color-safe: var(--safe);
+  --color-flood-deep: var(--flood-deep);
+  --color-storm-land: var(--storm-land);
+  --color-storm-label: var(--storm-label);
 
   --font-display: var(--font-display);
   --font-body: var(--font-body);
@@ -53,6 +67,7 @@
   --text-120--line-height: 0.85;
 
   --shadow-piece: var(--piece-shadow);
+  --shadow-plate: var(--plate-shadow);
 }
 
 html,
@@ -77,6 +92,56 @@ body {
 
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* Planning juice (DESIGN.md "Game pieces"): the coverage ring and the +N chip when a piece lands,
+   the timer's last 30 seconds. All of them are anchored by translate(-50%, ...) on their point. */
+@keyframes ring-pulse {
+  from {
+    transform: translate(-50%, -50%) scale(0.25);
+    opacity: 0.95;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+}
+@keyframes chip-float {
+  0% {
+    transform: translate(-50%, -100%) scale(0.5);
+    opacity: 0;
+  }
+  14% {
+    transform: translate(-50%, -112%) scale(1.12);
+    opacity: 1;
+  }
+  28% {
+    transform: translate(-50%, -112%) scale(1);
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -260%) scale(1);
+    opacity: 0;
+  }
+}
+@keyframes chip-pop {
+  from {
+    transform: translate(-50%, -100%) scale(0.6);
+  }
+  to {
+    transform: translate(-50%, -100%) scale(1);
+  }
+}
+@keyframes timer-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.07);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

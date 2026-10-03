@@ -2,7 +2,7 @@
 import { useEffect, useMemo } from 'react';
 import type { Cell } from '@shared/types';
 import { FLOOD_STEP_NAMES } from '@shared/config';
-import { DOT_RADIUS_M, PEOPLE_ALPHA, type PeopleMetric } from '../map/layers';
+import { PEOPLE_ALPHA, type PeopleMetric } from '../map/layers';
 import { useMapUi } from '../store';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
@@ -81,8 +81,12 @@ export function FacilitiesControl() {
   );
 }
 
-/** Legend dot radius in px per meter of DOT_RADIUS_M (36 m prints as a 6 px dot). */
-const LEGEND_PX_PER_M = 6 / 36;
+/** Legend water swatches: the day water of each step (map/flood.ts), deepest first. */
+const WATER_SWATCH: Record<number, string> = {
+  1: 'bg-flood-deep opacity-60',
+  2: 'bg-flood opacity-50',
+  3: 'bg-flood opacity-30',
+};
 
 export function Legend({ planning = false, storm = false }: { planning?: boolean; storm?: boolean }) {
   return (
@@ -92,9 +96,7 @@ export function Legend({ planning = false, storm = false }: { planning?: boolean
         <ul className="mt-1.5 grid gap-1">
           {[1, 2, 3].map((step) => (
             <li key={step} className="flex items-center gap-2">
-              <svg width="24" height="14" aria-hidden className="shrink-0 fill-flood opacity-75">
-                <circle cx="12" cy="7" r={(DOT_RADIUS_M[step] ?? 20) * LEGEND_PX_PER_M} />
-              </svg>
+              <span aria-hidden className={'h-3.5 w-6 shrink-0 ' + WATER_SWATCH[step]} />
               {FLOOD_STEP_NAMES[step]}
             </li>
           ))}
@@ -119,13 +121,22 @@ export function Legend({ planning = false, storm = false }: { planning?: boolean
             </li>
             <li className="flex items-center gap-2">
               <svg width="24" height="14" aria-hidden className="shrink-0">
-                <line x1="2" y1="7" x2="22" y2="7" className="stroke-alarm" strokeWidth="4" strokeDasharray="6 4" />
+                <line x1="1" y1="7" x2="23" y2="7" className="stroke-flood-deep" strokeWidth="6" />
+                <line x1="1" y1="7" x2="23" y2="7" className="stroke-bond" strokeWidth="2" strokeDasharray="3 5" />
               </svg>
-              Road closing, then closed (solid)
+              Street under water (flowing dashes)
+            </li>
+            <li className="flex items-center gap-2">
+              <svg width="24" height="14" viewBox="0 0 26 11" aria-hidden className="shrink-0">
+                <rect x="0.75" y="0.75" width="24.5" height="9.5" className="fill-bond stroke-ink" strokeWidth="1.5" />
+                <path d="M5 10 9 1h3l-4 9zM13 10l4-9h3l-4 9z" className="fill-alarm" />
+              </svg>
+              Road closed
             </li>
             <li className="flex items-center gap-2">
               <svg width="24" height="14" aria-hidden className="shrink-0">
-                <line x1="2" y1="7" x2="22" y2="7" className="stroke-ink" strokeWidth="4" strokeLinecap="round" />
+                <line x1="3" y1="7" x2="21" y2="7" className="stroke-ink" strokeWidth="8" strokeLinecap="round" />
+                <line x1="3" y1="7" x2="21" y2="7" className="stroke-safe" strokeWidth="4.5" strokeLinecap="round" />
               </svg>
               Protected road, stays open
             </li>
@@ -194,7 +205,7 @@ function hoodStats(cells: Cell[], hood: string) {
   };
 }
 
-export function NeighborhoodCard({ cells }: { cells: Cell[] }) {
+export function NeighborhoodCard({ cells, hideEmpty = false, compact = false }: { cells: Cell[]; hideEmpty?: boolean; compact?: boolean }) {
   const hood = useMapUi((s) => s.selectedHood);
   const selectHood = useMapUi((s) => s.selectHood);
   const stats = useMemo(() => (hood ? hoodStats(cells, hood) : null), [cells, hood]);
@@ -206,20 +217,20 @@ export function NeighborhoodCard({ cells }: { cells: Cell[] }) {
   }, [selectHood]);
 
   if (!hood || !stats) {
-    return <p className="text-15">Tap the map to see who lives there.</p>;
+    return hideEmpty ? null : <p className="text-15">Tap the map to see who lives there.</p>;
   }
 
   return (
     <section aria-live="polite" aria-labelledby="hood-name">
       <div className="flex items-start justify-between gap-3">
-        <h2 id="hood-name" className="font-display text-32 font-extrabold">
+        <h2 id="hood-name" className={'font-display font-extrabold ' + (compact ? 'text-24 leading-tight' : 'text-32')}>
           {hood}
         </h2>
         <button type="button" onClick={() => selectHood(null)} className="shrink-0 text-13 underline">
           Close
         </button>
       </div>
-      <dl className="tabular mt-3 grid grid-cols-3 gap-3">
+      <dl className={'tabular grid grid-cols-3 gap-3 ' + (compact ? 'mt-1' : 'mt-3')}>
         {[
           ['Residents', stats.pop],
           ['Age 65 and over', stats.pop65],
@@ -227,11 +238,11 @@ export function NeighborhoodCard({ cells }: { cells: Cell[] }) {
         ].map(([label, value]) => (
           <div key={label} className="flex flex-col-reverse justify-end">
             <dt className="text-13">{label}</dt>
-            <dd className="font-display text-32 font-bold">{fmt(value as number)}</dd>
+            <dd className={'font-display font-bold ' + (compact ? 'text-24' : 'text-32')}>{fmt(value as number)}</dd>
           </div>
         ))}
       </dl>
-      <p className="mt-3 border-t-(length:--rule) border-ink pt-2 text-15">
+      <p className={'border-t-(length:--rule) border-ink pt-2 ' + (compact ? 'mt-2 text-13' : 'mt-3 text-15')}>
         {stats.firstStep === null ? (
           'Stays dry through the 500-year flood.'
         ) : (

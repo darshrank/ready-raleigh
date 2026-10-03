@@ -174,7 +174,7 @@ function pieceData(data: MapData, placements: Placement[], selectedId: string | 
 }
 
 /**
- * Placed pieces. A piece that lands "stamps": new icons start at 1.15x and settle in 160 ms.
+ * Placed pieces. A piece that lands "stamps": new icons start at 1.3x and settle in 200 ms.
  * New pieces are appended, so only they enter; the rest keep their size.
  */
 export function piecesLayer(data: MapData, placements: Placement[], selectedId: string | null, hiddenId: string | null) {
@@ -190,7 +190,7 @@ export function piecesLayer(data: MapData, placements: Placement[], selectedId: 
     sizeUnits: 'pixels',
     parameters: { depthCompare: 'always' },
     transitions: {
-      getSize: { duration: ms(160), enter: (to: ArrayLike<number>) => Array.from(to, (v) => v * 1.15) },
+      getSize: { duration: ms(200), easing: (x: number) => 1 - (1 - x) ** 3, enter: (to: ArrayLike<number>) => Array.from(to, (v) => v * 1.3) },
     },
   });
 }

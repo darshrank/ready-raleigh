@@ -3,7 +3,7 @@ import { H3HexagonLayer } from '@deck.gl/geo-layers';
 import { IconLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { cellsToMultiPolygon } from 'h3-js';
 import type { Cell, Site } from '@shared/types';
-import type { FloodDot, Hospital } from '@shared/data';
+import type { Hospital } from '@shared/data';
 import { tokens, type RGB } from '../tokens';
 
 export type PeopleMetric = 'pop' | 'pop65' | 'noCarHH';
@@ -54,25 +54,6 @@ export function hoodLayer(cells: Cell[], hood: string | null) {
     getLineWidth: 2.5,
     lineWidthUnits: 'pixels',
     lineJointRounded: true,
-  });
-}
-
-/** Dot radius in meters by flood step: the floodway prints heaviest. Spacing is 120 m. */
-export const DOT_RADIUS_M: Record<number, number> = { 1: 36, 2: 28, 3: 20 };
-
-/** The pipeline's dot grid (flood_dots.json), drawn as is. */
-export function floodDotsLayer(dots: FloodDot[]) {
-  const { rgb } = tokens();
-  return new ScatterplotLayer<FloodDot>({
-    id: 'flood-halftone',
-    data: dots,
-    getPosition: (d) => [d[0], d[1]],
-    getRadius: (d) => DOT_RADIUS_M[d[2]] ?? 20,
-    radiusUnits: 'meters',
-    radiusMinPixels: 1.2,
-    radiusMaxPixels: 10, // stay dots, not discs, when zoomed in
-    // Slightly translucent so streets and labels read through the water.
-    getFillColor: withAlpha(rgb.flood, 0.75),
   });
 }
 

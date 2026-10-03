@@ -49,11 +49,11 @@ const PICTOGRAM: Record<FloodPiece, (ink: string, face: string) => string> = {
 /** Disc geometry in SVG units: 80 x 80 box, face radius 30, hard shadow offset 6 (3 px at 40 px). */
 export const DISC_BOX = 80;
 
-/** One disc: hard ink shadow, face, ink rim, pictogram. */
-export function discSvg(piece: FloodPiece, colors: { ink: string; face: string }): string {
+/** One disc: hard ink shadow (unless `shadow` is false, for the tray's CSS shadow), face, ink rim, pictogram. */
+export function discSvg(piece: FloodPiece, colors: { ink: string; face: string }, shadow = true): string {
   const { ink, face } = colors;
   return (
-    `<circle cx="42" cy="42" r="30" fill="${ink}"/>` +
+    (shadow ? `<circle cx="42" cy="42" r="30" fill="${ink}"/>` : '') +
     `<circle cx="36" cy="36" r="30" fill="${face}" stroke="${ink}" stroke-width="5"/>` +
     `<g transform="translate(36 36) scale(0.72) translate(-32 -32)">${PICTOGRAM[piece](ink, face)}</g>`
   );

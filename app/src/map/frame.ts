@@ -45,23 +45,54 @@ export function riskFocusPoints(data: MapData): LngLat[] {
 }
 
 /**
+ * The convex hull of `points` (monotone chain). A camera projects straight lines to straight lines,
+ * so the hull's corners have the same screen extent as all the points, at a fraction of the cost.
+ */
+export function hull(points: LngLat[]): LngLat[] {
+  if (points.length < 4) return points;
+  const p = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o: LngLat, a: LngLat, b: LngLat) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: LngLat[] = [];
+  for (const q of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, q) <= 0) lower.pop();
+    lower.push(q);
+  }
+  const upper: LngLat[] = [];
+  for (let k = p.length - 1; k >= 0; k--) {
+    const q = p[k]!;
+    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, q) <= 0) upper.pop();
+    upper.push(q);
+  }
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
+}
+
+/** Room to keep clear around framed data, in px: a number for all sides, or per side (HUD plates). */
+export type Pad = number | { top: number; right: number; bottom: number; left: number };
+const sides = (p: Pad) => (typeof p === 'number' ? { top: p, right: p, bottom: p, left: p } : p);
+
+/**
  * Fit `points` at `pitch`. A pitched camera turns the data's bounding box into a trapezoid, so
  * instead of fitting the box, binary-search the largest zoom at which every point projects inside
- * the padded viewport, re-centering on the projected extent at each step.
+ * the padded viewport, re-centering the projected extent in the padded box at each step.
  */
-export function framePoints(map: MapLibreMap, points: LngLat[], pitch: number, padding: number) {
-  if (points.length === 0) return;
+export function framePoints(map: MapLibreMap, all: LngLat[], pitch: number, padding: Pad) {
+  if (all.length === 0) return;
+  const points = hull(all);
   const { clientWidth: w, clientHeight: h } = map.getContainer();
-  if (w === 0 || h === 0) return;
+  const pad = sides(padding);
+  if (w - pad.left - pad.right < 40 || h - pad.top - pad.bottom < 40) return;
 
   let [west, south, east, north] = [Infinity, Infinity, -Infinity, -Infinity];
   for (const [x, y] of points) {
     west = Math.min(west, x); east = Math.max(east, x);
     south = Math.min(south, y); north = Math.max(north, y);
   }
-  const start = map.cameraForBounds([[west, south], [east, north]], { padding, bearing: 0 });
+  const start = map.cameraForBounds([[west, south], [east, north]], { padding: pad, bearing: 0 });
   if (!start?.zoom) return;
   const center: LngLat = [(west + east) / 2, (south + north) / 2];
+  // The middle of the padded box, where the data's projected extent should sit.
+  const cx = (pad.left + w - pad.right) / 2;
+  const cy = (pad.top + h - pad.bottom) / 2;
 
   const extent = () => {
     let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
@@ -76,10 +107,10 @@ export function framePoints(map: MapLibreMap, points: LngLat[], pitch: number, p
     map.jumpTo({ center, zoom, pitch, bearing: 0 });
     for (let k = 0; k < 3; k++) {
       const e = extent();
-      map.setCenter(map.unproject([(e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2]));
+      map.setCenter(map.unproject([w / 2 + (e.x0 + e.x1) / 2 - cx, h / 2 + (e.y0 + e.y1) / 2 - cy]));
     }
     const e = extent();
-    return e.x0 >= padding && e.x1 <= w - padding && e.y0 >= padding && e.y1 <= h - padding;
+    return e.x0 >= pad.left && e.x1 <= w - pad.right && e.y0 >= pad.top && e.y1 <= h - pad.bottom;
   };
 
   let lo = start.zoom - 3;
@@ -91,3 +122,23 @@ export function framePoints(map: MapLibreMap, points: LngLat[], pitch: number, p
   }
   fitsAt(lo);
 }
+
+export interface Camera {
+  center: LngLat;
+  zoom: number;
+  pitch: number;
+  bearing: number;
+}
+
+/** Where framePoints would put the camera, without moving the map (for flying there instead). */
+export function cameraForPoints(map: MapLibreMap, points: LngLat[], pitch: number, padding: Pad): Camera | null {
+  const before = { center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() };
+  framePoints(map, points, pitch, padding);
+  const c = map.getCenter();
+  const out: Camera = { center: [c.lng, c.lat], zoom: map.getZoom(), pitch, bearing: 0 };
+  map.jumpTo(before);
+  return points.length ? out : null;
+}
+
+/** Padding around framed data: 5% of the width, at most 40 px. */
+export const framePadding = (map: MapLibreMap) => Math.round(Math.min(40, map.getContainer().clientWidth * 0.05));

@@ -6,7 +6,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import { FINAL_FLOOD_STEP } from '@shared/config';
 import type { ScoreResult } from '@shared/types';
 import { usePlan } from '../plan/store';
-import { GROW_MS, TICK_MS, stepAt, stepStart, type Storm } from './sim';
+import { GROW_MS, STORM_MS, TICK_MS, stepAt, stepStart, type Storm, type StormEvent } from './sim';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 const easeOut = (x: number) => 1 - (1 - x) ** 3;
@@ -33,7 +33,7 @@ const TICKER_CATCH_UP_S = 3;
  * The emergency broadcast: an ink band that slides in once and scrolls the events of each step.
  * New lines join the end of the ticker; when it runs dry it repeats the latest step.
  */
-export function Broadcast({ storm, stormAt }: { storm: Storm; stormAt: number }) {
+export function Broadcast({ storm, stormAt, live }: { storm: Storm; stormAt: number; live: StormEvent | null }) {
   const reduce = useReducedMotion();
   const step = useStormStep(stormAt);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -98,10 +98,11 @@ export function Broadcast({ storm, stormAt }: { storm: Storm; stormAt: number })
   }, [step, storm, reduce]);
 
   return (
+    <div>
     <motion.div
       initial={reduce ? false : { y: '-100%' }}
       animate={{ y: 0 }}
-      transition={{ duration: 0.35, ease: 'easeOut' }}
+      transition={{ duration: 0.35, ease: 'easeOut', delay: reduce ? 0 : 0.5 }}
       className="flex items-stretch bg-ink font-display text-18 leading-none font-bold tracking-wide text-signal lg:text-24"
     >
       <p className="flex shrink-0 items-center bg-signal px-3 py-2 font-extrabold text-ink">EMERGENCY ALERT</p>
@@ -116,6 +117,29 @@ export function Broadcast({ storm, stormAt }: { storm: Storm; stormAt: number })
         {storm.spoken[step]}
       </p>
     </motion.div>
+      <LiveCaption live={live} />
+    </div>
+  );
+}
+
+/** While the camera holds on an event: LIVE and the event's name, under the band. */
+function LiveCaption({ live }: { live: StormEvent | null }) {
+  const reduce = useReducedMotion();
+  return (
+    <div className="min-h-12 lg:min-h-16" aria-live="polite">
+      {live && (
+        <motion.p
+          key={live.step}
+          initial={reduce ? false : { x: '-100%' }}
+          animate={{ x: 0 }}
+          transition={{ duration: 0.3, ease: 'easeOut' }}
+          className="inline-flex max-w-full items-stretch font-display leading-none font-extrabold tracking-wide"
+        >
+          <span className="flex items-center bg-alarm px-3 text-18 text-ink lg:text-24">LIVE</span>
+          <span className="bg-bond px-3 py-2 text-24 leading-[1.05] text-ink lg:py-3 lg:text-32">{live.title}</span>
+        </motion.p>
+      )}
+    </div>
   );
 }
 
@@ -158,7 +182,7 @@ export function Counters({ storm, stormAt }: { storm: Storm; stormAt: number }) 
   }, [storm, stormAt, reduce]);
 
   const number = 'tabular font-display text-48 leading-none font-extrabold md:text-72 min-[1400px]:text-120';
-  const panel = 'border-(length:--rule) border-ink bg-bond px-3 py-2 lg:px-4 lg:py-3';
+  const panel = 'border-(length:--rule) border-ink bg-bond px-3 py-2 shadow-plate lg:px-5 lg:py-3';
   return (
     // Screen readers get the step's numbers from the band's status line.
     <div aria-hidden className="flex items-end justify-between gap-2 px-3 pt-3 pb-8 lg:px-6 lg:pt-6">
@@ -191,15 +215,19 @@ export function Counters({ storm, stormAt }: { storm: Storm; stormAt: number }) 
 /** The end of the storm: score, protected, stranded, and Play again. P8 replaces it with the full results. */
 export function ResultsCard({ storm, result }: { storm: Storm; result: ScoreResult | null }) {
   const reset = usePlan((s) => s.reset);
+  const reduce = useReducedMotion();
   const button = useRef<HTMLButtonElement>(null);
   useEffect(() => button.current?.focus({ preventScroll: true }), []);
   const last = storm.timeline[storm.timeline.length - 1];
   const prot = last?.protectedPeople ?? 0;
   const strand = last?.strandedPeople ?? 0;
   return (
-    <section
+    <motion.section
       aria-labelledby="results-title"
-      className="pointer-events-auto w-full max-w-sm border-(length:--rule) border-ink bg-bond p-4 shadow-piece lg:p-6"
+      initial={reduce ? false : { y: '120%' }}
+      animate={{ y: 0 }}
+      transition={{ type: 'spring', stiffness: 260, damping: 28 }}
+      className="pointer-events-auto w-full max-w-md border-(length:--rule) border-ink bg-bond p-4 shadow-plate lg:p-6"
     >
       <h2 id="results-title" className="font-display text-32 font-extrabold">
         The storm has passed
@@ -230,6 +258,20 @@ export function ResultsCard({ storm, result }: { storm: Storm; result: ScoreResu
       >
         Play again
       </button>
-    </section>
+    </motion.section>
+  );
+}
+
+/** Jump the storm to its end. */
+export function SkipStorm() {
+  const skip = usePlan((s) => s.skipStorm);
+  return (
+    <button
+      type="button"
+      onClick={() => skip(STORM_MS)}
+      className="pointer-events-auto h-10 border-(length:--rule) border-ink bg-bond px-3 text-15 font-semibold shadow-piece hover:bg-chalk"
+    >
+      Skip to results
+    </button>
   );
 }

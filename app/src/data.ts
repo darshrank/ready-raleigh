@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Cell, FloodRoad, Site } from '@shared/types';
-import type { DataBundle, FloodDot, Hospital } from '@shared/data';
+import type { DataBundle, Hospital } from '@shared/data';
 
 /** Where the static data lives. Fixtures until the pipeline writes the real files to /data. */
 export const DATA_BASE: string = import.meta.env.VITE_DATA_BASE ?? '/data/fixtures';
@@ -17,8 +17,6 @@ async function getJson<T>(file: string): Promise<T> {
  */
 export interface MapData extends DataBundle {
   hospitals: Hospital[];
-  /** Halftone flood dots from the pipeline (pipeline/ writes them; the browser only draws them). */
-  floodDots: FloodDot[];
 }
 
 // One fetch per page load, shared by every route.
@@ -30,8 +28,7 @@ export function loadMapData(): Promise<MapData> {
     getJson<Site[]>('sites.json'),
     getJson<FloodRoad[]>('flood_roads.json'),
     getJson<Hospital[]>('hospitals.json'),
-    getJson<FloodDot[]>('flood_dots.json'),
-  ]).then(([cells, sites, floodRoads, hospitals, floodDots]) => ({ cells, sites, floodRoads, hospitals, floodDots }));
+  ]).then(([cells, sites, floodRoads, hospitals]) => ({ cells, sites, floodRoads, hospitals }));
   mapData.catch(() => (mapData = null)); // let a later mount retry
   return mapData;
 }

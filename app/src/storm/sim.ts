@@ -20,19 +20,47 @@ import { cellCenter, roadLabel } from '../plan/targets';
 
 type LngLat = [number, number];
 
-// Pacing, in ms after the storm starts. The band slides in, then a flood step every 4 seconds.
-export const LEAD_MS = 800;
-export const STEP_MS = 4000;
-/** New flood dots grow from 0 to full size. */
-export const GROW_MS = 600;
-/** A closing road is dashed this long, then solid. */
-export const DASH_MS = 1800;
+// Pacing, in ms after the storm starts (DESIGN.md "Motion"). A wipe into the night, the camera
+// tilts over the city, then each flood step: the water grows in, the news helicopter flies to the
+// step's event, holds on it, and pulls back.
+/** The wipe across the screen; the night palette swaps in at its middle. */
+export const WIPE_MS = 700;
+/** The camera tilts to 55 degrees over the city. */
+export const TILT_MS = 1600;
+export const LEAD_MS = 2000;
+/** The water of a step grows in over this long (map/flood.ts paces each part inside it). */
+export const GROW_MS = 1500;
+/** After a step begins, the helicopter leaves for its event... */
+export const EVENT_AFTER_MS = 1700;
+export const FLY_MS = 1500;
+/** ...holds on it with the LIVE caption... */
+export const HOLD_MS = 2000;
+/** ...and pulls back to the city. */
+export const BACK_MS = 1500;
+export const STEP_MS = EVENT_AFTER_MS + FLY_MS + HOLD_MS + BACK_MS + 300;
 /** Counters tick to the step's numbers over this long, once the water has printed. */
 export const TICK_MS = 1600;
 /** When step `k` (1-based) begins. */
 export const stepStart = (k: number) => LEAD_MS + (k - 1) * STEP_MS;
-/** The storm is over: the results card shows. */
+/** The storm is over: it clears to daylight and the camera pulls back. */
 export const STORM_MS = stepStart(FINAL_FLOOD_STEP) + STEP_MS;
+/** Night to day. */
+export const CLEAR_MS = 1600;
+/** The results card slides up this long after the storm clears. */
+export const RESULTS_AFTER_MS = 1400;
+
+/** The helicopter's stop for one step: a named road going under, or a neighborhood cut off. */
+export interface StormEvent {
+  step: number;
+  /** For the LIVE caption, uppercase like the band. */
+  title: string;
+  /** What the camera frames. */
+  points: LngLat[];
+  /** Times, ms after the storm starts. */
+  fly: number;
+  hold: number;
+  back: number;
+}
 
 /** One resident dot per this many weighted people, and never more than MAX_RESIDENTS dots. */
 const PEOPLE_PER_DOT = 25;
@@ -75,6 +103,8 @@ export interface Storm {
   band: string[][];
   /** What screen readers hear per step. */
   spoken: string[];
+  /** Where the helicopter goes, one stop per step at most. */
+  events: StormEvent[];
   /** Time of the last visible change: nothing moves after it. */
   settledMs: number;
 }
@@ -177,7 +207,9 @@ function sampleResidents(data: MapData, placements: Placement[], places: LngLat[
       const options = covered ? (part === PART_CAR ? shelters : pickups).get(i) : undefined;
       for (let k = 0; k < count; k++) {
         const h = scatter(center, HOME_SPREAD_M, rand);
-        const t0 = stepStart(step) + GROW_MS + rand() * 900;
+        // Residents leave as the water reaches them, so some are still on the move when the
+        // helicopter arrives.
+        const t0 = stepStart(step) + 0.6 * GROW_MS + rand() * 1400;
         let f: number = FATE_STRANDED;
         let d = h;
         let t1 = t0;
@@ -186,8 +218,8 @@ function sampleResidents(data: MapData, placements: Placement[], places: LngLat[
           f = FATE_TRAVELS;
           place = nearest(h, options, places);
           d = scatter(places[place]!, CROWD_SPREAD_M, rand);
-          // Straight lines in pass 1; a 10 km trip takes about 2.2 s, so everyone lands before the next step.
-          t1 = t0 + Math.min(2300, 700 + meters(h, d) * 0.15);
+          // Straight lines in pass 1; a 10 km trip takes about 3.5 s, so everyone lands before the next step.
+          t1 = t0 + Math.min(3800, 1000 + meters(h, d) * 0.25);
         } else if (covered) {
           f = FATE_STAYS;
         }
@@ -276,6 +308,46 @@ function bandLines(data: MapData, timeline: TimelineStep[], closing: Record<numb
   return { band, spoken };
 }
 
+/** A road's points, for framing it. */
+const roadPoints = (r: FloodRoad): LngLat[] => r.coords.map((c) => [c[0], c[1]]);
+
+/**
+ * One helicopter stop per step: the closing road that strands the most blocks (named roads first),
+ * and at the final step the neighborhood with the most people cut off from hospitals.
+ */
+function stormEvents(data: MapData, closing: Record<number, FloodRoad[]>, held: FloodRoad[]): StormEvent[] {
+  const heldUnlocks = new Set(held.flatMap((r) => r.unlocks));
+  const out: StormEvent[] = [];
+  const used = new Set<string>();
+  for (let k = 1; k <= FINAL_FLOOD_STEP; k++) {
+    const fly = stepStart(k) + EVENT_AFTER_MS;
+    const at = { step: k, fly, hold: fly + FLY_MS, back: fly + FLY_MS + HOLD_MS };
+    if (k === FINAL_FLOOD_STEP) {
+      const cut = new Map<string, { pop: number; pts: LngLat[] }>();
+      data.cells.forEach((c, i) => {
+        if (!c.cutOff || c.floodStep !== null || heldUnlocks.has(i)) return;
+        const e = cut.get(c.hood) ?? { pop: 0, pts: [] };
+        e.pop += c.pop;
+        e.pts.push(cellCenter(data, i));
+        cut.set(c.hood, e);
+      });
+      const best = [...cut.entries()].sort((p, q) => q[1].pop - p[1].pop)[0];
+      if (best) {
+        out.push({ ...at, title: upper(`${best[0]} cut off from hospitals`), points: best[1].pts });
+        continue;
+      }
+    }
+    const roads = (closing[k] ?? [])
+      .filter((r) => !used.has(named(data, r) ?? r.id))
+      .sort((p, q) => Number(!named(data, p)) - Number(!named(data, q)) || q.unlocks.length - p.unlocks.length);
+    const road = roads[0];
+    if (!road) continue;
+    used.add(named(data, road) ?? road.id);
+    out.push({ ...at, title: upper(`${roadLabel(data, road)} goes under`), points: roadPoints(road) });
+  }
+  return out;
+}
+
 export function buildStorm(data: MapData, placements: Placement[]): Storm {
   const timeline = simTimeline(soloPlan(placements), data);
   const heldIds = new Set(placements.flatMap((p) => (p.type === 'road_protection' && p.roadId ? [p.roadId] : [])));
@@ -298,7 +370,19 @@ export function buildStorm(data: MapData, placements: Placement[]): Storm {
     last = Math.max(last, residents.arrive[k]!);
   }
   const { band, spoken } = bandLines(data, timeline, closing, held);
-  return { timeline, residents, places, travellers: Int32Array.from(travellers), closing, held, band, spoken, settledMs: last + 600 };
+  const events = stormEvents(data, closing, held);
+  return {
+    timeline,
+    residents,
+    places,
+    travellers: Int32Array.from(travellers),
+    closing,
+    held,
+    band,
+    spoken,
+    events,
+    settledMs: last + 600,
+  };
 }
 
 /** The flood step showing at `t` ms (0 before the first one). */

@@ -43,6 +43,18 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas:
 -->
 
+### 2026-10-03 18:20 EDT Claude (Opus 5.5) lanes B+C, real data is the default
+- Done: app/src/data.ts falls back to /data (real Raleigh data) when VITE_DATA_BASE is unset or
+  empty; shared/scripts/bundle.ts dataDir() falls back to app/public/data (REAL_DATA_DIR), so the
+  server and `npm run optimize` match the app. .env.example now says VITE_DATA_BASE=/data. The
+  data-folder test is updated and no longer fails on Windows path separators.
+- Verified: with no .env, /solo?skip fetches /data/cells.json (1.2 MB) and the HUD reads
+  "of 37,539 at risk" at 1440 and 390 px; no console errors. Screenshots timed out in the pane
+  (WebGL page), so the check was by page text.
+- Gotcha: the fixtures are still at app/public/data/fixtures and shared/fixtures; set
+  VITE_DATA_BASE=/data/fixtures (or DATA_DIR) to use them. `npm run optimize` without env now
+  rewrites app/public/data/optimal_*.json. bench.test.ts still times out at 5 s on slower machines.
+
 ### 2026-10-03 17:55 EDT Claude (Opus 5.5) lane D, P11 server side (Tiger Data)
 - Done: Tiger Data (TimescaleDB 2.30, Postgres 18) connected via DATABASE_URL in the root .env.
   server/src/db/schema.sql (idempotent, applied on every server start): hypertables `plays`,

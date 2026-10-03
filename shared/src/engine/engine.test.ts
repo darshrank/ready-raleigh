@@ -1,6 +1,6 @@
 // Engine behaviour on the fixture bundle (always the fixtures: some checks name fixture sites).
 import { describe, expect, it } from 'vitest';
-import { FIXTURES_DIR, dataDir, loadBundle } from '../../scripts/bundle';
+import { FIXTURES_DIR, REAL_DATA_DIR, dataDir, loadBundle } from '../../scripts/bundle';
 import { BUDGET, COSTS, NO_CAR_HH_WEIGHT, weightedPeople } from '../config';
 import type { DataBundle } from '../data';
 import type { Cell, Mode, Site } from '../types';
@@ -219,10 +219,11 @@ describe('timeline', () => {
 });
 
 describe('data folder', () => {
-  it('DATA_DIR wins, then VITE_DATA_BASE under app/public, then the fixtures', () => {
+  it('DATA_DIR wins, then VITE_DATA_BASE under app/public, then the real data', () => {
     expect(dataDir({ DATA_DIR: '/x/y' })).toBe('/x/y');
-    expect(dataDir({ VITE_DATA_BASE: '/data' })).toMatch(/app\/public\/data$/);
-    expect(dataDir({})).toBe(FIXTURES_DIR);
+    expect(dataDir({ VITE_DATA_BASE: '/data' })).toMatch(/app[\\/]public[\\/]data$/);
+    expect(dataDir({ VITE_DATA_BASE: '/data/fixtures' })).toMatch(/app[\\/]public[\\/]data[\\/]fixtures$/);
+    expect(dataDir({})).toBe(REAL_DATA_DIR);
     expect(() => dataDir({ VITE_DATA_BASE: 'https://cdn.example/data' })).toThrow(/DATA_DIR/);
   });
 });

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import type { Cell, FloodRoad, Site } from '@shared/types';
 import type { DataBundle, Hospital } from '@shared/data';
 
-/** Where the static data lives. Fixtures until the pipeline writes the real files to /data. */
-export const DATA_BASE: string = import.meta.env.VITE_DATA_BASE ?? '/data/fixtures';
+/** Where the static data lives: the real pipeline output, or /data/fixtures for the small test set. */
+export const DATA_BASE: string = import.meta.env.VITE_DATA_BASE || '/data';
 
 async function getJson<T>(file: string): Promise<T> {
   const res = await fetch(`${DATA_BASE}/${file}`);

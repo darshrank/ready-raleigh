@@ -1,7 +1,7 @@
 // Node-side loading of a data folder into a DataBundle (the engine itself does no I/O).
 //
 // Folder: DATA_DIR if set (a filesystem path), else app/public + VITE_DATA_BASE (the same URL path
-// the app fetches from), else the fixtures. Reads the repo's .env if there is one.
+// the app fetches from), else the real data in app/public/data. Reads the repo's .env if there is one.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,11 +10,12 @@ import type { Cell, FloodRoad, Site } from '../src/types';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 export const FIXTURES_DIR = join(ROOT, 'shared/fixtures');
+export const REAL_DATA_DIR = join(ROOT, 'app/public/data');
 
 export function dataDir(env: NodeJS.ProcessEnv = process.env): string {
   if (env === process.env && existsSync(join(ROOT, '.env'))) process.loadEnvFile(join(ROOT, '.env'));
   if (env.DATA_DIR) return env.DATA_DIR;
-  if (!env.VITE_DATA_BASE) return FIXTURES_DIR;
+  if (!env.VITE_DATA_BASE) return REAL_DATA_DIR;
   const base = env.VITE_DATA_BASE;
   if (/^[a-z]+:\/\//i.test(base)) {
     throw new Error(`VITE_DATA_BASE is a URL (${base}); set DATA_DIR to a local folder instead`);

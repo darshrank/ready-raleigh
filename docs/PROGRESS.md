@@ -29,7 +29,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [~] P11 Tiger Data storage and planner dashboard (D + C). Lane D done (Claude, D); /planner page (C) next
 
 ## Semantic zoom (branch sakhi/semantic-zoom)
-- [~] SZ Detail by zoom on the planning map (Claude, C + A): S1 places done; S2 addresses, S3 GoRaleigh stops, S4 NC OneMap aerial, S5 site buildings, S6 hex fade
+- [~] SZ Detail by zoom on the planning map (Claude, C + A): S1 places, S2 addresses done; S3 GoRaleigh stops, S4 NC OneMap aerial, S5 site buildings, S6 hex fade
 
 ## Phase 4: bonus challenges
 - [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
@@ -424,6 +424,21 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - Rooms, the planner and POST /api/plays still use Raleigh data.
   - The automated browser pane stops drawing frames after ~10 s, so flights and animations look
     frozen there; judge motion in a real browser.
+
+### 2026-10-03 19:25 EDT Claude (Opus 5.5) lane C, semantic zoom S2 (addresses, building names)
+- Done: detail.ts `detailLabelLayers(P)` (replaces placeLayers): `addresses` (housenumber, z16+,
+  lowest priority), `building-names` (z16+, `BUILDING_NAMES_FILTER`), then `places`. Palette gains
+  `address` (ink 55% / storm-label 60%).
+- Verified: typecheck, 43 tests. Shots at 1440 (day, storm) and 390 (day): z12 all 0; z17 Oakwood
+  57-80 house numbers; downtown z16.5 10 building names (museums, State Court of Appeals, NC
+  Department of Public Safety). No console errors.
+- Next exact step: S3. Write pipeline/bus_stops.py (stdlib only): GET https://goraleigh.org/gr_gtfs
+  (follows a 301 to the dated zip), cache it as pipeline/cache/goraleigh_gtfs.zip, read stops.txt
+  (location_type blank or 0), write app/public/data/bus_stops.json `[{id,name,lat,lon}]` (5
+  decimals), and add `sources.busStops` + a `busStops` block (url, resolved url, feed_version,
+  feed dates, downloaded) to meta.json. Then in detail.ts a GeoJSON source `bus-stops`, a bus SDF
+  icon, a `bus-stops` layer z14+ (names z16+), source attribution "GoRaleigh GTFS".
+- Gotchas: tile POIs include their own `bus/bus_stop` points (all agencies); we do not draw those.
 
 ### 2026-10-03 19:10 EDT Claude (Opus 5.5) lane C, semantic zoom S1 (places)
 - Branch `sakhi/semantic-zoom` in wolfhacks/claude, from group/main a7b011c. Never pushed. The plan

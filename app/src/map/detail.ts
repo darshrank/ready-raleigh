@@ -13,6 +13,8 @@ const REGULAR = ['Noto Sans Regular'];
 /** Places show from this zoom; their names from PLACE_NAME_ZOOM. */
 export const PLACE_ZOOM = 14;
 export const PLACE_NAME_ZOOM = 15;
+/** House numbers and building names. */
+export const ADDRESS_ZOOM = 16;
 
 const is = (key: string, value: string): ExpressionSpecification => ['==', ['get', key], value];
 const among = (key: string, values: string[]): ExpressionSpecification => ['match', ['get', key], values, true, false];
@@ -30,6 +32,24 @@ export const PLACES_FILTER: ExpressionSpecification = [
   ['all', is('class', 'town_hall'), is('subclass', 'community_centre')],
   ['all', is('class', 'library'), is('subclass', 'library')],
   ['all', is('class', 'grocery'), among('subclass', ['supermarket', 'greengrocer', 'marketplace'])],
+];
+
+/**
+ * Building names. The tiles' `building` layer has no names, so these are the named `poi` features
+ * that are mostly buildings and are not businesses: state and city buildings, courthouses,
+ * campus offices, dormitories, museums, visitor offices. College buildings are already places.
+ */
+export const BUILDING_NAMES_FILTER: ExpressionSpecification = [
+  'all',
+  ['has', 'name'],
+  [
+    'any',
+    ['all', is('class', 'town_hall'), among('subclass', ['townhall', 'courthouse', 'public_building'])],
+    ['all', is('class', 'office'), among('subclass', ['government', 'educational_institution'])],
+    ['all', is('class', 'lodging'), is('subclass', 'dormitory')],
+    ['all', is('class', 'information'), is('subclass', 'office')],
+    is('class', 'museum'),
+  ],
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -202,9 +222,43 @@ function sdfImage(draw: Draw, size = ICON): ImageData {
 // ---------------------------------------------------------------------------------------------
 // Layers.
 
-/** Places (z14+, names z15+). Among the labels, below street and place names so those win. */
-export function placeLayers(P: Palette): LayerSpecification[] {
+/**
+ * Detail labels, in draw order: house numbers (z16+, the lowest priority), building names (z16+),
+ * places (z14+, names z15+). They go among the labels, below street and place names, so those win
+ * any collision.
+ */
+export function detailLabelLayers(P: Palette): LayerSpecification[] {
   return [
+    {
+      id: 'addresses',
+      type: 'symbol',
+      source: 'omt',
+      'source-layer': 'housenumber',
+      minzoom: ADDRESS_ZOOM,
+      layout: {
+        'text-field': ['get', 'housenumber'],
+        'text-font': REGULAR,
+        'text-size': ['interpolate', ['linear'], ['zoom'], ADDRESS_ZOOM, 9.5, 18, 11],
+        'text-padding': 1,
+      },
+      paint: { 'text-color': P.address, 'text-halo-color': P.halo, 'text-halo-width': 1 },
+    },
+    {
+      id: 'building-names',
+      type: 'symbol',
+      source: 'omt',
+      'source-layer': 'poi',
+      minzoom: ADDRESS_ZOOM,
+      filter: BUILDING_NAMES_FILTER,
+      layout: {
+        'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
+        'text-font': REGULAR,
+        'text-size': 10.5,
+        'text-max-width': 8,
+        'symbol-sort-key': ['get', 'rank'],
+      },
+      paint: { 'text-color': P.placeLabel, 'text-halo-color': P.halo, 'text-halo-width': 1.5 },
+    },
     {
       id: 'places',
       type: 'symbol',

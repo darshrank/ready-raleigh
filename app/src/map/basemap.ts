@@ -8,7 +8,7 @@
 import type { ExpressionSpecification, LayerSpecification, Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
 import { rgba, type Tokens } from '../tokens';
 import { floodFlatLayers, floodSources, flood3dLayers, closuresLayer } from './flood';
-import { placeLayers } from './detail';
+import { detailLabelLayers } from './detail';
 
 export const TILES = 'https://tiles.openfreemap.org/planet';
 export const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
@@ -61,6 +61,8 @@ export interface Palette {
   /** Places (map/detail.ts): the badge and the name. */
   placeIcon: string;
   placeLabel: string;
+  /** House numbers. */
+  address: string;
 }
 
 /**
@@ -107,6 +109,7 @@ function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
       imagery: { brightness: 0.42, saturation: -0.4 },
       placeIcon: rgba(rgb['storm-label'], 0.85),
       placeLabel: rgba(rgb['storm-label'], 0.9),
+      address: rgba(rgb['storm-label'], 0.6),
     };
   return {
     land: hex.chalk,
@@ -128,6 +131,7 @@ function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
     imagery: { brightness: 1, saturation: 0 },
     placeIcon: rgba(rgb.ink, 0.85),
     placeLabel: rgba(rgb.ink, 0.85),
+    address: rgba(rgb.ink, 0.55),
   };
 }
 
@@ -277,7 +281,7 @@ function labelLayers(P: Palette): LayerSpecification[] {
       paint: label,
     },
     // Detail by zoom, below the street and place names so those win any collision.
-    ...placeLayers(P),
+    ...detailLabelLayers(P),
     {
       id: 'street-names-minor',
       type: 'symbol',

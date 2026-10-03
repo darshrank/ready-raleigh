@@ -131,6 +131,8 @@ Coverage in planning is also a halftone: `--safe` dots that grow with the protec
   | Zoom | Layer | Day | Night |
   |---|---|---|---|
   | 14+ | Places from the tiles' `poi`: schools, hospitals and clinics, worship, community centers, libraries, grocery, fire, police. 16 px ink badge with a knocked-out pictogram; names from 15 | `--ink` 85% | `--storm-label` |
+| 16+ | House numbers (`housenumber`), 9.5-11 px, the lowest label priority | `--ink` 55% | `--storm-label` 60% |
+| 16+ | Building names: named non-commercial `poi` (courthouses, public and government buildings, campus offices, dormitories, museums); the tiles' buildings carry no names | `--ink` 85% | `--storm-label` |
 
 - Population ("Who lives here", off by default): flat H3 fill in `--ink`, at most 30% opacity,
   4 stepped tints, no outlines, no extrusion. Everyone, 65 and over, No car.

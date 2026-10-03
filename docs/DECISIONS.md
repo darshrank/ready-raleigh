@@ -27,3 +27,4 @@ One line each. Newest at the bottom. Do not reopen a decision without writing wh
 - Timeline: cut-off cells join the counts at the final step. A protected road does not extend a shelter's precomputed coverFlood.
 - Fixtures: added a dry shelter site south of Rocky Branch (Avent Ferry Road Church) so a usable shelter can reach the cut-off side.
 - P3 data pipeline uses OSMnx 2.1.1, NetworkX 3.6.1, and SciPy 1.17.1 for the requested directed road graph, sparse routing, and multiprocessing coverage calculations.
+- Shelter coverage (user decision, after real data landed): a flooded cell counts as covered by a usable shelter if it is in the site's coverDry (residents evacuate before the water arrives); a cut-off cell that does not flood needs coverFlood. Shelters that flood stay unusable. Replaces coverFlood-only coverage (P4). See shelterCells() in shared/src/engine/coverage.ts.

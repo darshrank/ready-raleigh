@@ -1,8 +1,8 @@
 // What each placement does to the map, and how much of each at-risk cell ends up protected.
 //
-// Flood: a usable shelter covers the car part of its site's coverFlood cells; a protected road
-// covers the car part of its `unlocks` cells; a bus pickup covers the no-car part of
-// gridDisk(cell, 2). Heat: cooling centers and water stations cover gridDisk 2 and 1 with the
+// Flood: a usable shelter covers the car part of shelterCells(site) (flooded cells use coverDry,
+// cut-off dry cells use coverFlood); a protected road covers the car part of its `unlocks` cells;
+// a bus pickup covers the no-car part of gridDisk(cell, 2). Heat: cooling centers and water stations cover gridDisk 2 and 1 with the
 // credit in HEAT_COVER_CREDIT; trees cool the cell and ring 1, and a cell cooled below the
 // threshold is fully protected. Coverage takes the best credit, so placements never hurt.
 import { FINAL_FLOOD_STEP, HEAT_COVER_CREDIT, TREE_COOLING_C, WALK_RING } from '../config';
@@ -19,13 +19,36 @@ export function siteUsable(site: Site): boolean {
   return site.floodStep === null || site.floodStep > FINAL_FLOOD_STEP;
 }
 
+function floodsByEnd(idx: EngineIndex, i: number): boolean {
+  const step = idx.floodStep[i]!;
+  return step > 0 && step <= FINAL_FLOOD_STEP;
+}
+
+const shelterCache = new WeakMap<Site, Int32Array>();
+
+/**
+ * Cells a shelter at `site` serves, if the site is usable. A cell that floods evacuates before the
+ * water arrives, so it counts if it is in coverDry. A cell that stays dry but is cut off must reach
+ * the shelter at the final step, so it needs coverFlood. Cached per site (bundles are immutable).
+ */
+export function shelterCells(site: Site, idx: EngineIndex): Int32Array {
+  let cells = shelterCache.get(site);
+  if (!cells) {
+    const out = site.coverDry.filter((i) => floodsByEnd(idx, i));
+    for (const i of site.coverFlood) if (!floodsByEnd(idx, i)) out.push(i);
+    cells = Int32Array.from(out);
+    shelterCache.set(site, cells);
+  }
+  return cells;
+}
+
 /** The effect of one placement, or null if it does nothing (flooded shelter, unknown id). */
 export function placementEffect(p: Placement, idx: EngineIndex): Effect | null {
   switch (p.type) {
     case 'shelter': {
       const site = p.siteId === undefined ? undefined : idx.sites.get(p.siteId);
       if (!site || !siteUsable(site)) return null;
-      return { kind: 'cover', part: PART_CAR, credit: 1, cells: Int32Array.from(site.coverFlood) };
+      return { kind: 'cover', part: PART_CAR, credit: 1, cells: shelterCells(site, idx) };
     }
     case 'road_protection': {
       const road = p.roadId === undefined ? undefined : idx.roads.get(p.roadId);

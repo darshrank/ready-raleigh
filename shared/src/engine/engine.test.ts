@@ -1,8 +1,9 @@
 // Engine behaviour on the fixture bundle (always the fixtures: some checks name fixture sites).
 import { describe, expect, it } from 'vitest';
 import { FIXTURES_DIR, dataDir, loadBundle } from '../../scripts/bundle';
-import { BUDGET, COSTS } from '../config';
-import type { Mode } from '../types';
+import { BUDGET, COSTS, NO_CAR_HH_WEIGHT, weightedPeople } from '../config';
+import type { DataBundle } from '../data';
+import type { Cell, Mode, Site } from '../types';
 import {
   PlanError,
   atRiskCells,
@@ -99,6 +100,44 @@ describe('score', () => {
   it('a dry shelter on the cut-off side protects people', () => {
     const r = score(makePlan('flood', [{ type: 'shelter', siteId: 'site-avent-ferry' }]), data);
     expect(r.score).toBeGreaterThan(0);
+  });
+
+  describe('shelter coverage rule', () => {
+    // Four at-risk cells and one site whose coverDry holds 0, 1, 2 and coverFlood only 2.
+    const at = (c: Cell, over: Partial<Cell>): Cell => ({ ...c, floodStep: null, cutOff: false, ...over });
+    const cells = [
+      at(data.cells[0]!, { i: 0, floodStep: 2 }), // floods, dry-road reach only: evacuates in time
+      at(data.cells[1]!, { i: 1, cutOff: true }), // dry but cut off, dry-road reach only: stranded
+      at(data.cells[2]!, { i: 2, cutOff: true }), // dry but cut off, reachable at the final step
+      at(data.cells[3]!, { i: 3, floodStep: 1 }), // floods, out of reach
+    ];
+    const site: Site = {
+      id: 'site-a', name: 'A', kind: 'school', lon: 0, lat: 0, cell: 2,
+      floodStep: null, coverDry: [0, 1, 2], coverFlood: [2],
+    };
+    const bundle: DataBundle = { cells, sites: [site, { ...site, id: 'site-wet', floodStep: 3 }], floodRoads: [] };
+    const carW = (c: Cell) => weightedPeople(c) - NO_CAR_HH_WEIGHT * c.noCarHH;
+
+    it('a flooded cell is covered by coverDry; a cut-off dry cell needs coverFlood', () => {
+      expect(placementCoverage({ id: 'x', type: 'shelter', siteId: 'site-a' }, 'flood', bundle)).toEqual([0, 2]);
+      const r = score(makePlan('flood', [{ type: 'shelter', siteId: 'site-a' }]), bundle);
+      close(r.protectedWeighted, carW(cells[0]!) + carW(cells[2]!));
+      const miss = r.topMisses.find((m) => m.cell === 1)!;
+      expect(miss.reason).toMatch(/cut off from hospitals/);
+    });
+
+    it('a shelter that floods still covers nobody', () => {
+      expect(placementCoverage({ id: 'x', type: 'shelter', siteId: 'site-wet' }, 'flood', bundle)).toEqual([]);
+      expect(score(makePlan('flood', [{ type: 'shelter', siteId: 'site-wet' }]), bundle).protectedWeighted).toBe(0);
+    });
+
+    it('fixtures: flooded cells outside coverFlood now count', () => {
+      const dh = data.sites.find((s) => s.id === 'site-dh-hill')!;
+      const flooded = dh.coverDry.filter((i) => data.cells[i]!.floodStep !== null && !dh.coverFlood.includes(i));
+      expect(flooded.length).toBeGreaterThan(0);
+      const got = placementCoverage({ id: 'x', type: 'shelter', siteId: dh.id }, 'flood', data);
+      for (const i of flooded) expect(got).toContain(i);
+    });
   });
 
   it('bus pickups serve only households with no car', () => {

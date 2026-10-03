@@ -22,7 +22,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [ ] P10 Pipeline heat and trees, engine heat scoring, heat UI (A + B + C)
 
 ## Phase 3: planner
-- [ ] P11 Tiger Data storage and planner dashboard (D + C)
+- [~] P11 Tiger Data storage and planner dashboard (D + C). Lane D done (Claude, D); /planner page (C) next
 
 ## Phase 4: bonus challenges
 - [ ] P12 Gemini briefing and debrief (D)
@@ -42,6 +42,29 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Next exact step:
 - Gotchas:
 -->
+
+### 2026-10-03 17:55 EDT Claude (Opus 5.5) lane D, P11 server side (Tiger Data)
+- Done: Tiger Data (TimescaleDB 2.30, Postgres 18) connected via DATABASE_URL in the root .env.
+  server/src/db/schema.sql (idempotent, applied on every server start): hypertables `plays`,
+  `placements`, `gauge_readings`; real-time continuous aggregates `placements_hourly`,
+  `leaderboard_hourly`; reference tables `cells` (6,392), `sites` (216), `flood_roads` (50),
+  `data_builds`; view `crowd_by_hood`. `npm run db:migrate -w server` does the same by hand.
+- Done: POST /api/plays (validates, re-scores on the server, stores plan + placements; 201
+  `{id, score, store}`, 400 `{problems}`), GET /api/planner?mode=flood (`{store, plays,
+  atRiskWeighted, optimalProtectedWeighted, counts, spots[]}`; each spot has target, type, name,
+  hood, lon/lat, category both|data|crowd, dataRank, crowdPicks, crowdShare, protectedPeople,
+  reason). MemoryStore when DATABASE_URL is missing or Tiger fails; failSoft() at runtime.
+- Verified live against Tiger with the real bundle: 2 plays saved in ~0.3 s, planner read them back
+  at once (both 2 / data 12 / crowd 1); test rows deleted afterwards. 8 server tests pass (memory
+  store + fixtures), server typecheck passes.
+- Half done: nothing in lane D. Heat mode is wired but heat data is still placeholder (P10).
+- Next exact step (lane C): build /planner in app/ from GET /api/planner: map the spots by
+  category (both / data = gap / crowd), ranked list with `reason`, live refresh every few seconds.
+  P9 rooms should POST each submitted plan to /api/plays.
+- Gotchas: in a worktree the root .env is not there; run with
+  `npx tsx --env-file=<main checkout>/.env src/index.ts` from server/. The server blocks for
+  ~8 s right after start while it warms the optimizer (score baseline + 3x plan for the planner).
+  The database also has `rounds` / `player_actions` tables from another branch; leave them.
 
 ### 2026-10-03 15:50 EDT — Codex — lanes A+B — flood realism and balance
 - Started by merging main in `wolfhacks/codex` (`3ccecd2` -> `6871632`, fast-forward). Main's docs layout/contracts retained. All task edits stay in pipeline/, shared/, and docs/; app/ and wolfhacks/claude were not edited. Commit locally only; no push.

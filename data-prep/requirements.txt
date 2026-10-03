@@ -1,0 +1,10 @@
+numpy<2.4
+scipy
+pyarrow
+shapely>=2
+h3>=4
+rasterio
+pysheds==0.5
+pillow
+pyproj
+requests

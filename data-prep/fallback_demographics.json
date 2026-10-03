@@ -1,0 +1,7 @@
+{
+  "_note": "PLACEHOLDER used only until fetch_census.py can reach api.census.gov. Approximate City of Raleigh citywide ACS 5-year shares, applied uniformly to every hex. Run `npm run data:census` to replace with real tract-level values.",
+  "elderly": 0.12,
+  "poverty": 0.12,
+  "nocar": 0.06,
+  "hhsize": 2.4
+}

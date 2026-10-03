@@ -136,6 +136,7 @@ Coverage in planning is also a halftone: `--safe` dots that grow with the protec
 | 14+ | GoRaleigh bus stops (`bus_stops.json`, GTFS): rounded-square badge with a bus front; stop names from 16 | `--ink` 85% | `--storm-label` |
 | 15+ | Shelter sites as their OSM building (`site_buildings.json`): ink outline and an ink 30% fill (hollow if the site floods); the site's square hides. Hover or tap: `--signal` fill and a card (name, type, "Shelter for up to 10,000 people", flood note). Sites with no building keep the square | `--ink`, `--signal` on hover | `--storm-label` 55% outline, 14% fill |
 | 16-17 | Aerial photo (NC OneMap orthoimagery), fades in from 16 to 17, above the land and green fills, below buildings, streets, water and labels, so the printed street map stays on top | 85%, saturation -0.35, blacks lifted | 80%, brightness max 0.38, saturation -0.6 |
+| 14.5-16 | The hex fills step back: "Who lives here" and the selected-neighborhood tint fade from 100% to 35%, so streets and buildings read first. Coverage dots never fade; from 15 covered dots get a 1 px `--ink` rim | same | same |
 
 - Population ("Who lives here", off by default): flat H3 fill in `--ink`, at most 30% opacity,
   4 stepped tints, no outlines, no extrusion. Everyone, 65 and over, No car.

@@ -17,10 +17,20 @@ export const PEOPLE_ALPHA = [0.06, 0.13, 0.21, 0.3];
 const CLEAR: RGBA = [0, 0, 0, 1];
 
 /**
- * Every cell, always present and pickable so a tap anywhere opens the neighborhood card.
- * Invisible unless `showPeople`, then a flat low-opacity fill by the chosen metric. No outlines.
+ * Up close the hex fills step back so streets and buildings read first (semantic zoom): full
+ * strength to z14.5, down to 35% at z16. Coverage dots never fade (plan/layers.ts).
  */
-export function cellsLayer(cells: Cell[], metric: PeopleMetric, showPeople: boolean) {
+export function hexFade(zoom: number) {
+  const t = Math.min(1, Math.max(0, (zoom - 14.5) / 1.5));
+  return Math.round((1 - 0.65 * t) * 20) / 20;
+}
+
+/**
+ * Every cell, always present and pickable so a tap anywhere opens the neighborhood card.
+ * Invisible unless `showPeople`, then a flat low-opacity fill by the chosen metric, faded by
+ * `opacity` up close (hexFade). No outlines.
+ */
+export function cellsLayer(cells: Cell[], metric: PeopleMetric, showPeople: boolean, opacity = 1) {
   const { rgb } = tokens();
   const max = Math.max(1, ...cells.map((c) => c[metric]));
   const fill = (c: Cell): RGBA => {
@@ -35,13 +45,15 @@ export function cellsLayer(cells: Cell[], metric: PeopleMetric, showPeople: bool
     extruded: false,
     stroked: false,
     getFillColor: fill,
+    // Only the visible fill fades; the invisible pick target stays as it is.
+    opacity: showPeople ? opacity : 1,
     pickable: true,
     updateTriggers: { getFillColor: [metric, showPeople] },
   });
 }
 
-/** The selected neighborhood: a signal tint inside a 2.5 px ink outline. */
-export function hoodLayer(cells: Cell[], hood: string | null) {
+/** The selected neighborhood: a signal tint inside a 2.5 px ink outline, faded up close (hexFade). */
+export function hoodLayer(cells: Cell[], hood: string | null, opacity = 1) {
   const { rgb } = tokens();
   const h3s = hood ? cells.filter((c) => c.hood === hood).map((c) => c.h3) : [];
   const polygons = h3s.length ? cellsToMultiPolygon(h3s, true) : [];
@@ -49,6 +61,7 @@ export function hoodLayer(cells: Cell[], hood: string | null) {
     id: 'hood',
     data: polygons,
     getPolygon: (p) => p,
+    opacity,
     getFillColor: withAlpha(rgb.signal, 0.35),
     getLineColor: rgb.ink,
     getLineWidth: 2.5,

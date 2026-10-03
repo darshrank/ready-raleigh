@@ -29,7 +29,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [~] P11 Tiger Data storage and planner dashboard (D + C). Lane D done (Claude, D); /planner page (C) next
 
 ## Semantic zoom (branch sakhi/semantic-zoom)
-- [~] SZ Detail by zoom on the planning map (Claude, C + A): S1 places, S2 addresses, S3 GoRaleigh stops, S4 NC OneMap aerial, S5 site buildings done; S6 hex fade
+- [x] SZ Detail by zoom on the planning map (Claude, C + A): S1 places, S2 addresses, S3 GoRaleigh stops, S4 NC OneMap aerial, S5 site buildings, S6 hex fade
 
 ## Phase 4: bonus challenges
 - [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
@@ -424,6 +424,31 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - Rooms, the planner and POST /api/plays still use Raleigh data.
   - The automated browser pane stops drawing frames after ~10 s, so flights and animations look
     frozen there; judge motion in a real browser.
+
+### 2026-10-03 21:00 EDT Claude (Opus 5.5) lane C, semantic zoom S6 (hex fade) and final check
+- Done (S6): layers.ts `hexFade(zoom)`; `cellsLayer(..., opacity)` (only the visible people fill
+  fades; the pick target stays) and `hoodLayer(..., opacity)`, fed by useFloodMap from the store's
+  zoom. plan/layers.ts `coverageLayer(..., rim)` adds a 1 px ink rim from `COVERAGE_RIM_ZOOM` (15);
+  Solo passes it. Coverage alpha is unchanged at every zoom.
+- Final check (all on branch sakhi/semantic-zoom, 6 commits, nothing pushed):
+  - Shots at z12 / z15 / z17, planning and storm, 1440x900 and 390x844 (GPU Chrome). New layers at
+    z12: 0 rendered features and 0 aerial tile requests in all four runs. z15: places 6-21, bus
+    stops 8-32, site buildings 1-7. z17: house numbers, aerial, Broughton High outlined.
+  - No console errors or warnings on /solo (day and storm), /host/ABCD and /play/ABCD. vite build ok.
+  - Pan at z17 (S4 run): 60 fps, p99 16.8 ms, 0 frames over 33 ms.
+  - New data: bus_stops.json 116,584 B, site_buildings.json 126,406 B (both < 5,000,000).
+    Credits: map attribution shows "Bus stops: GoRaleigh GTFS" and "Imagery: NC OneMap, NC Center
+    for Geographic Information and Analysis" when those layers are in view (OSM via the tiles);
+    meta.json `sources.busStops`, `sources.siteBuildings`, `busStops`, `siteBuildings`.
+  - typecheck, 43 vitest tests, 5 python tests (python3 -m unittest pipeline.tests.test_detail).
+- Half done: nothing.
+- Next exact step: merge sakhi/semantic-zoom into main when the team agrees (no conflicts expected
+  outside app/src/map, app/src/ui/Hud.tsx, store.ts, Solo.tsx, docs). Optional follow-ups: nursing
+  homes as places (left out per the brief); a nearest-building fallback for the 54 node sites outside
+  any footprint; show site outlines on top of 3D buildings when tilted.
+- Gotchas: rerun `python3 -m pipeline.bus_stops` and `python3 -m pipeline.site_buildings` after a
+  full `build_all` (it drops their meta blocks; caches make it offline). Fixture mode has no detail
+  files (the map warns and skips them).
 
 ### 2026-10-03 20:40 EDT Claude (Opus 5.5) lanes A+C, semantic zoom S5 (shelter sites as buildings)
 - Done (data): pipeline/site_buildings.py (stdlib; two Overpass queries cached in

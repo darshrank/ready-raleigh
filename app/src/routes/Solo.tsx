@@ -16,6 +16,7 @@ import { useFloodMap } from '../map/useFloodMap';
 import { AimChip, LandingFx } from '../plan/Juice';
 import {
   busAreaLayer,
+  COVERAGE_RIM_ZOOM,
   coverageLayer,
   cursorLayer,
   floodRoadsLayer,
@@ -32,6 +33,7 @@ import { useWeakSpot, WeakSpotPanel, WeakSpotPower, weakSpotLayers } from '../pl
 import { floodAtRisk, soloPlan, usePlanScore } from '../plan/usePlanScore';
 import { focusMap, usePlanning } from '../plan/usePlanning';
 import { Link } from '../router';
+import { useMapUi } from '../store';
 import { directStorm, resetWater } from '../storm/director';
 import { stormRenderer, stormWarmLayers } from '../storm/layers';
 import { CLEAR_MS, RESULTS_AFTER_MS, STORM_MS, buildStorm, type StormEvent } from '../storm/sim';
@@ -195,7 +197,8 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
     usePlan.getState().startStorm();
   }, [stormGo, phase]);
 
-  const coverage = useMemo(() => (data ? coverageLayer(data, floodAtRisk(data), shares) : null), [data, shares]);
+  const rim = useMapUi((s) => s.zoom >= COVERAGE_RIM_ZOOM);
+  const coverage = useMemo(() => (data ? coverageLayer(data, floodAtRisk(data), shares, rim) : null), [data, shares, rim]);
   const protectedIds = useMemo(
     () => new Set(placements.filter((p) => p.type === 'road_protection').map((p) => p.roadId!)),
     [placements],

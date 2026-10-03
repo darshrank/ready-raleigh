@@ -5,7 +5,7 @@ import type { MapData } from '../data';
 import { useMapUi } from '../store';
 import { SITE_BUILDING_ZOOM, loadSiteBuildings } from './detail';
 import { dataPoints } from './frame';
-import { HOSPITAL_LABEL_ZOOM, cellsLayer, existingSheltersLayers, hoodLayer, hospitalLayers, sitesLayer } from './layers';
+import { HOSPITAL_LABEL_ZOOM, cellsLayer, existingSheltersLayers, hexFade, hoodLayer, hospitalLayers, sitesLayer } from './layers';
 
 /**
  * Layers, framing points and click handling for the flood map, shared by every route that shows it.
@@ -20,6 +20,7 @@ export function useFloodMap(data: MapData | null, { targetingSites = false, nigh
   const nameZoom = useMapUi((s) => s.zoom >= 12);
   const selectedHood = useMapUi((s) => s.selectedHood);
   const selectHood = useMapUi((s) => s.selectHood);
+  const fade = useMapUi((s) => hexFade(s.zoom));
 
   const frame = useMemo(() => (data ? dataPoints(data) : null), [data]);
   // From z15 a site with a real building draws as that building (map/detail.ts); its square hides.
@@ -51,8 +52,8 @@ export function useFloodMap(data: MapData | null, { targetingSites = false, nigh
   // basemap style (map/flood.ts), under every deck.gl layer.
   const under = useMemo(() => {
     if (!data) return [];
-    return [cellsLayer(data.cells, metric, showPeople), hoodLayer(data.cells, selectedHood)];
-  }, [data, metric, showPeople, selectedHood]);
+    return [cellsLayer(data.cells, metric, showPeople, fade), hoodLayer(data.cells, selectedHood, fade)];
+  }, [data, metric, showPeople, selectedHood, fade]);
   const base = under;
 
   // Registered shelters already in place: always shown, they are part of the city's answer.

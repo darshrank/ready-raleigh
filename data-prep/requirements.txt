@@ -1,0 +1,10 @@
+osmnx>=2.1
+geopandas>=1.0
+shapely>=2.0
+networkx>=3.3
+h3>=4.1
+requests>=2.32
+numpy>=2.0
+pandas>=2.2
+pyogrio>=0.10
+pyproj>=3.6

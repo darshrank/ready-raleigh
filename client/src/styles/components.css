@@ -1,0 +1,409 @@
+.card {
+  background: var(--ink-900-glass);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+}
+
+/* Brand chip, top-left */
+.brand {
+  position: absolute;
+  top: max(var(--gutter), env(safe-area-inset-top));
+  left: max(var(--gutter), env(safe-area-inset-left));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 8px;
+  border-radius: var(--radius-pill);
+}
+.brand__mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--ink-700);
+  display: grid;
+  place-items: center;
+}
+.brand__name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+.brand__sub {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.2;
+}
+
+/* Camera controls, right edge */
+.cam {
+  position: absolute;
+  right: max(var(--gutter), env(safe-area-inset-right));
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  gap: 2px;
+}
+@media (max-width: 899px) {
+  /* Phones: the bottom sheet owns the lower half; camera buttons go top-right. */
+  .cam {
+    top: max(var(--gutter), env(safe-area-inset-top));
+    transform: none;
+  }
+}
+.cam__btn {
+  width: var(--tap);
+  height: var(--tap);
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--text);
+  transition: background var(--dur-ui) var(--ease);
+}
+.cam__btn:hover {
+  background: var(--ink-500);
+}
+.cam__btn:active {
+  background: var(--ink-700);
+}
+.cam__compass svg {
+  transition: transform var(--dur-ui) var(--ease);
+}
+.cam__sep {
+  height: 1px;
+  background: var(--line);
+  margin: 2px 6px;
+}
+
+/* Full-screen state overlays (loading / error) */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 40%, var(--ink-700), var(--ink-900) 70%);
+  transition: opacity 400ms var(--ease);
+  z-index: 10;
+}
+.overlay[hidden] {
+  display: none;
+}
+.overlay--fade {
+  opacity: 0;
+  pointer-events: none;
+}
+.state {
+  width: min(360px, 100%);
+  padding: 24px;
+  text-align: center;
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
+.state h2 {
+  font-size: 20px;
+}
+.state p {
+  margin: 0;
+  color: var(--text-dim);
+}
+.loader {
+  width: 56px;
+  height: 56px;
+  position: relative;
+}
+.loader span {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--water);
+  opacity: 0;
+  animation: ripple 1.8s var(--ease) infinite;
+}
+.loader span:nth-child(2) {
+  animation-delay: 0.6s;
+}
+.loader span:nth-child(3) {
+  animation-delay: 1.2s;
+}
+@keyframes ripple {
+  0% {
+    transform: scale(0.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loader span {
+    animation: none;
+    opacity: 1;
+    transform: scale(0.6);
+  }
+}
+.btn {
+  min-height: var(--tap);
+  padding: 0 20px;
+  border-radius: var(--radius-pill);
+  background: var(--water);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-weight: 600;
+  transition: background var(--dur-ui) var(--ease);
+}
+.btn:hover {
+  background: var(--water-deep);
+}
+.icon-danger {
+  color: var(--danger);
+}
+
+/* MapLibre attribution restyled to the design system */
+.maplibregl-ctrl-bottom-right {
+  margin: 0 max(var(--gutter), env(safe-area-inset-right)) max(var(--gutter), env(safe-area-inset-bottom)) 0;
+}
+.maplibregl-ctrl.maplibregl-ctrl-attrib {
+  background: var(--ink-900-glass);
+  color: var(--text-dim);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-body);
+  font-size: 11px;
+  border: 1px solid var(--line);
+  margin: 0;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--text-dim);
+}
+.maplibregl-ctrl-attrib.maplibregl-compact {
+  min-height: 24px;
+}
+.maplibregl-ctrl-attrib.maplibregl-compact-show {
+  padding: 3px 32px 3px 12px;
+}
+.maplibregl-ctrl-attrib-button {
+  filter: invert(1);
+  background-color: transparent !important;
+}
+
+/* ---------- bottom sheet (phone) / floating card (TV) ---------- */
+.sheet {
+  position: absolute;
+  left: max(var(--gutter), env(safe-area-inset-left));
+  right: max(var(--gutter), env(safe-area-inset-right));
+  bottom: max(var(--gutter), env(safe-area-inset-bottom));
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+  max-height: 62vh;
+  overflow: auto;
+}
+@media (min-width: 900px) {
+  .sheet {
+    left: auto;
+    width: 420px;
+    right: calc(var(--gutter) + 72px);
+  }
+}
+.sheet__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.eyebrow {
+  font-size: 12px;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+.stage {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+.stage__num {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.pill {
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+  background: var(--ink-500);
+  color: var(--text);
+}
+.pill--action {
+  background: var(--alert);
+  color: var(--ink-900);
+}
+.pill--minor {
+  background: var(--heat-2);
+  color: var(--ink-900);
+}
+.pill--moderate {
+  background: var(--danger);
+}
+.pill--major {
+  background: var(--heat-4);
+}
+.btn--ghost {
+  background: var(--ink-500);
+  min-width: 84px;
+}
+.btn--ghost:hover {
+  background: var(--ink-700);
+}
+.slider-wrap {
+  display: grid;
+  gap: 2px;
+}
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: var(--tap);
+  background: transparent;
+  margin: 0;
+}
+.slider::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--track, var(--water));
+}
+.slider::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--track, var(--water));
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 28px;
+  height: 28px;
+  margin-top: -10px;
+  border-radius: 50%;
+  background: var(--text);
+  border: 3px solid var(--water);
+  box-shadow: var(--shadow);
+}
+.slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--text);
+  border: 3px solid var(--water);
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.legend__item i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background: var(--ink-700);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background var(--dur-ui) var(--ease);
+}
+.chip:hover {
+  background: var(--ink-500);
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+}
+@media (max-width: 899px) {
+  .sheet {
+    gap: 10px;
+    padding: 14px;
+    max-height: 48vh;
+  }
+  .stage__num {
+    font-size: 28px;
+  }
+  /* One swipeable row of stats on phones so the map stays visible. */
+  .stats {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    margin: 0 -14px;
+    padding: 0 14px;
+    scrollbar-width: none;
+  }
+  .stats::-webkit-scrollbar {
+    display: none;
+  }
+  .stat {
+    flex: 0 0 auto;
+    min-width: 116px;
+    scroll-snap-align: start;
+  }
+  .chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .chip {
+    flex: 0 0 auto;
+  }
+}
+.stat {
+  background: var(--ink-700);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.stat__v {
+  font-size: 18px;
+  font-weight: 700;
+}
+.stat__l {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.sources {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.sources summary {
+  cursor: pointer;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+.sources ul {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+.sources p {
+  margin: 6px 0 0;
+}

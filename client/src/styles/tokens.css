@@ -1,0 +1,60 @@
+/* Design tokens — PLAN.md §8.2 "City Desk, Storm Night". Do not add colors outside this file. */
+:root {
+  --ink-900: #0e1117;
+  --ink-900-glass: rgb(14 17 23 / 0.88);
+  --ink-700: #1b2130;
+  --ink-500: #2c3446;
+  --line: rgba(255, 255, 255, 0.1);
+  --paper: #f4efe6;
+  --text: #f5f7fa;
+  --text-dim: #a9b1c1;
+
+  --water: #2f7df6;
+  --water-deep: #1446a0;
+
+  --heat-1: #ffe08a;
+  --heat-2: #ff9f43;
+  --heat-3: #f2542d;
+  --heat-4: #9e1f3d;
+
+  --safe: #2fbf9b;
+  --alert: #ffb020;
+  --danger: #e5484d;
+
+  --map-grass: #9bd37a;
+  --map-road: #f2e6cc;
+  --map-water: #7fb8ff;
+  --map-bldg: #e9e2d6;
+
+  /* Building facades by construction type (PLAN.md §8.2) */
+  --bldg-wood: #e9d8be;
+  --bldg-masonry: #c98f6b;
+  --bldg-concrete: #d9dce1;
+  --bldg-steel: #aeb8c4;
+  --bldg-manufactured: #f1e3a0;
+
+  /* Player colors (colorblind-safe, always paired with a shape) */
+  --p1: #3b82f6; /* ● */
+  --p2: #f59e0b; /* ▲ */
+  --p3: #10b981; /* ■ */
+  --p4: #ef4444; /* ◆ */
+  --p5: #8b5cf6; /* ★ */
+  --p6: #ec4899; /* ⬟ */
+  --p7: #14b8a6; /* ⬢ */
+  --p8: #f97316; /* ✚ */
+
+  --font-display: 'Space Grotesk Variable', 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'Inter Variable', 'Inter', system-ui, sans-serif;
+
+  --radius-card: 14px;
+  --radius-pill: 999px;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  --blur: 12px;
+
+  --dur-ui: 200ms;
+  --dur-camera: 1000ms;
+  --ease: cubic-bezier(0.65, 0, 0.35, 1); /* ease-in-out cubic */
+
+  --tap: 44px;
+  --gutter: 16px;
+}

@@ -1,0 +1,23 @@
+{
+  "name": "ready-raleigh",
+  "private": true,
+  "type": "module",
+  "workspaces": ["shared", "server", "client"],
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c blue,green \"npm:dev -w server\" \"npm:dev -w client\"",
+    "build": "npm run build -w client",
+    "typecheck": "tsc -p shared && tsc -p server && tsc -p client",
+    "test": "npm test -w server",
+    "test:py": "uv run pytest",
+    "screenshots": "node scripts/screenshots.mjs",
+    "smoke": "node scripts/smoke-solo.mjs",
+    "smoke:party": "node scripts/smoke-party.mjs",
+    "screenshots:flood": "node scripts/screenshots-flood.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "playwright": "^1.49.1",
+    "typescript": "^5.7.2"
+  }
+}

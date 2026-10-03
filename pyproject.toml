@@ -1,0 +1,42 @@
+[project]
+name = "ready-raleigh-pipeline"
+version = "0.1.0"
+description = "Ready Raleigh offline geo pipeline: fetch -> clean -> model -> location pack"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "geopandas>=1.2.0",
+  "numpy>=2.4.6",
+  "osmnx>=2.1.1",
+  "overturemaps>=1.0.2",
+  "pandas>=3.0.6",
+  "py3dep>=0.19.0",
+  "pyarrow>=25.0.1",
+  "pygeohydro>=0.19.4",
+  "pynhd>=0.19.4",
+  "pyproj>=3.7.2",
+  "pyyaml>=6.0",
+  "rasterio>=1.4.4",
+  "requests>=2.32",
+  "scikit-learn>=1.9.1",
+  "scipy>=1.17.1",
+  "shapely>=2.1.2",
+  "whitebox>=2.3.6",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3", "ruff>=0.8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["pipeline/tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["pipeline/cache", "pipeline/out"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]  # line width is enforced by `ruff format`; long strings/URLs are fine

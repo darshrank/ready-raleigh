@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.cert/
+.DS_Store
+__pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
+pipeline/cache/
+pipeline/out/*
+!pipeline/out/.gitkeep
+screenshots/
+test-results/
+*.zip
+/cache/

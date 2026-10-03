@@ -1,0 +1,9 @@
+id: crabtree
+name: Crabtree Creek corridor, Raleigh
+bbox: [-78.70, 35.80, -78.60, 35.85]   # lon_min, lat_min, lon_max, lat_max
+county_fips: "37183"                    # Wake County
+nwps_gauges: [ADRN7]                    # Crabtree Creek at Anderson Drive (confirmed in NWPS)
+usgs_sites: []                          # fill from NWPS/USGS lookup (M1)
+storm_events: []                        # USGS STN event ids for backtests (M2)
+seed: 20261003                          # synthetic residents RNG seed
+gauge_stream: Crabtree Creek            # NHD gnis_name of the stream the NWPS gauge sits on

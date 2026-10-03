@@ -131,6 +131,22 @@ export default async function Methodology() {
           </p>
         </Section>
 
+        <Section id="validation" title="Independent check of the flood zones">
+          <p>
+            FEMA zones are regulatory maps, so we checked them against an independent terrain model. From the USGS 3DEP 1/3 arc-second (10 m) DEM we computed Height Above Nearest Drainage
+            (HAND: pit and depression filling, D8 flow directions, channels where the drainage area reaches 1 square mile, FEMA&apos;s study threshold). Raising the water to H metres above each
+            channel floods every cell with HAND below H.
+          </p>
+          <p>
+            Inside Raleigh&apos;s city limits (36.5 km² of FEMA 1% floodplain), the best agreement is at 4 m: the terrain model covers 86% of FEMA&apos;s 1% floodplain with 58% precision, a
+            critical success index of 0.53. That is typical for HAND against detailed FEMA studies. The terrain model flags more residents than FEMA does, because it raises water evenly along every
+            studied stream and cannot see elevated foundations or Letters of Map Amendment. That is why the game uses FEMA&apos;s zones for who is at risk.
+          </p>
+          <p className="text-xs text-dim">
+            Pipeline: data-prep/hydrology.py and data-prep/build.py on the claude/lucid-mccarthy-9x9exf branch (pysheds, rasterio; FEMA NFHL layer 28; ACS 2023 5-year).
+          </p>
+        </Section>
+
         <Section id="population" title="Population and risk normalization">
           <p>
             Census tract counts come from the ACS 5-year estimates. Inside each tract, people are spread along residential streets (dasymetric mapping weighted by road class), so greenways, parks
@@ -200,7 +216,7 @@ export default async function Methodology() {
           </p>
           <p>
             The crowd map compares where the room placed interventions with where the data says unprotected, vulnerable residents are. It produces four classes: consensus priority, data blind spot,
-            community signal and low priority. Until realtime rooms exist, the room is filled with clearly labelled simulated players.
+            community signal and low priority. In a live room (Cloudflare Durable Objects over WebSockets) everyone plays the same seeded storm, each locked plan runs through the same simulation, and those plans form the crowd. Solo players, or rooms without a server, get clearly labelled simulated players instead.
           </p>
         </Section>
 

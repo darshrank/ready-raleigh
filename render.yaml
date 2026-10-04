@@ -9,6 +9,12 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
+      # The free instance has 0.1 CPU: skip the optimizer warm-up, and let the local server feed the
+      # live gauges into Tiger (the deployed one still reads them from there).
+      - key: WARMUP
+        value: "false"
+      - key: LIVE_FEEDS
+        value: "false"
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL

@@ -76,7 +76,9 @@ else app.log.warn({ err: dataError }, 'game data not loaded; plays keep the clie
 
 /** Heavy start-up work, after the port is open: hosts such as Render fail a deploy that does not bind in time. */
 function afterListen() {
-  if (game) {
+  // WARMUP=false skips it on hosts with a fraction of a CPU (Render free): there the warm-up holds the
+  // only thread for minutes and the health check fails. The first score then pays for it instead.
+  if (game && process.env.WARMUP !== 'false') {
     // Warm the optimizer runs that score() and the planner cache (a few seconds, once; longer on a small host).
     setTimeout(() => {
       score(game!.optimal('flood'), game!.bundle);

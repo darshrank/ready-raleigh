@@ -40,7 +40,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - [x] R1 deck.gl 3D city, world tokens, piece outlines
   - [x] R4 water surface (deck.gl WaterLayer, arrival textures, uniforms only)
   - [x] R5 wet stains (3D water rise landed in R4)
-  - [~] rebase checkpoint after R5: stopped on code conflicts with group/main 6434b22 (user decision)
+  - [x] rebase checkpoint after R5: onto main 6434b22, conflicts combined; four-city adaptation
   - [ ] R3 windows (+ flooded windows go dark)
   - [ ] R7 tiers, reduced motion, docs (then remove the kill switch)
   - [ ] R2 shadows
@@ -248,6 +248,50 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
     remove them: DELETE FROM placements WHERE play_id IN (SELECT id FROM plays WHERE player_name =
     'Test Mayor'); then DELETE FROM plays WHERE player_name = 'Test Mayor';
 - Next exact step: a weekly board (filter on created_at) if the all-time one fills up.
+
+### 2026-10-04 01:12 EDT Claude (Opus 5.5) lane C, realism rebase onto the four-city main + four-city adaptation
+- Rebased sakhi/realism (semantic zoom S1-F3, realism R0-R5, 17 commits) onto main 6434b22
+  (group/main unchanged at the second fetch). rerere on; backup of the old branch at
+  `backup/realism-pre-rebase` (local only). Every replayed commit typechecks (`git rebase -x`).
+  Rules used: upstream wins on game behavior (cities, globe, news desk, Gemini, buses), this branch
+  on rendering (semantic zoom, deck.gl world, tokens, `?realism=off`), both kept where both changed.
+- Conflicts and how they were combined:
+  - basemap.ts: satellite toggle (imagery palette field, `palette`/`basePalette`, satellite source
+    and layer) + places palette, detail sources, NC aerial layer above the satellite layer;
+    `applyPalette` repaints color/opacity/brightness/saturation/contrast; `TILES` re-exported from
+    world/tiles.ts for the globe; `siteTints` kept.
+  - useFloodMap.ts: dry candidate sites only while a shelter is armed (upstream) + squares hide at
+    z15 for sites drawn as their building (S5); existing shelters + hexFade imports.
+  - usePlanning.ts, Hud.tsx: upstream's city-aware text functions with "marked building".
+  - styles.css: world tokens + upstream's Devanagari font stacks.
+  - MapView.tsx, Solo.tsx: both imports. flood.ts: per-city `dataBase()` + realism setup.
+  - Weather.tsx: upstream's thunder/buzz/quake/heat + the lightning `strikes` for the water.
+  - detail.ts (S3-F1): upstream removed `DATA_BASE`; now `dataBase()` from story.ts.
+  - docs: entries in time order (PROGRESS newest first, upstream's own order untouched).
+- Follow-up commits: (1) the 3D water drains at the storm's end (`FloodView.drain`, director),
+  not on "day + full water" (upstream's clock brings dawn mid-storm); (2) four cities: realistic
+  water + stains only for flood hazards, from each city's data; quake/heat keep MapLibre ground
+  looks over the 3D city; Raleigh-only files (bus_stops, care_homes, site_buildings) and their
+  credits only in Raleigh; NC OneMap aerial only in North Carolina and off under Satellite;
+  (3) site buildings (2D/3D) follow the armed shelter (dry only), GoRaleigh atlas stops hide while
+  a bus is armed (`useMapUi.siteTargets/stopTargets`).
+- Checked: typecheck; vitest 85/85 (12 files, incl. Gemini harness 8); pipeline unittest 33 OK.
+  All four cities /solo planning, storm, results, realism on and off, 1440 and 390; globe landing
+  into each city; hosted room lobby -> election -> storm -> results; news desk in every storm; no
+  console errors. `npm run ai:smoke -w server`: GEMINI_API_KEY empty, prints the template note.
+  `npm install` was needed for upstream's @google/genai (lockfile unchanged).
+- Frame times (Raleigh, A/B medians, from storm time 1 s):
+  | Run | realism=off avg / p95 / max | realism avg / p95 / max |
+  |---|---|---|
+  | 1440 x 900, 3 runs | 8.5 / 13.2 / 36 (59.3 fps) | 7.4 / 15.6 / 49 (59.0 fps) |
+  | 390 x 844, CPU 4x, 2 runs | 19.9 / 27.4 / 49 (48.2 fps) | 17.6 / 24.4 / 47 (52.3 fps) |
+  Not comparable with the pre-rebase rows (upstream changed the storm and phone framing); compare
+  within a row. A first 390 A/B hung in its first trace (headless Chrome never ended the trace);
+  killed, the rerun was clean. 1440 p95 stays unconfirmed until the quiet-machine R7 check.
+- Next exact step: R3 windows (+ flooded windows go dark per building).
+- Gotchas: zsh treats `$c:a...` as a path modifier; write `"${c}:app/..."`. The first page load
+  after `npm install` re-optimizes Vite deps and reloads the page mid-script; rerun. Upstream's
+  results text can print "-0" ("Your plan reached -0 of ..."), not from this branch.
 
 ### 2026-10-04 00:30 EDT Claude (Opus 5.5) lane C, realism rebase checkpoint after R5 (stopped: code conflicts)
 - `git fetch group`: group/main moved 1eba02e -> 6434b22 (9 commits: bus demand report, existing

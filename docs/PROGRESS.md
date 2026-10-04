@@ -45,7 +45,8 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - [x] R7 tiers, reduced motion, docs (kill switch stays until the final check at the end)
   - [x] R2 ground shadows (cheap projected pass)
   - [x] R6 ending (settling waves on the drain) and rain ripples; creek flow streaks not done
-  - [ ] final rebase checkpoint, then the full matrix + screenshot set + quiet-machine A/B (ask first)
+  - [x] final rebase checkpoint (main 4cdffd8), full matrix, screenshot set
+  - [ ] quiet-machine A/B (waiting for the user), then remove `?realism=off`
 
 ## Phase 4: bonus challenges
 - [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
@@ -249,6 +250,28 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
     remove them: DELETE FROM placements WHERE play_id IN (SELECT id FROM plays WHERE player_name =
     'Test Mayor'); then DELETE FROM plays WHERE player_name = 'Test Mayor';
 - Next exact step: a weekly board (filter on created_at) if the all-time one fills up.
+
+### 2026-10-04 02:09 EDT Claude (Opus 5.5) lane C, realism final rebase checkpoint and full matrix
+- Rebased sakhi/realism onto main 4cdffd8 (group/main moved: Main menu button, Gemini news desk,
+  Solana records and cards, cities in rooms, civic signals). Only docs conflicted (DECISIONS, R1;
+  rerere replayed the earlier resolutions); Solo.tsx merged cleanly. Every replayed commit
+  typechecks (`git rebase -x`). Backup at `backup/realism-pre-rebase-2` (local). `npm install`
+  for upstream's Solana/Metaplex server deps (lockfile unchanged).
+- Rooms now carry a city (host picks it); they write `?city=` before the game renders and the game
+  remounts per round, so the realism city logic (flood-only water, Raleigh-only files, NC aerial)
+  follows the room's city unchanged. Checked with a Miami room (world water present).
+- Full matrix: typecheck; vitest 112/112 (17 files); pipeline unittest 33 OK. Every city /solo
+  planning -> storm -> results, realism on and off, 1440 and 390 (16 runs); globe landing into each
+  city; hosted rooms in Raleigh and Miami through election, storm and results; news desk in every
+  storm (template lines: GEMINI_API_KEY is empty here); no console errors. The first run after a
+  dev-server start can hit Vite's dependency re-optimization reload; rerun it (done for Raleigh).
+- Screenshots: docs/screenshots/realism/ (city day and night, Crabtree storm and aftermath, the
+  other three cities' storms at 1440, Raleigh storm and results at 390).
+- Not done: creek flow streaks (optional per the user). The quiet-machine A/B (5 alternating runs
+  per mode, median, 1440 and 390) waits for the user to stop other servers; then remove the
+  `?realism=off` kill switch and its MapLibre-only paths if it passes.
+- Next exact step: ask the user, run `node app/scripts/storm-ab.mjs 1440 900 1 5 realism=off ""` and
+  `node app/scripts/storm-ab.mjs 390 844 4 5 realism=off ""`, record medians here.
 
 ### 2026-10-04 01:54 EDT Claude (Opus 5.5) lane C, realism R6 (ending, rain ripples)
 - Done: water.ts: the waves settle as the storm clears (amplitude and speed down with `ending`,

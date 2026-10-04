@@ -12,7 +12,7 @@
 //
 // Registered shelters that already exist (DataBundle.existingShelters) are in every flood state from
 // the start, with their own capacity: the baseline the player's plan builds on.
-import { FINAL_FLOOD_STEP, SHELTER_CAPACITY, HEAT_COVER_CREDIT, TREE_COOLING_C, WALK_RING } from '../config';
+import { BUS_SEAT_SHARE, FINAL_FLOOD_STEP, SHELTER_CAPACITY, HEAT_COVER_CREDIT, TREE_COOLING_C, WALK_RING } from '../config';
 import type { DataBundle } from '../data';
 import type { Mode, Placement, Plan, Site } from '../types';
 import { assertValidPlan } from './plan';
@@ -129,8 +129,8 @@ export interface CoverState {
   shelterOf: Int32Array;
   /** Every seating: (part, cell) k got `share` of its weight at shelter slot si. A cell can split. */
   seats: { k: number; si: number; share: number }[];
-  /** Seats left per shelter slot once the drivers are in: what the buses can fill. */
-  carLeft: Float64Array;
+  /** Seats kept for bus riders per shelter slot (BUS_SEAT_SHARE of capacity). */
+  busSeats: Float64Array;
   /** Protected weight of the bus pass as it stands (so a pickup's gain needs one pass, not two). */
   busSeated: number;
   cover: Float64Array; // [part * n + i], 0..1
@@ -141,7 +141,7 @@ export interface CoverState {
 export function emptyState(mode: Mode, idx: EngineIndex): CoverState {
   const state: CoverState = { mode, idx, directCover: new Float64Array(2 * idx.n), shelterSites: [], routes: [],
     reach: new Uint8Array(idx.n), busReach: new Uint8Array(idx.n), shelterOf: new Int32Array(2 * idx.n).fill(-1), seats: [],
-    carLeft: new Float64Array(), busSeated: 0,
+    busSeats: new Float64Array(), busSeated: 0,
     cover: new Float64Array(2 * idx.n), coolingC: new Float64Array(idx.n) };
   if (mode === 'flood') {
     for (const site of idx.existing) {
@@ -195,20 +195,20 @@ export function applyEffect(state: CoverState, eff: Effect, n: number): void {
 }
 
 /**
- * Global nearest-first allocation of shelter seats. Drivers leave first and take a seat at any
- * shelter their cell reaches; the buses then fill the seats left with no-car residents of the cells
- * near a pickup. So a new pickup never takes a seat from a driver. Each (part, cell) gets one
- * shelter, and the cell that fills a shelter is served in part.
+ * Shelter seat allocation. Each shelter keeps BUS_SEAT_SHARE of its seats for bus riders: drivers
+ * fill the rest nearest first (any shelter their cell reaches), then the buses fill the reserve with
+ * no-car residents of the cells near a pickup, most vulnerable first. Neither pass takes the other's seats,
+ * so adding a piece never lowers the score. A cell that fills a shelter goes on to its next one.
  */
 function allocateShelters(state: CoverState): void {
   state.cover.set(state.directCover);
   state.shelterOf.fill(-1);
   state.seats = [];
-  const remaining = Float64Array.from(state.shelterSites,
+  const seats = Float64Array.from(state.shelterSites,
     (id) => state.idx.shelterSites.get(id)?.capacity ?? SHELTER_CAPACITY ?? Infinity);
-  fillSeats(state, PART_CAR, state.busReach, remaining, true);
-  state.carLeft = remaining.slice();
-  state.busSeated = fillSeats(state, PART_NO_CAR, state.busReach, remaining, true);
+  fillSeats(state, PART_CAR, state.busReach, seats.map((n) => n * (1 - BUS_SEAT_SHARE)), true);
+  state.busSeats = seats.map((n) => n * BUS_SEAT_SHARE);
+  state.busSeated = fillSeats(state, PART_NO_CAR, state.busReach, state.busSeats.slice(), true);
 }
 
 /**
@@ -226,7 +226,14 @@ function fillSeats(state: CoverState, part: Part, busReach: Uint8Array, remainin
   let open = 0;
   for (const seats of remaining) if (seats > 1e-9) open++;
   let total = 0;
-  for (const { cell: i, si } of state.routes) {
+  // Buses take the most vulnerable riders first (weight per person), nearest first among equals,
+  // so a new pickup can only swap a seat to someone who counts more. Drivers go nearest first.
+  const order = part === PART_CAR ? state.routes : state.routes
+    .filter((r) => busReach[r.cell])
+    .map((r, k) => ({ r, k, d: idx.pop[r.cell]! > 0 ? idx.weight[r.cell]! / idx.pop[r.cell]! : 0 }))
+    .sort((a, b) => b.d - a.d || a.k - b.k)
+    .map((x) => x.r);
+  for (const { cell: i, si } of order) {
     if (open === 0) break; // every shelter is full
     const k = part * n + i;
     if (part === PART_NO_CAR && !busReach[i]) continue;
@@ -258,7 +265,7 @@ export function shelterIdOf(state: CoverState, k: number): string | undefined {
 
 function copyState(state: CoverState): CoverState {
   return { ...state, cover: state.cover.slice(), directCover: state.directCover.slice(),
-    coolingC: state.coolingC.slice(), shelterSites: [...state.shelterSites], shelterOf: state.shelterOf.slice(), seats: [...state.seats], carLeft: state.carLeft.slice(),
+    coolingC: state.coolingC.slice(), shelterSites: [...state.shelterSites], shelterOf: state.shelterOf.slice(), seats: [...state.seats], busSeats: state.busSeats.slice(),
     reach: state.reach.slice(), busReach: state.busReach.slice() };
 }
 
@@ -283,11 +290,11 @@ export function marginalGain(idx: EngineIndex, state: CoverState, eff: Effect): 
       // A pickup only matters where a placed shelter can be reached and riders have no bus yet.
       if (!eff.cells.some((i) => state.reach[i] === 1 && state.busReach[i] === 0 &&
         m.partW[PART_NO_CAR * n + i]! > 0 && state.directCover[PART_NO_CAR * n + i] === 0)) return 0;
-      if (!state.carLeft.some((seats) => seats > 1e-9)) return 0;
+      if (!state.busSeats.some((seats) => seats > 1e-9)) return 0;
       // Drivers are seated first, so a pickup only changes the bus pass: rerun just that.
       const merged = state.busReach.slice();
       for (const i of eff.cells) merged[i] = 1;
-      return fillSeats(state, PART_NO_CAR, merged, state.carLeft.slice(), false) - state.busSeated;
+      return fillSeats(state, PART_NO_CAR, merged, state.busSeats.slice(), false) - state.busSeated;
     }
     // Everything else moves shelter seats around, so compare the whole allocation.
     const next = copyState(state);
@@ -321,7 +328,7 @@ export function marginalGain(idx: EngineIndex, state: CoverState, eff: Effect): 
  * reached. Its real gain is at most this (riders it adds may also push out farther riders).
  */
 export function pickupGainBound(idx: EngineIndex, state: CoverState, eff: Effect): number {
-  if (eff.kind !== 'pickup' || !state.carLeft.some((seats) => seats > 1e-9)) return 0;
+  if (eff.kind !== 'pickup' || !state.busSeats.some((seats) => seats > 1e-9)) return 0;
   const { n } = idx;
   const w = idx.mode.flood.partW;
   let bound = 0;

@@ -58,6 +58,12 @@ export const FINAL_FLOOD_STEP = 3;
 /** Optional shelter capacity in people; null turns it off. */
 export const SHELTER_CAPACITY: number | null = 10_000;
 
+/**
+ * Share of every shelter's seats kept for people who arrive by bus (no car). Drivers cannot take
+ * them; unused, they stay empty, so a bus pickup never takes a seat from anyone.
+ */
+export const BUS_SEAT_SHARE = 0.1;
+
 /** Weight per household with no car (the no-car part of weightedPeople). */
 export const NO_CAR_HH_WEIGHT = 2.5;
 

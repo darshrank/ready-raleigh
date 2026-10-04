@@ -180,7 +180,7 @@ export function Legend({ planning = false, storm = false }: { planning?: boolean
                 <circle cx="6" cy="7" r="3" />
                 <circle cx="17" cy="7" r="5" />
               </svg>
-              Residents covered (bigger dot, more of the block)
+              Green dots: residents already safe, from existing shelters or your pieces (bigger dot, more of the block)
             </li>
             <li className="flex items-center gap-2">
               <svg width="24" height="14" aria-hidden className="shrink-0">

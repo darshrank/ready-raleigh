@@ -36,14 +36,15 @@ describe('fractional flooding and capacity', () => {
     close(timeline[2]!.strandedWeighted, 100);
   });
 
-  it('fills by drive time, partially fills the last cell, and never exceeds 10,000 people', () => {
+  it('fills by drive time, partially fills the last cell, and never gives drivers more than 9,000 seats', () => {
+    // 10,000 seats, 10% kept for bus riders: 9,000 for drivers.
     const data: DataBundle = { cells: [cell(0, 7000), cell(1, 6000), cell(2, 4000)],
       sites: [site('a', [1, 0, 2], [100, 200, 300])], floodRoads: [] };
     const plan = makePlan('flood', [shelter('a')]);
     const sources = protectorOf(plan, data);
-    close(score(plan, data).protectedPeople, 10000);
+    close(score(plan, data).protectedPeople, 9000);
     close(sources.get(1)![0]!.share, 1);
-    close(sources.get(0)![0]!.share, 4000 / 7000);
+    close(sources.get(0)![0]!.share, 3000 / 7000);
     expect(sources.has(2)).toBe(false);
     expect(placementCoverage(plan.placements[0]!, 'flood', data)).toEqual([0, 1]);
   });
@@ -54,7 +55,9 @@ describe('fractional flooding and capacity', () => {
     const plan = makePlan('flood', [shelter('b'), shelter('a')]);
     const owners = protectorOf(plan, data);
     expect([0, 1, 2].map((i) => owners.get(i)![0]!.placement.siteId)).toEqual(['a', 'b', 'b']);
-    close(score(plan, data).protectedPeople, 20000);
+    // Cell 0 fills a (9,000 driver seats) and its last 1,000 go on to b.
+    expect(owners.get(0)!.map((s) => s.placement.siteId)).toEqual(['a', 'b']);
+    close(score(plan, data).protectedPeople, 18000);
     const reverse = { ...plan, placements: [...plan.placements].reverse() };
     expect(protectorOf(reverse, data)).toEqual(owners);
     expect(score(reverse, data)).toEqual(score(plan, data));
@@ -64,11 +67,12 @@ describe('fractional flooding and capacity', () => {
     const data: DataBundle = { cells: [cell(0, 10000, { pop65: 10000, floodFrac: .5, cutOff: true }), cell(1, 10000)],
       sites: [site('a', [0, 1], [10, 20])],
       floodRoads: [{ id: 'road', name: 'Road', floodStep: 1, coords: [[0, 0], [1, 1]], unlocks: [0] }] };
+    // 9,000 driver seats: cell 0's 5,000 at-risk people (weight 10,000), then 4,000 of cell 1.
     const alone = score(makePlan('flood', [shelter('a')]), data);
-    close(alone.protectedPeople, 10000);
-    close(alone.protectedWeighted, 15000);
+    close(alone.protectedPeople, 9000);
+    close(alone.protectedWeighted, 14000);
     const plan = makePlan('flood', [shelter('a'), { type: 'road_protection', roadId: 'road' }]);
-    close(score(plan, data).protectedPeople, 10000);
+    close(score(plan, data).protectedPeople, 9000);
     expect(protectorOf(plan, data).get(0)![0]!.placement.siteId).toBe('a');
   });
 });
@@ -110,18 +114,21 @@ describe('evacuation chain', () => {
     const owners = protectorOf(plan, data).get(1)!;
     expect(owners.map((s) => s.part).sort()).toEqual(['car', 'noCar']);
     expect(owners.every((s) => s.placement.roadId === 'road')).toBe(true);
-    // Without the road the 10,000 seats run out: 6,095 drivers from cell 0, 3,200 from cell 1, then
-    // only 705 of cell 0's 1,905 bus riders. With it, cell 1 needs no seats and cell 0 fits (8,000).
-    expect(before.protectedPeople).toBeLessThan(12000);
-    close(after.protectedWeighted, 8000 + noCarW(0) + 4000 + noCarW(1));
-    close(after.protectedPeople, 12000);
+    // 9,000 driver seats and 1,000 bus seats. Without the road, cell 0's 6,095 drivers and 2,905 of
+    // cell 1's 3,200 fill the driver seats. With it, cell 1 is safe at home (4,000 people) and every
+    // driver of cell 0 fits; the bus seats take 1,000 of cell 0's 1,905 riders either way.
+    const riders = (1000 / (8000 * noCarW(0) / (8000 + noCarW(0))));
+    expect(before.protectedPeople).toBeCloseTo(10000, 6);
+    close(after.protectedWeighted, 8000 + noCarW(0) * riders + 4000 + noCarW(1));
+    close(after.protectedPeople, 8000 * 8000 / (8000 + noCarW(0)) + 1000 + 4000);
   });
 
   it('reports the same optimizer score for the chosen budget; cached baselines stay budget-specific', () => {
     const data: DataBundle = { cells: [cell(0, 10000)], sites: [site('a', [0], [10])], floodRoads: [] };
     const empty = makePlan('flood', []);
     expect(score(empty, data, 0).bestPossible).toBe(0);
-    expect(score(empty, data, 3_000_000).bestPossible).toBe(100);
+    // One shelter seats 9,000 of the 10,000 (no one here needs a bus seat).
+    expect(score(empty, data, 3_000_000).bestPossible).toBeCloseTo(90, 9);
     expect(score(empty, data, 0).bestPossible).toBe(0);
     const best = optimize('flood', data, 3_000_000);
     close(score(best.plan, data, 3_000_000).score, score(empty, data, 3_000_000).bestPossible);
@@ -169,8 +176,9 @@ describe('existing shelters and bus stops', () => {
 
   it('count as protection before any plan, and the score measures the rest', () => {
     const empty = score(none, data);
-    close(empty.baseline.protectedPeople, 3000);
-    close(empty.protectedPeople, 3000);
+    // 3,000 seats, 300 of them kept for bus riders.
+    close(empty.baseline.protectedPeople, 2700);
+    close(empty.protectedPeople, 2700);
     expect(empty.score).toBe(0);
     const owner = protectorOf(none, data).get(0)!.find((s) => s.part === 'car')!;
     expect(owner.existing).toBe(true);

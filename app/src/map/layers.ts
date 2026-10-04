@@ -230,7 +230,7 @@ export function busStopsLayer(stops: { id: string; lon: number; lat: number }[],
     // 70 m across: specks at the city view, full-size signs from about z14.
     getSize: 70,
     sizeUnits: 'meters',
-    sizeMinPixels: 4,
+    sizeMinPixels: 7,
     sizeMaxPixels: 16,
     parameters: { depthCompare: 'always' },
   });

@@ -323,7 +323,7 @@ export function Status({ data, preview }: { data: MapData; preview: Preview | nu
         </button>
       </div>
     );
-  } else if (placements.length === 0) body = <p>Place your first shelter. Pick it below, then tap a building square on the map.</p>;
+  } else if (placements.length === 0) body = <p>Place your first shelter. Pick it below, then tap a building square on the map. Green dots are people the existing shelters already keep safe.</p>;
   else body = <p>Tap a piece on the map to move or remove it.</p>;
 
   return (

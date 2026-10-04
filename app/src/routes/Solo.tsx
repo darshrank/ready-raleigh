@@ -25,7 +25,7 @@ import {
   protectedRoadsLayers,
   targetLayers,
 } from '../plan/layers';
-import { busStops } from '../plan/targets';
+import { busStops, usefulRoads } from '../plan/targets';
 import { lastLandingAt, usePlan } from '../plan/store';
 import { floodAtRisk, usePlanScore } from '../plan/usePlanScore';
 import { focusMap, usePlanning } from '../plan/usePlanning';
@@ -166,7 +166,7 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
     [placements],
   );
   const roads = useMemo(
-    () => (data ? floodRoadsLayer(data.floodRoads, protectedIds, armed === 'road_protection' || moving?.type === 'road_protection') : null),
+    () => (data ? floodRoadsLayer(usefulRoads(data), protectedIds, armed === 'road_protection' || moving?.type === 'road_protection') : null),
     [data, protectedIds, armed, moving],
   );
   const protectedRoads = useMemo(

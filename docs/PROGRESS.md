@@ -72,6 +72,14 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas:
 -->
 
+### 2026-10-04 Claude (Opus 5.5) lanes B+C, playtest fixes: bus seat reserve, useful roads
+- Done: 10% bus seat reserve per shelter (riders most vulnerable first), useless roads hidden
+  (usefulRoads in plan/targets.ts), green dots explained, bigger stop markers, optimal plan rebuilt.
+- Verified: 70/71 tests (only the bench timeout); 5,000 random monotonicity trials; the playtest
+  case (shelter + new stop in Thornton Commons) now adds 56 residents instead of 0.
+- Next: tune BUS_SEAT_SHARE after more playtests; consider fading green dots that existing
+  shelters already cover.
+
 ### 2026-10-03 22:40 EDT Claude (Opus 5.5) lanes A+B+C+D, existing shelters, stop pickups, less clutter
 - Done: existing_shelters.json (FEMA NSS, npm run shelters), transit_stops.json now has stop ids.
   Engine: existing shelters as baseline, score = share of the gap, split seating, stop pickups

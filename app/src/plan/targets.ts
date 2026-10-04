@@ -2,7 +2,7 @@
 // All distances are in screen pixels, so snapping feels the same at every zoom.
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { cellToLatLng, latLngToCell } from 'h3-js';
-import { engineIndex } from '@shared/engine';
+import { engineIndex, placementEffect } from '@shared/engine';
 import type { FloodRoad, Placement } from '@shared/types';
 import type { MapData } from '../data';
 import type { FloodPiece } from './pieces';
@@ -104,6 +104,25 @@ export function busStops(data: MapData) {
   return out;
 }
 
+/**
+ * Flood roads worth protecting: the ones that reconnect at least one dry neighborhood the water cuts
+ * off. A road that only reaches flooded blocks saves no one (those homes must evacuate), so it is
+ * not offered.
+ */
+const roadsCache = new WeakMap<MapData, MapData['floodRoads']>();
+export const usefulRoads = (data: MapData) => {
+  let out = roadsCache.get(data);
+  if (!out) {
+    const idx = engineIndex(data);
+    out = data.floodRoads.filter((r) => {
+      const eff = placementEffect({ id: '', type: 'road_protection', roadId: r.id }, idx);
+      return eff?.kind === 'road' && eff.cells.length > 0;
+    });
+    roadsCache.set(data, out);
+  }
+  return out;
+};
+
 /** Usable candidate sites: a shelter in a building that floods helps no one, so it is not offered. */
 const usableCache = new WeakMap<MapData, MapData['sites']>();
 export const usableSites = (data: MapData) => {
@@ -158,7 +177,7 @@ export function targetAt(
   const taken = new Set(others.filter((q) => q.type === 'road_protection').map((q) => q.roadId));
   let best: string | null = null;
   let bestD = SNAP_PX[snap].road;
-  for (const r of data.floodRoads) {
+  for (const r of usefulRoads(data)) {
     if (taken.has(r.id)) continue;
     const pts = r.coords.map((c) => map.project(c));
     for (let k = 0; k + 1 < pts.length; k++) {

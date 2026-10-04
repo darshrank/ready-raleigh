@@ -2,7 +2,8 @@
 //
 // The water and the submerged streets are MapLibre layers (map/flood.ts); this file draws the
 // people on top: residents (glowing --safe as they evacuate, hollow --alarm rings when stranded),
-// their trails, the crowd halos at shelters and pickups, and the roads the plan kept open.
+// their trails (riders walk to a bus stop first), the crowd halos at shelters, and the roads the
+// plan kept open.
 //
 // Per frame only cheap things change: a uniform (TripsLayer time) or double-buffered typed arrays
 // (resident positions and colors). Everything else is cached and reused, so deck.gl skips it.
@@ -53,8 +54,10 @@ export function stormRenderer(storm: Storm, reduce: boolean): StormRenderer {
   let last: Layer[] | null = null;
   let lastSettled = false;
 
+  // Home, the bus stop (the same point for drivers), the shelter.
   const travellerPath = (k: number): [number, number][] => [
     [res.home[2 * k]!, res.home[2 * k + 1]!],
+    [res.via[2 * k]!, res.via[2 * k + 1]!],
     [res.dest[2 * k]!, res.dest[2 * k + 1]!],
   ];
   const tripsData = Array.from(storm.travellers);
@@ -62,7 +65,7 @@ export function stormRenderer(storm: Storm, reduce: boolean): StormRenderer {
     id: 'storm-trails',
     data: tripsData,
     getPath: travellerPath,
-    getTimestamps: (k: number) => [res.leave[k]!, res.arrive[k]!],
+    getTimestamps: (k: number) => [res.leave[k]!, res.board[k]!, res.arrive[k]!],
     getColor: withAlpha(rgb.safe, 0.7),
     getWidth: 1.5,
     widthUnits: 'pixels' as const,
@@ -75,7 +78,7 @@ export function stormRenderer(storm: Storm, reduce: boolean): StormRenderer {
   // Settled once everyone has arrived and the glow has faded with the clear.
   const settled = (t: number) => t > Math.max(storm.settledMs, STORM_MS + CLEAR_MS);
 
-  // Halos: a --safe disc behind each shelter and pickup that grows as its people arrive, so the
+  // Halos: a --safe disc behind each shelter that grows as its people arrive, so the
   // crowd reads at the city view too, where it would hide under the piece.
   const arrived = new Int32Array(storm.places.length);
   const most = Math.max(1, ...storm.places.map((p) => p.total));
@@ -109,11 +112,15 @@ export function stormRenderer(storm: Storm, reduce: boolean): StormRenderer {
       let x = res.home[2 * k]!;
       let y = res.home[2 * k + 1]!;
       if (gone && fate === FATE_TRAVELS) {
-        const span = res.arrive[k]! - res.leave[k]!;
-        const q = reduce || span <= 0 ? 1 : clamp01((t - res.leave[k]!) / span);
-        x += (res.dest[2 * k]! - x) * q;
-        y += (res.dest[2 * k + 1]! - y) * q;
-        if (q >= 1) arrived[res.to[k]!]!++;
+        // Two legs: walk to the bus stop (none for drivers: board === leave), then ride or drive.
+        const walking = !reduce && t < res.board[k]!;
+        const [t0, t1] = walking ? [res.leave[k]!, res.board[k]!] : [res.board[k]!, res.arrive[k]!];
+        const [fx, fy] = walking ? [x, y] : [res.via[2 * k]!, res.via[2 * k + 1]!];
+        const [tx, ty] = walking ? [res.via[2 * k]!, res.via[2 * k + 1]!] : [res.dest[2 * k]!, res.dest[2 * k + 1]!];
+        const q = reduce || t1 <= t0 ? 1 : clamp01((t - t0) / (t1 - t0));
+        x = fx + (tx - fx) * q;
+        y = fy + (ty - fy) * q;
+        if (!walking && q >= 1) arrived[res.to[k]!]!++;
       }
       p[2 * k] = x;
       p[2 * k + 1] = y;

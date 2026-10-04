@@ -287,7 +287,11 @@ export function Status({ data, preview }: { data: MapData; preview: Preview | nu
             ? '. The piece is here now. Move the cursor to pick another spot, then press Enter.'
             : site && site.floodStep !== null
               ? '. This building floods, so a shelter here helps no one.'
-              : `: covers ${fmt(preview.gain)} more residents.`}
+              : preview.piece.type === 'bus_pickup' && preview.gain < 0.5
+                ? placements.some((p) => p.type === 'shelter')
+                  ? '. Buses need a shelter with free seats within 15 minutes of these blocks.'
+                  : '. A bus needs somewhere to go: place a shelter first.'
+                : `: covers ${fmt(preview.gain)} more residents.`}
       </p>
     );
   } else if (armed) body = <p>{ARMED_HINT[armed]} Press Esc to cancel.</p>;

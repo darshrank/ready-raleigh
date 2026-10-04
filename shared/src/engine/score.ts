@@ -99,7 +99,9 @@ export function missReason(plan: Plan, idx: EngineIndex, state: CoverState, i: n
     else reasons.push(`no shelter with room within ${DRIVE_MIN} minutes`);
   }
   if (m.partW[PART_NO_CAR * n + i]! > 0 && state.cover[PART_NO_CAR * n + i]! < 1) {
-    reasons.push('households with no car and no bus pickup nearby');
+    reasons.push(state.busReach[i]
+      ? `households with no car: a bus pickup is nearby, but no shelter with room within ${DRIVE_MIN} minutes`
+      : 'households with no car and no bus pickup nearby');
   }
   return reasons.join('; ');
 }

@@ -15,14 +15,19 @@ export interface Candidate {
   eff: Effect;
 }
 
-/** Every placement that protects someone in this mode: usable sites, roads, and useful cells. */
+/**
+ * Every placement that can protect someone in this mode: usable sites, roads, and useful cells.
+ * A bus pickup helps no one on its own (it needs a shelter), so it counts if it reaches anyone.
+ */
 export function candidates(mode: Mode, data: DataBundle): Candidate[] {
   const idx = engineIndex(data);
   const empty = emptyState(mode, idx);
+  const noCarW = idx.mode.flood.partW.subarray(PART_NO_CAR * idx.n);
   const out: Candidate[] = [];
   const push = (placement: Omit<Placement, 'id'>) => {
     const eff = placementEffect({ id: '', ...placement }, idx);
-    if (eff && marginalGain(idx, empty, eff) > 0) out.push({ placement, cost: COSTS[placement.type], eff });
+    const useful = eff?.kind === 'pickup' ? eff.cells.some((i) => noCarW[i]! > 0) : eff && marginalGain(idx, empty, eff) > 0;
+    if (eff && useful) out.push({ placement, cost: COSTS[placement.type], eff });
   };
   for (const type of MODE_INTERVENTIONS[mode]) {
     if (type === 'shelter') for (const s of data.sites) push({ type, siteId: s.id });

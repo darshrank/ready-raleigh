@@ -15,7 +15,7 @@ export const PIECE_INFO: Record<FloodPiece, { name: string; verb: string; covers
   bus_pickup: {
     name: 'Bus pickup',
     verb: 'Place bus pickup',
-    covers: 'Households with no car within a short walk',
+    covers: 'Takes households with no car to a shelter',
     key: '2',
   },
   road_protection: {

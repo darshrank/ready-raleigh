@@ -72,6 +72,24 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas:
 -->
 
+### 2026-10-03 19:45 EDT Claude (Opus 5.5) lanes B+C (+D planner text), flood evacuation chain
+- Done: shared/src/engine/coverage.ts reworked (see DECISIONS "Evacuation chain"): bus pickups feed
+  shelters and share their seats (drivers first), roads save whole dry cut-off blocks, shelters are
+  the destination. optimizer.ts keeps bus candidates; fast bus-pass gains. missReason explains a
+  bus with no shelter room. Tests: new "evacuation chain" block in balance.test.ts, updated bus test.
+- Done (app): storm riders walk to the stop then ride to their shelter (sim.ts Residents.via/board,
+  layers.ts two-leg move + 3-point trails); drivers use the engine's seat (shelterOf). HUD preview
+  for a bus with no shelter: "A bus needs somewhere to go: place a shelter first." Piece text:
+  "Takes households with no car to a shelter". Planner (server) values bus spots with the best plan's shelters.
+- Done (data): app/public/data/optimal_flood.json regenerated (3 shelters + bus 5468, 76.3).
+- Verified: typecheck all; 59/60 tests (only the old bench timeout). In the app (/solo?skip): a bus
+  alone covers 0; plus the 3 optimal shelters covers 28,382 (= engine); storm builds with riders and
+  runs. Screenshot of the storm checked.
+- Not done: app/public/data/fixtures/optimal_flood.json is still the P4 file (the optimize script
+  refuses the fixture: over 20% at risk). Riders are few on real data (no-car weight ~4%).
+- Next: decide whether to raise NO_CAR_HH_WEIGHT so buses matter more; P8 results could show
+  "N residents rode the bus to <shelter>" using protectorOf(...).via.
+
 ### 2026-10-03 18:45 EDT Claude (Opus 5.5) lane D, P15 live feeds (server)
 - Done: server/src/live/ (sources.ts fetchers + pure parsers, store.ts Tiger/memory/failSoftLive,
   summary.ts, job.ts). Schema: `gauges` table and `gauge_hourly` continuous aggregate.

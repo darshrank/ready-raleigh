@@ -58,7 +58,7 @@ describe('fractional flooding and capacity', () => {
     expect(score(reverse, data)).toEqual(score(plan, data));
   });
 
-  it('uses people, not vulnerability weights, for seats and avoids overlap with road protection', () => {
+  it('uses people, not vulnerability weights, for seats; a road does not save flooded homes', () => {
     const data: DataBundle = { cells: [cell(0, 10000, { pop65: 10000, floodFrac: .5, cutOff: true }), cell(1, 10000)],
       sites: [site('a', [0, 1], [10, 20])],
       floodRoads: [{ id: 'road', name: 'Road', floodStep: 1, coords: [[0, 0], [1, 1]], unlocks: [0] }] };
@@ -66,8 +66,53 @@ describe('fractional flooding and capacity', () => {
     close(alone.protectedPeople, 10000);
     close(alone.protectedWeighted, 15000);
     const plan = makePlan('flood', [shelter('a'), { type: 'road_protection', roadId: 'road' }]);
-    close(score(plan, data).protectedPeople, 15000);
-    expect(protectorOf(plan, data).get(0)![0]!.placement.roadId).toBe('road');
+    close(score(plan, data).protectedPeople, 10000);
+    expect(protectorOf(plan, data).get(0)![0]!.placement.siteId).toBe('a');
+  });
+});
+
+describe('evacuation chain', () => {
+  // Cell 0 floods (8,000 people, 1,000 no-car households). Cell 1 is dry but cut off (4,000 people,
+  // 400 no-car households). One shelter reaches both; a road reconnects cell 1.
+  const data: DataBundle = {
+    cells: [cell(0, 8000, { noCarHH: 1000 }), cell(1, 4000, { floodStep: null, floodFrac: 0, cutOff: true, noCarHH: 400 })],
+    sites: [{ ...site('a', [0], [10]), coverFlood: [1], driveFlood: [20] }],
+    floodRoads: [{ id: 'road', name: 'Road', floodStep: 1, coords: [[0, 0], [1, 1]], unlocks: [0, 1] }],
+  };
+  const bus = { type: 'bus_pickup' as const, cell: 0 };
+  const road = { type: 'road_protection' as const, roadId: 'road' };
+  const noCarW = (i: number) => 2.5 * data.cells[i]!.noCarHH;
+
+  it('a bus pickup helps no one without a shelter in reach', () => {
+    expect(score(makePlan('flood', [bus]), data).protectedWeighted).toBe(0);
+  });
+
+  it('a bus takes no-car residents to a shelter with seats left, after the drivers', () => {
+    const shelterOnly = score(makePlan('flood', [shelter('a')]), data);
+    const withBus = score(makePlan('flood', [shelter('a'), bus]), data);
+    expect(withBus.protectedWeighted).toBeGreaterThan(shelterOnly.protectedWeighted);
+    const sources = protectorOf(makePlan('flood', [shelter('a'), bus]), data).get(0)!;
+    const riders = sources.find((s) => s.part === 'noCar')!;
+    expect(riders.placement.siteId).toBe('a');
+    expect(riders.via?.type).toBe('bus_pickup');
+    // Drivers keep their seats: the car parts are seated as without the bus.
+    const carShare = (plan: ReturnType<typeof makePlan>) =>
+      [...protectorOf(plan, data).values()].flat().filter((s) => s.part === 'car').reduce((sum, s) => sum + s.weighted, 0);
+    close(carShare(makePlan('flood', [shelter('a'), bus])), carShare(makePlan('flood', [shelter('a')])));
+  });
+
+  it('a road saves everyone in a dry cut-off block and frees their seats', () => {
+    const before = score(makePlan('flood', [shelter('a'), bus]), data);
+    const plan = makePlan('flood', [shelter('a'), bus, road]);
+    const after = score(plan, data);
+    const owners = protectorOf(plan, data).get(1)!;
+    expect(owners.map((s) => s.part).sort()).toEqual(['car', 'noCar']);
+    expect(owners.every((s) => s.placement.roadId === 'road')).toBe(true);
+    // Without the road the 10,000 seats run out: 6,095 drivers from cell 0, 3,200 from cell 1, then
+    // only 705 of cell 0's 1,905 bus riders. With it, cell 1 needs no seats and cell 0 fits (8,000).
+    expect(before.protectedPeople).toBeLessThan(12000);
+    close(after.protectedWeighted, 8000 + noCarW(0) + 4000 + noCarW(1));
+    close(after.protectedPeople, 12000);
   });
 
   it('reports the same optimizer score for the chosen budget; cached baselines stay budget-specific', () => {

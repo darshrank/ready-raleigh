@@ -7,7 +7,7 @@
 // spots enough players chose. Spots are then "both", "data" (the gap) or "crowd".
 import {
   type DataBundle, type InterventionType, type Mode, type Placement, type Plan,
-  emptyState, engineIndex, marginalGain, placementEffect, score,
+  engineIndex, marginalGain, placementEffect, planState, score,
 } from '@shared';
 import { cellToLatLng } from 'h3-js';
 import type { Crowd, PlacementRow } from './db/store';
@@ -139,17 +139,20 @@ export function rankPlanner(mode: Mode, data: DataBundle, optimal: Plan, extende
     const placement = placementOf(type, target);
     const where = whereOf(placement, data);
     if (!where) continue; // picked on an older data build
+    // A bus stop only works next to shelters: value it on top of the best plan's shelters.
+    const base = type === 'bus_pickup' ? optimal.placements.filter((p) => p.type === 'shelter') : [];
+    const plan = (placements: Placement[]) => ({ roomCode: '', playerId: '', playerName: '', mode, placements, spent: 0 });
     const eff = placementEffect(placement, idx);
-    const protectedWeighted = eff ? marginalGain(idx, emptyState(mode, idx), eff) : 0;
+    const protectedWeighted = eff ? marginalGain(idx, planState(plan(base), idx), eff) : 0;
     const protectedPeople = protectedWeighted > 0
-      ? score({ roomCode: '', playerId: '', playerName: '', mode, placements: [placement], spent: 0 }, data).protectedPeople
+      ? score(plan([...base, placement]), data).protectedPeople - (base.length ? score(plan(base), data).protectedPeople : 0)
       : 0;
     const crowdShare = crowd.plays > 0 ? crowdPicks / crowd.plays : 0;
     const rank = data_?.rank ?? null;
     spots.push({
       target, type, ...where, category, inOptimal: data_?.inOptimal ?? false,
       dataRank: rank, crowdPicks, crowdShare, protectedWeighted, protectedPeople,
-      reason: reasonFor(category, data_?.inOptimal ?? false, rank, crowdShare, protectedPeople, crowd.plays),
+      reason: reasonFor(category, type, data_?.inOptimal ?? false, rank, crowdShare, protectedPeople, crowd.plays),
     });
   }
   const order: Record<PlannerCategory, number> = { both: 0, data: 1, crowd: 2 };
@@ -195,14 +198,17 @@ function whereOf(p: Placement, data: DataBundle) {
 const pct = (x: number) => `${Math.round(100 * x)}%`;
 const people = (n: number) => `about ${Math.round(n).toLocaleString('en-US')} people`;
 
-function reasonFor(category: PlannerCategory, inOptimal: boolean, rank: number | null, share: number,
-  protectedPeople: number, plays: number): string {
+function reasonFor(category: PlannerCategory, type: InterventionType, inOptimal: boolean, rank: number | null,
+  share: number, protectedPeople: number, plays: number): string {
   const data = inOptimal ? 'In the best $10M plan' : `The data's #${rank} pick with a bigger budget`;
-  const protects = protectedPeople >= 1 ? `protects ${people(protectedPeople)}` : 'protects almost no one at risk';
-  if (category === 'both') return `${data} and ${pct(share)} of players picked it. On its own it ${protects}.`;
+  const protects = type === 'bus_pickup'
+    ? protectedPeople >= 1 ? `takes ${people(protectedPeople)} with no car to the best plan's shelters` : `reaches almost no one the best plan's shelters can seat`
+    : protectedPeople >= 1 ? `protects ${people(protectedPeople)}` : 'protects almost no one at risk';
+  const alone = type === 'bus_pickup' ? 'It' : 'On its own it';
+  if (category === 'both') return `${data} and ${pct(share)} of players picked it. ${alone} ${protects}.`;
   if (category === 'data') {
     const crowd = plays === 0 ? 'no plays yet' : share === 0 ? 'no player picked it' : `only ${pct(share)} of players picked it`;
     return `${data}: it ${protects}, but ${crowd}.`;
   }
-  return `${pct(share)} of players picked it. On its own it ${protects}.`;
+  return `${pct(share)} of players picked it. ${alone} ${protects}.`;
 }

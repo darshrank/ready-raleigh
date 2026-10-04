@@ -12,6 +12,7 @@ import {
   placementCoverage,
   planCost,
   planProblems,
+  protectorOf,
   score,
   simTimeline,
 } from './index';
@@ -140,13 +141,19 @@ describe('score', () => {
     });
   });
 
-  it('bus pickups serve only households with no car', () => {
-    const r = score(makePlan('flood', [{ type: 'bus_pickup', cell: 9 }]), data);
-    expect(r.score).toBeGreaterThan(0);
-    const cell = data.cells[9]!;
-    const full = cell.pop + cell.pop65 + cell.lowInc + 2.5 * cell.noCarHH;
-    expect(r.protectedWeighted).toBeLessThan(full * 7);
-    expect(r.topMisses.every((m) => !m.reason.includes('no bus pickup') || m.cell !== 9)).toBe(true);
+  it('bus pickups carry households with no car to a shelter, and need one', () => {
+    const bus = { type: 'bus_pickup' as const, cell: 9 };
+    expect(score(makePlan('flood', [bus]), data).score).toBe(0);
+    expect(placementCoverage({ id: 'x', ...bus }, 'flood', data).length).toBeGreaterThan(0);
+    // The optimizer's plan uses buses; without them it protects less.
+    const both = optimize('flood', data).plan;
+    expect(both.placements.some((p) => p.type === 'bus_pickup')).toBe(true);
+    const sheltered = { ...both, placements: both.placements.filter((p) => p.type !== 'bus_pickup') };
+    expect(score(both, data).protectedWeighted).toBeGreaterThan(score(sheltered, data).protectedWeighted);
+    // No-car residents in a shelter got there by bus (the rest are behind a protected road).
+    const riders = [...protectorOf(both, data).values()].flat().filter((s) => s.part === 'noCar' && s.placement.type === 'shelter');
+    expect(riders.length).toBeGreaterThan(0);
+    expect(riders.every((s) => s.via?.type === 'bus_pickup')).toBe(true);
   });
 
   it('breakdowns add up', () => {

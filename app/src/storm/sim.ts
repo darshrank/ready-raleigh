@@ -2,7 +2,8 @@
 //
 // The engine decides who is protected (simTimeline, planState); this file only turns that into
 // things to draw: when each flood step prints, which roads close, and a sample of residents who
-// either travel to their shelter or bus pickup, stay safe behind a protected road, or are stranded.
+// either travel to their shelter (driving, or walking to a bus stop and riding), stay safe behind a
+// protected road, or are stranded.
 import { FINAL_FLOOD_STEP, FLOOD_STEP_NAMES } from '@shared/config';
 import {
   PART_CAR,
@@ -67,31 +68,34 @@ const PEOPLE_PER_DOT = 25;
 const MAX_RESIDENTS = 6000;
 /** Residents start anywhere within this distance of their cell's center (res 9 inradius ~150 m). */
 const HOME_SPREAD_M = 130;
-/** Arrivals gather around the shelter or pickup instead of on one pixel (the halo shows the crowd). */
+/** Arrivals gather around the shelter instead of on one pixel (the halo shows the crowd). */
 const CROWD_SPREAD_M = 90;
 
 /** What happens to a resident when the water reaches their block. */
 export const FATE_STRANDED = 0;
-export const FATE_TRAVELS = 1; // to a shelter (car part) or a bus pickup (no-car part)
-export const FATE_STAYS = 2; // car part kept connected by a protected road
+export const FATE_TRAVELS = 1; // to their shelter: driving, or walking to a bus stop and riding
+export const FATE_STAYS = 2; // their block is kept connected by a protected road
 
 export interface Residents {
   n: number;
   /** [lon, lat] pairs. */
   home: Float32Array;
+  /** The bus stop a rider walks to; equal to home for drivers and everyone else. */
+  via: Float32Array;
   dest: Float32Array;
-  /** Index into Storm.places for travellers, -1 for everyone else. */
+  /** Index into Storm.places (a shelter) for travellers, -1 for everyone else. */
   to: Int16Array;
   fate: Uint8Array;
-  /** When the resident leaves (or is stranded), and when a traveller arrives. ms after the start. */
+  /** When the resident leaves (or is stranded), boards the bus (= leave without one), and arrives. ms after the start. */
   leave: Float32Array;
+  board: Float32Array;
   arrive: Float32Array;
 }
 
 export interface Storm {
   timeline: TimelineStep[];
   residents: Residents;
-  /** Shelters and bus pickups that receive travellers, and how many dots each receives. */
+  /** Shelters that receive travellers, and how many dots each receives. */
   places: { at: LngLat; total: number }[];
   /** Indices of the residents who travel, for the trails layer. */
   travellers: Int32Array;
@@ -136,32 +140,30 @@ function meters(a: LngLat, b: LngLat): number {
   return Math.hypot((a[0] - b[0]) * k, a[1] - b[1]) * M_PER_DEG_LAT;
 }
 
-function nearest(from: LngLat, options: number[], places: LngLat[]): number {
-  let best = options[0]!;
-  let bestD = Infinity;
-  for (const o of options) {
-    const d = meters(from, places[o]!);
-    if (d < bestD) [best, bestD] = [o, d];
+
+/** Each usable shelter's index in `places`, by site id: where travellers end up. */
+function shelterPlaces(data: MapData, placements: Placement[], places: LngLat[]) {
+  const idx = engineIndex(data);
+  const out = new Map<string, number>();
+  for (const p of placements) {
+    const site = p.type === 'shelter' && p.siteId !== undefined ? idx.sites.get(p.siteId) : undefined;
+    if (site && placementEffect(p, idx)) out.set(site.id, places.push([site.lon, site.lat]) - 1);
   }
-  return best;
+  return out;
 }
 
-/** Destinations per cell for one part: where the shelters (or bus pickups) that cover it are. */
-function destinations(data: MapData, placements: Placement[], type: 'shelter' | 'bus_pickup', places: LngLat[]) {
+/** The bus stops within walking distance of each cell. */
+function pickupsByCell(data: MapData, placements: Placement[]) {
   const idx = engineIndex(data);
-  const out = new Map<number, number[]>();
+  const out = new Map<number, LngLat[]>();
   for (const p of placements) {
-    if (p.type !== type) continue;
-    const eff = placementEffect(p, idx);
-    if (!eff || eff.kind !== 'cover') continue;
-    const site = p.siteId === undefined ? undefined : idx.sites.get(p.siteId);
-    const at: LngLat | null = site ? [site.lon, site.lat] : p.cell !== undefined ? cellCenter(data, p.cell) : null;
-    if (!at) continue;
-    const place = places.push(at) - 1;
+    const eff = p.type === 'bus_pickup' ? placementEffect(p, idx) : null;
+    if (!eff || eff.kind !== 'pickup' || p.cell === undefined) continue;
+    const at = cellCenter(data, p.cell);
     for (const i of eff.cells) {
       const list = out.get(i);
-      if (list) list.push(place);
-      else out.set(i, [place]);
+      if (list) list.push(at);
+      else out.set(i, [at]);
     }
   }
   return out;
@@ -177,8 +179,8 @@ function sampleResidents(data: MapData, placements: Placement[], places: LngLat[
   const { n } = idx;
   const m = idx.mode.flood;
   const state = planState({ mode: 'flood', placements }, idx);
-  const shelters = destinations(data, placements, 'shelter', places);
-  const pickups = destinations(data, placements, 'bus_pickup', places);
+  const shelters = shelterPlaces(data, placements, places);
+  const pickups = pickupsByCell(data, placements);
   const atRisk = floodAtRisk(data);
 
   let total = 0;
@@ -186,10 +188,12 @@ function sampleResidents(data: MapData, placements: Placement[], places: LngLat[
   const perDot = Math.max(PEOPLE_PER_DOT, total / MAX_RESIDENTS);
 
   const home: number[] = [];
+  const via: number[] = [];
   const dest: number[] = [];
   const to: number[] = [];
   const fate: number[] = [];
   const leave: number[] = [];
+  const board: number[] = [];
   const arrive: number[] = [];
   const rand = mulberry32(2026);
   // Systematic sampling: each part carries its remainder to the next cell, so the dot count is
@@ -203,31 +207,44 @@ function sampleResidents(data: MapData, placements: Placement[], places: LngLat[
       const before = carry[part]!;
       carry[part] = before + m.partW[part * n + i]! / perDot;
       const count = Math.floor(carry[part]!) - Math.floor(before);
-      const covered = state.cover[part * n + i]! > 0;
-      const options = covered ? (part === PART_CAR ? shelters : pickups).get(i) : undefined;
-      for (let k = 0; k < count; k++) {
+      const k = part * n + i;
+      const covered = state.cover[k]! > 0;
+      // The engine's seat: a protected road keeps the block safe at home, else a shelter seat.
+      const byRoad = covered && state.directCover[k]! > 0;
+      const shelter = covered && !byRoad ? shelters.get(state.shelterOf[k] ?? '') : undefined;
+      const stops = part === PART_NO_CAR ? pickups.get(i) : undefined;
+      for (let r = 0; r < count; r++) {
         const h = scatter(center, HOME_SPREAD_M, rand);
         // Residents leave as the water reaches them, so some are still on the move when the
         // helicopter arrives.
         const t0 = stepStart(step) + 0.6 * GROW_MS + rand() * 1400;
         let f: number = FATE_STRANDED;
+        let v = h;
         let d = h;
+        let tb = t0;
         let t1 = t0;
         let place = -1;
-        if (options) {
+        if (shelter !== undefined) {
           f = FATE_TRAVELS;
-          place = nearest(h, options, places);
+          place = shelter;
           d = scatter(places[place]!, CROWD_SPREAD_M, rand);
-          // Straight lines in pass 1; a 10 km trip takes about 3.5 s, so everyone lands before the next step.
-          t1 = t0 + Math.min(3800, 1000 + meters(h, d) * 0.25);
+          if (stops) {
+            // No car: walk to the nearest bus stop, then ride to the shelter.
+            v = scatter(stops.reduce((a, b) => (meters(h, a) <= meters(h, b) ? a : b)), CROWD_SPREAD_M / 3, rand);
+            tb = t0 + Math.min(1200, 400 + meters(h, v) * 1.2);
+          }
+          // Straight lines; a 10 km ride takes about 3 s, so everyone lands before the next step.
+          t1 = tb + Math.min(stops ? 3000 : 3800, 1000 + meters(v, d) * 0.25);
         } else if (covered) {
           f = FATE_STAYS;
         }
         home.push(h[0], h[1]);
+        via.push(v[0], v[1]);
         dest.push(d[0], d[1]);
         to.push(place);
         fate.push(f);
         leave.push(t0);
+        board.push(tb);
         arrive.push(t1);
       }
     }
@@ -235,10 +252,12 @@ function sampleResidents(data: MapData, placements: Placement[], places: LngLat[
   return {
     n: fate.length,
     home: Float32Array.from(home),
+    via: Float32Array.from(via),
     dest: Float32Array.from(dest),
     to: Int16Array.from(to),
     fate: Uint8Array.from(fate),
     leave: Float32Array.from(leave),
+    board: Float32Array.from(board),
     arrive: Float32Array.from(arrive),
   };
 }

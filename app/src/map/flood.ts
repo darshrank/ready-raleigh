@@ -26,7 +26,7 @@ const BARRIER = 'road-closed';
 /** Water depth in meters per step in 3D: the floodway is deepest. */
 const DEPTH_M: Record<number, number> = { 1: 6, 2: 3, 3: 1.5 };
 /** The camera counts as tilted (3D buildings and water) above this pitch. */
-const TILT_3D = 20;
+export const TILT_3D = 20;
 
 /** A step grows in over GROW_MS: each part fades in over PART_MS, after a delay up to the rest. */
 export const GROW_MS = 1500;

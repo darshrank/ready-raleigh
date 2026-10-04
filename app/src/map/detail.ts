@@ -14,10 +14,11 @@ import type {
   MapMouseEvent,
   SourceSpecification,
 } from 'maplibre-gl';
-import type { FeatureCollection, MultiPolygon, Point } from 'geojson';
+import type { FeatureCollection, MultiPolygon, Point, Position } from 'geojson';
 import { loadMapData } from '../data';
 import { dataBase } from '../story';
 import type { Palette } from './basemap';
+import { TILT_3D } from './flood';
 
 const REGULAR = ['Noto Sans Regular'];
 
@@ -34,6 +35,9 @@ const BUS_STOPS = 'bus-stops';
 /** Shelter sites draw as their real buildings from this zoom (their squares hide). */
 export const SITE_BUILDING_ZOOM = 15;
 const SITE_BUILDINGS = 'site-buildings';
+const SITE_BUILDINGS_3D = 'site-buildings-3d';
+/** A site's extrusion stands this far above the tile building it covers, and its walls this far out. */
+const SITE_3D_ABOVE_M = 0.8;
 
 /** Aerial imagery fades in over this zoom range. */
 export const AERIAL_ZOOM: [number, number] = [16, 17];
@@ -349,6 +353,29 @@ export function siteBuildingLayers(P: Palette): LayerSpecification[] {
 }
 
 /**
+ * 3D (camera tilted): the shelter site's building in the site color, drawn right after the tiles'
+ * 3D buildings. Its height comes from the tile building under it (feature-state `height`, set in
+ * installDetail) plus SITE_3D_ABOVE_M, and the footprint is pushed out by about as much, so the
+ * site's walls and roof cover the tile building's. In the storm both colors are the night
+ * building color, so sites stay hidden there (DESIGN.md "Map").
+ */
+export function siteBuilding3dLayer(P: Palette): LayerSpecification {
+  return {
+    id: SITE_BUILDINGS_3D,
+    type: 'fill-extrusion',
+    source: SITE_BUILDINGS,
+    minzoom: 13,
+    layout: { visibility: 'none' },
+    paint: {
+      'fill-extrusion-color': ['case', ['get', 'floods'], P.site3dFloods, P.site3d],
+      'fill-extrusion-height': ['+', ['coalesce', ['feature-state', 'height'], 8], SITE_3D_ABOVE_M],
+      'fill-extrusion-base': 0,
+      'fill-extrusion-opacity': 0.92,
+    },
+  };
+}
+
+/**
  * Detail labels, in draw order: house numbers (z16+, the lowest priority), building names (z16+),
  * places (z14+, names z15+). They go among the labels, below street and place names, so those win
  * any collision.
@@ -469,6 +496,85 @@ export interface SiteCardInfo {
   y: number;
 }
 
+/** Site 3D buildings get their height from the tiles from this zoom (3D buildings start at 13). */
+const SITE_3D_ZOOM = 14;
+
+interface Footprint {
+  /** The feature's id in the site-buildings source. */
+  fid: number;
+  polys: number[][][][];
+  bbox: [number, number, number, number];
+  /** The tile building's render_height, once found. */
+  height?: number;
+}
+
+/**
+ * The footprint grown by about `m` meters (scaled about its middle; holes shrink), so the site's 3D
+ * walls stand just in front of the tile building's instead of on the same plane. Under a meter,
+ * so the flat outline barely moves.
+ */
+function pushOut(polys: number[][][][], m: number): number[][][][] {
+  return polys.map((poly) => {
+    const c = middle(poly[0]!);
+    const kx = 111_320 * Math.cos((c[1] * Math.PI) / 180);
+    const outer = poly[0]!;
+    const r = outer.reduce((sum, p) => sum + Math.hypot((p[0]! - c[0]) * kx, (p[1]! - c[1]) * 111_320), 0) / outer.length;
+    const k = 1 + m / Math.max(r, 3);
+    return poly.map((ring, i) => {
+      const f = i === 0 ? k : 1 / k;
+      return ring.map((p) => [c[0] + (p[0]! - c[0]) * f, c[1] + (p[1]! - c[1]) * f]);
+    });
+  });
+}
+
+/** Points a little inside the footprint's corners: one of them lies on the building (U shapes too). */
+function probes(polys: number[][][][]): [number, number][] {
+  const ring = polys[0]![0]!;
+  const c = middle(ring);
+  const step = Math.max(1, Math.floor((ring.length - 1) / 6));
+  const out: [number, number][] = [c];
+  for (let k = 0; k < ring.length - 1; k += step) out.push([ring[k]![0]! + (c[0] - ring[k]![0]!) * 0.04, ring[k]![1]! + (c[1] - ring[k]![1]!) * 0.04]);
+  return out;
+}
+
+function bboxOf(polys: number[][][][]): Footprint['bbox'] {
+  const b: Footprint['bbox'] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const poly of polys)
+    for (const [x, y] of poly[0]!) {
+      b[0] = Math.min(b[0], x!); b[1] = Math.min(b[1], y!);
+      b[2] = Math.max(b[2], x!); b[3] = Math.max(b[3], y!);
+    }
+  return b;
+}
+
+const inBbox = (b: Footprint['bbox'], [x, y]: [number, number]) => x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3];
+
+function inRing(ring: number[][] | Position[], [x, y]: [number, number]) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i]!;
+    const [xj, yj] = ring[j]!;
+    if (yi! > y !== yj! > y && x < ((xj! - xi!) * (y - yi!)) / (yj! - yi!) + xi!) inside = !inside;
+  }
+  return inside;
+}
+
+/** Inside an outer ring and outside its holes (GeoJSON MultiPolygon coordinates). */
+const inPolygons = (polys: number[][][][], p: [number, number]) =>
+  polys.some((poly) => inRing(poly[0]!, p) && !poly.slice(1).some((hole) => inRing(hole, p)));
+
+/** The average of a ring's corners: inside any building that is not strongly concave. */
+function middle(ring: Position[]): [number, number] {
+  let x = 0;
+  let y = 0;
+  const n = ring.length - 1;
+  for (let k = 0; k < n; k++) {
+    x += ring[k]![0]!;
+    y += ring[k]![1]!;
+  }
+  return [x / n, y / n];
+}
+
 interface BusStop {
   id: string;
   name: string;
@@ -508,10 +614,12 @@ export function installDetail(map: MapLibreMap, onSite: (card: SiteCardInfo | nu
           type: 'Feature',
           id: i,
           properties: { name: s.name, kind: s.kind, floodStep: s.floodStep, floods: s.floodStep !== null },
-          geometry: { type: 'MultiPolygon', coordinates: b.polygons },
+          geometry: { type: 'MultiPolygon', coordinates: pushOut(b.polygons, SITE_3D_ABOVE_M) },
         });
       });
       fill(map, SITE_BUILDINGS, fc);
+      footprints = fc.features.map((f) => ({ fid: f.id as number, polys: f.geometry.coordinates, bbox: bboxOf(f.geometry.coordinates) }));
+      markSoon(0);
     },
     (e: unknown) => console.warn('Site buildings did not load:', e),
   );
@@ -544,6 +652,44 @@ export function installDetail(map: MapLibreMap, onSite: (card: SiteCardInfo | nu
   map.on('click', onMapClick);
   map.on('zoomstart', hide);
 
+  // 3D: the tiles merge many buildings into one feature (a MultiPolygon per height group), so a
+  // site's building can't be colored on its own there. Instead the site's footprint is extruded
+  // in the site color (siteBuilding3dLayer) to the height of the tile building under it, read
+  // here once per site as its tile loads with the 3D layer on.
+  let footprints: Footprint[] = [];
+  let markTimer = 0;
+  const mark = () => {
+    const on = map.getPitch() > TILT_3D;
+    if (map.getLayer(SITE_BUILDINGS_3D)) map.setLayoutProperty(SITE_BUILDINGS_3D, 'visibility', on ? 'visible' : 'none');
+    if (!on || map.getZoom() < SITE_3D_ZOOM) return;
+    const view = map.getBounds();
+    const todo = footprints.filter((s) => s.height === undefined && view.intersects([[s.bbox[0], s.bbox[1]], [s.bbox[2], s.bbox[3]]]));
+    if (!todo.length) return;
+    const parts: { bbox: Footprint['bbox']; ring: Position[]; height: number }[] = [];
+    for (const f of map.querySourceFeatures('omt', { sourceLayer: 'building' })) {
+      const g = f.geometry;
+      const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+      const height = Number(f.properties?.render_height ?? 0);
+      for (const poly of polys) if (poly[0] && poly[0].length >= 4) parts.push({ bbox: bboxOf([poly as number[][][]]), ring: poly[0], height });
+    }
+    for (const s of todo) {
+      const hit = probes(s.polys).map((p) => parts.find((q) => inBbox(q.bbox, p) && inRing(q.ring, p))).find(Boolean);
+      if (!hit) continue;
+      s.height = hit.height;
+      map.setFeatureState({ source: SITE_BUILDINGS, id: s.fid }, { height: hit.height });
+    }
+  };
+  const markSoon = (ms: number) => {
+    clearTimeout(markTimer);
+    markTimer = window.setTimeout(mark, ms);
+  };
+  const onTiles = (e: { sourceId?: string; tile?: unknown }) => {
+    if (e.sourceId === 'omt' && e.tile && map.getPitch() > TILT_3D) markSoon(300);
+  };
+  const onMoveEnd = () => markSoon(50);
+  map.on('sourcedata', onTiles);
+  map.on('moveend', onMoveEnd);
+
   getJson<BusStop[]>('bus_stops.json').then(
     (stops) => {
       if (!live) return;
@@ -572,5 +718,8 @@ export function installDetail(map: MapLibreMap, onSite: (card: SiteCardInfo | nu
     map.off('mouseleave', SITE_BUILDINGS, hide);
     map.off('click', onMapClick);
     map.off('zoomstart', hide);
+    map.off('sourcedata', onTiles);
+    map.off('moveend', onMoveEnd);
+    clearTimeout(markTimer);
   };
 }

@@ -284,6 +284,30 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas: the report needs real plays from at least 5 different people per area; with few
   testers use ?minPlayers=3. A newer GoRaleigh GTFS URL can replace FEEDS[0] in pipeline/transit.py.
 
+### 2026-10-03 20:18 EDT Claude (Opus 5.5) lane C, semantic zoom F1 (3D shelters)
+- Context: branch rebased onto group/main 1f8ec6a (P9 rooms, P15 live). Rebase stops resolved per
+  the user's rules (DECISIONS both sides in time order; PROGRESS upstream checklist kept, my
+  section and entries placed by time; Solo.tsx room block kept, then the coverage rim lines).
+  Then: npm install, typecheck, 57 TS tests (8 files, incl. rooms + live), 27 Python tests in a
+  new claude/pipeline/.venv (python3.11, requirements.txt). Two-player room check (host
+  /host/SZQA?host at 1440, phone /play/SZQA at 390): join, lock, storm started on both 3 ms apart;
+  detail layers on the phone at z15/z17, none at z12; no console errors.
+- Done (F1): detail.ts `siteBuilding3dLayer(P)` (fill-extrusion on the site-buildings source,
+  visible when pitch > TILT_3D, exported from flood.ts) and, in installDetail, a debounced pass
+  after omt tiles load / moveend that reads the tile building's render_height under each site in
+  view (probe points inside the footprint) into feature-state `height`. Footprints are pushed out
+  0.8 m (`pushOut`). basemap.ts palette `site3d` (bond->ink 55%) / `site3dFloods` (20%); storm =
+  storm-building for both. Placed right after `buildings-3d` in the style.
+- Verified: typecheck, 57 TS tests. Tilted 1440 shots: z15 10 site extrusions, all with a tile
+  height; z17 Broughton in the site color, unmatched squares above the 3D buildings; flooded
+  Washington Elementary pale; storm: Broughton looks like any building. No console errors.
+- Next exact step: fold the attribution on MapLibre's own open (MapView.tsx; it is only folded on
+  `idle`, which the water shimmer delays: at 390 it covers "Start the storm"), then F2 (rebuild
+  safety: pipeline/detail.py refresh_detail from cache, called last by build_all, with tests),
+  then F3 (care homes from OSM via Overpass: the tiles hold 1 of 16).
+- Gotchas: tile building ids are height-group ids (one id, many buildings); never feature-state
+  them per building.
+
 ### 2026-10-03 19:45 EDT Claude (Opus 5.5) lanes B+C (+D planner text), flood evacuation chain
 - Done: shared/src/engine/coverage.ts reworked (see DECISIONS "Evacuation chain"): bus pickups feed
   shelters and share their seats (drivers first), roads save whole dry cut-off blocks, shelters are

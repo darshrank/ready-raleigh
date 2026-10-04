@@ -6,9 +6,9 @@
 // city to night by re-applying the same layers with the night palette (paint updates only, no
 // relayout). The water (map/flood.ts) is part of the same style, between the streets and the labels.
 import type { ExpressionSpecification, LayerSpecification, Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
-import { rgba, type Tokens } from '../tokens';
+import { rgba, tint, type Tokens } from '../tokens';
 import { floodFlatLayers, floodSources, flood3dLayers, closuresLayer } from './flood';
-import { aerialLayer, detailLabelLayers, detailSources, siteBuildingLayers } from './detail';
+import { aerialLayer, detailLabelLayers, detailSources, siteBuilding3dLayer, siteBuildingLayers } from './detail';
 
 export const TILES = 'https://tiles.openfreemap.org/planet';
 export const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
@@ -47,6 +47,9 @@ export interface Palette {
   waterway: string;
   building: string;
   building3d: string;
+  /** 3D: a shelter site's building (map/detail.ts), dry or flooding. */
+  site3d: string;
+  site3dFloods: string;
   rail: string;
   casing: string;
   /** Casing opacity for minor, major and motorway streets (0 at night: streets are faint lines). */
@@ -106,6 +109,9 @@ function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
       waterway: rgba(rgb['storm-water'], 0.75),
       building: rgba(rgb['storm-street'], 0.85),
       building3d: hex['storm-building'],
+      // The storm hides shelter sites (DESIGN.md "Map"): their buildings look like any other.
+      site3d: hex['storm-building'],
+      site3dFloods: hex['storm-building'],
       rail: rgba(rgb['storm-street'], 1),
       casing: hex['storm-land'],
       casingOpacity: [0, 0, 0],
@@ -133,6 +139,8 @@ function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
     waterway: rgba(rgb.flood, 0.7),
     building: rgba(rgb.ink, 0.08),
     building3d: hex.bond,
+    site3d: rgba(tint(rgb.bond, rgb.ink, 0.55), 1),
+    site3dFloods: rgba(tint(rgb.bond, rgb.ink, 0.2), 1),
     rail: rgba(rgb.ink, 0.6),
     casing: hex.ink,
     casingOpacity: [0.3, 0.55, 0.75],
@@ -351,7 +359,7 @@ function labelLayers(P: Palette): LayerSpecification[] {
 
 /** The layers a palette paints, in draw order (without the water, which has its own colors). */
 function paletteLayers(P: Palette): LayerSpecification[] {
-  return [...groundLayers(P), buildings3dLayer(P), ...labelLayers(P)];
+  return [...groundLayers(P), buildings3dLayer(P), siteBuilding3dLayer(P), ...labelLayers(P)];
 }
 
 /**
@@ -374,6 +382,7 @@ export function basemapStyle(t: Tokens): StyleSpecification {
       ...groundLayers(P),
       ...floodFlatLayers(t),
       buildings3dLayer(P),
+      siteBuilding3dLayer(P),
       ...flood3dLayers(t),
       closuresLayer(),
       ...labelLayers(P),

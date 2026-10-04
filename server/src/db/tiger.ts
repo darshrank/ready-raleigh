@@ -82,6 +82,20 @@ export class TigerStore implements PlayStore {
     return { plays: counts.rows[0]?.plays ?? 0, players: counts.rows[0]?.players ?? 0, picks: rows };
   }
 
+  async pickers(mode: string, targets: string[], limit: number): Promise<{ playId: string; playerId: string }[]> {
+    const { rows } = await this.pool.query<{ playId: string; playerId: string }>(
+      `SELECT DISTINCT ON (pl.created_at, pl.id) pl.id::text AS "playId", pl.player_id AS "playerId"
+       FROM placements p JOIN plays pl ON pl.id = p.play_id AND pl.created_at = p.created_at
+       WHERE p.mode = $1 AND p.target = ANY($2::text[])
+       ORDER BY pl.created_at DESC, pl.id LIMIT $3`, [mode, targets, limit]);
+    return rows;
+  }
+
+  async bestScore(mode: string): Promise<number | null> {
+    const { rows } = await this.pool.query<{ best: number | null }>('SELECT max(score) AS best FROM plays WHERE mode = $1', [mode]);
+    return rows[0]?.best ?? null;
+  }
+
   async close() {
     await this.pool.end();
   }

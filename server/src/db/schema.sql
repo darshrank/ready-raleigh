@@ -162,3 +162,30 @@ WITH hood_risk AS (
 )
 SELECT r.hood, p.mode, coalesce(p.picks, 0) AS picks, r.flood_risk_weighted
 FROM hood_risk r LEFT JOIN hood_picks p ON p.hood = r.hood;
+
+-- The civic record on Solana (P16, docs/SOLANA.md): one jsonb document per row (server/src/solana/store.ts).
+-- Anchors are Memo transactions; civic_plays holds each play's fingerprint and Merkle proof.
+CREATE TABLE IF NOT EXISTS civic_anchors (
+  id         text        PRIMARY KEY,
+  created_at timestamptz NOT NULL,
+  doc        jsonb       NOT NULL
+);
+CREATE TABLE IF NOT EXISTS civic_plays (
+  id         text        PRIMARY KEY,
+  created_at timestamptz NOT NULL,
+  anchor_id  text,
+  doc        jsonb       NOT NULL
+);
+CREATE INDEX IF NOT EXISTS civic_plays_unanchored ON civic_plays (created_at) WHERE anchor_id IS NULL;
+CREATE TABLE IF NOT EXISTS civic_signals (
+  id         text        PRIMARY KEY,
+  created_at timestamptz NOT NULL,
+  doc        jsonb       NOT NULL
+);
+CREATE TABLE IF NOT EXISTS civic_cards (
+  id         text        PRIMARY KEY,
+  created_at timestamptz NOT NULL,
+  play_id    text,
+  doc        jsonb       NOT NULL
+);
+CREATE INDEX IF NOT EXISTS civic_cards_play ON civic_cards (play_id);

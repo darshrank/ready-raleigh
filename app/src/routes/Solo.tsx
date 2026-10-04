@@ -44,7 +44,8 @@ import { MapControls, MapLookButtons, PLATE, SoundButton, Status, TopHud, Tray }
 import { NeighborhoodCard } from '../ui/MapRail';
 import { playAlert } from '../ui/sound';
 import { Title, useBriefingTour, useTitleOrbit } from '../ui/Title';
-import { saveSoloPlay } from '../api';
+import { playerId as anonPlayerId, saveSoloPlay } from '../api';
+import { CivicRecord } from '../civic/CivicRecord';
 import { cityById } from '../cities';
 import { currentStory, storyOf, type Hazard } from '../story';
 import { useTheme } from '../theme';
@@ -85,6 +86,9 @@ export interface RoomMode {
   waiting: ReactNode;
   /** Shown on the results card instead of "Play again". */
   footer: ReactNode;
+  /** This round's stored play and this player's id, for the public record and cards (P16). */
+  playId: string | null;
+  owner: string | null;
   /** This candidate's name and the other candidates' plans, for the news desk. */
   mayor: string;
   rivals: Mayor[];
@@ -292,16 +296,19 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
 
   // The wipe and the alert chime play once, when the storm starts (not again on a skip).
   const [stormStart, setStormStart] = useState<number | null>(null);
+  /** The stored solo play, for its public record (null until the server has it). */
+  const [soloPlayId, setSoloPlayId] = useState<string | null>(null);
   const lastPhase = useRef(phase);
   useEffect(() => {
     const was = lastPhase.current;
     lastPhase.current = phase;
     if (phase === 'storm' && was === 'planning') {
+      setSoloPlayId(null);
       setStormStart(usePlan.getState().stormAt);
       playAlert();
     }
     // A finished solo game feeds the planners' reports (rooms are saved by the server).
-    if (phase === 'results' && was === 'storm' && !roomRef.current) void saveSoloPlay(usePlan.getState().placements);
+    if (phase === 'results' && was === 'storm' && !roomRef.current) void saveSoloPlay(usePlan.getState().placements).then(setSoloPlayId);
     // Another round: back to the calm board.
     if (mapInst && phase === 'planning' && (was === 'results' || was === 'storm')) resetWater(floodViewOf(mapInst));
   }, [phase, mapInst]);
@@ -472,7 +479,15 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
           </div>
           {phase === 'results' ? (
             <div className="flex shrink-0 justify-center px-3 pb-4 lg:justify-start lg:px-8 lg:pb-8">
-              <ResultsCard storm={storm} result={result} footer={room?.footer} />
+              <ResultsCard
+                storm={storm}
+                result={result}
+                footer={room?.footer}
+                civic={(() => {
+                  const id = room ? room.playId : soloPlayId;
+                  return id ? <CivicRecord key={id} playId={id} owner={room ? room.owner : anonPlayerId()} /> : null;
+                })()}
+              />
             </div>
           ) : (
             <div className="flex shrink-0 flex-col items-center">

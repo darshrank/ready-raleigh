@@ -10,7 +10,7 @@ const PLAYER_KEY = 'ready-raleigh-player';
  * An anonymous id per browser, so the planner reports count people rather than games. Random, not
  * tied to any name or account.
  */
-function playerId(): string {
+export function playerId(): string {
   try {
     let id = localStorage.getItem(PLAYER_KEY);
     if (!id) {
@@ -23,18 +23,20 @@ function playerId(): string {
   }
 }
 
-/** Stores a finished solo game (the server scores it again). Never throws. */
-export async function saveSoloPlay(placements: Placement[]): Promise<void> {
+/** Stores a finished solo game (the server scores it again). Never throws: null when not stored. */
+export async function saveSoloPlay(placements: Placement[]): Promise<string | null> {
   try {
     const plan = { ...soloPlan(placements), playerId: playerId() };
-    await fetch('/api/plays', {
+    const res = await fetch('/api/plays', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ plan }),
       signal: AbortSignal.timeout(8000),
     });
+    return res.ok ? ((await res.json()) as { id: string }).id : null;
   } catch {
     // Server down or offline: the game goes on.
+    return null;
   }
 }
 

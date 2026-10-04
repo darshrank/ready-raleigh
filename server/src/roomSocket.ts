@@ -8,6 +8,7 @@ import { score, type ClientMsg, type Plan, type RoomState, type ServerMsg } from
 import type { GameData } from './data';
 import type { PlayRecord, PlayStore } from './db/store';
 import { BadPlay, buildPlay } from './plays';
+import type { CivicRecord } from './solana/civic';
 import {
   RoomError, again, findPlayer, getOrCreateRoom, getRoom, join, lock, pick, presence, publicState,
   start, sweep, tick, type Player, type Room,
@@ -25,9 +26,13 @@ export interface RoomServerOptions {
   store: PlayStore;
   data: () => GameData | null;
   log: { warn: (obj: unknown, msg: string) => void };
+  /** The civic record (P16): each locked platform is fingerprinted, the election anchored when it ends. */
+  civic?: CivicRecord;
+  /** An election just ended (results are in); after its plays are recorded. */
+  onFinish?: (room: Room) => void;
 }
 
-export function roomServer({ store, data, log }: RoomServerOptions) {
+export function roomServer({ store, data, log, civic, onFinish }: RoomServerOptions) {
   const wss = new WebSocketServer({ noServer: true });
   const conns = new Map<string, Set<Conn>>();
   let best: number | null = null;
@@ -37,8 +42,24 @@ export function roomServer({ store, data, log }: RoomServerOptions) {
     return best;
   };
 
+  /** Civic records still being written per room, and the elections already handed on. */
+  const recording = new Map<string, Promise<unknown>[]>();
+  const finished = new Set<string>();
+  const electionOver = (room: Room) => {
+    const key = `${room.code}:${room.round}`;
+    if (room.phase !== 'results' || finished.has(key)) return;
+    finished.add(key);
+    const pending = recording.get(room.code) ?? [];
+    recording.delete(room.code);
+    void Promise.allSettled(pending).then(() => {
+      void civic?.flush();
+      onFinish?.(room);
+    });
+  };
+
   const send = (ws: WebSocket, msg: ServerMsg) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(msg));
   const broadcast = (room: Room) => {
+    electionOver(room);
     const now = Date.now();
     for (const c of conns.get(room.code) ?? []) {
       const viewer = c.playerId ? room.players.find((p) => p.id === c.playerId) ?? null : null;
@@ -69,6 +90,11 @@ export function roomServer({ store, data, log }: RoomServerOptions) {
       throw err;
     }
     store.savePlay({ ...record, candidate: player.candidate }).catch((e) => log.warn({ err: e, room: room.code }, 'room play not saved'));
+    player.playId = record.id;
+    if (civic) {
+      const p = civic.recordPlay(record).catch((e) => log.warn({ err: e, room: room.code }, 'civic: room play not fingerprinted'));
+      recording.set(room.code, [...(recording.get(room.code) ?? []), p]);
+    }
     return record.score;
   };
 

@@ -39,6 +39,22 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 ## Handoff log
 <!-- Newest first. Template:
 
+### 2026-10-04 01:30 EDT Claude (Opus 5.5) lanes B+C+D, P16 Solana MVP (branch solana)
+- Done (5 commits): shared/src/proof.ts (fingerprints, Merkle proofs); server/src/solana/ (devnet
+  Memo anchoring of every play in batches, Tiger civic_* tables, signals: consensus, blind spot,
+  new best); server/src/cards/ (Mayor-elect and signal cards, Gemini words and art, soulbound
+  Metaplex Core mint on claim); app: Public record strip on the results card, /card/:id (claim
+  with Phantom or a pasted address), /verify/:playId (the browser checks fingerprint, proof and
+  the memo on devnet). Decisions and numbers in DECISIONS.md, plan status in SOLANA.md.
+- Verified: typecheck, 106 tests; live devnet: anchors, the collection (frozen, no authority), a
+  Gemini card minted to a fresh wallet, transfer refused by permanent_freeze_delegate (a plain
+  asset transfers); browser at 1440 and 390: claim, verify 3/3, results strip, no page errors.
+- Next exact step: civic signals timeline in the planner view; then the remaining signals.
+- Gotchas: SOLANA_PAYER_SECRET_KEY signs (SOLANA_SECRET_KEY holds an address); set
+  SOLANA_CARD_COLLECTION (in .env now); PUBLIC_URL must be reachable for wallets to show card art;
+  solo plays anchor every 5 min, rooms at the end of each election; restart the server after .env
+  changes (tsx watch does not reload env).
+
 ### 2026-10-04 00:40 EDT Claude (Opus 5.5) lanes B+C+D, Gemini news desk
 - Done: the news anchor's reports come from Gemini (POST /api/news, server/src/news.ts) in a
   sensational cable-news voice, about the storm and the mayors' plans (rooms: rivals by name).

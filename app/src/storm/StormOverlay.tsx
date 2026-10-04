@@ -217,7 +217,7 @@ export function Counters({ storm, stormAt }: { storm: Storm; stormAt: number }) 
 
 /** The end of the storm: score, protected, stranded, Play again (same city) and Main menu. P8 replaces it with the full results. */
 /** `footer` replaces "Play again" (rooms: the standing; the TV runs the next election). */
-export function ResultsCard({ storm, result, footer }: { storm: Storm; result: ScoreResult | null; footer?: ReactNode }) {
+export function ResultsCard({ storm, result, footer, civic }: { storm: Storm; result: ScoreResult | null; footer?: ReactNode; civic?: ReactNode }) {
   const reset = usePlan((s) => s.reset);
   const reduce = useReducedMotion();
   const button = useRef<HTMLButtonElement>(null);
@@ -231,7 +231,8 @@ export function ResultsCard({ storm, result, footer }: { storm: Storm; result: S
       initial={reduce ? false : { y: '120%' }}
       animate={{ y: 0 }}
       transition={{ type: 'spring', stiffness: 260, damping: 28 }}
-      className="pointer-events-auto w-full max-w-md border-(length:--rule) border-ink bg-bond p-4 shadow-plate lg:p-6"
+      // A room's standings plus the public record can outgrow a phone: the card scrolls inside itself.
+      className="pointer-events-auto max-h-[calc(100dvh-5rem)] w-full max-w-md overflow-y-auto border-(length:--rule) border-ink bg-bond p-4 shadow-plate lg:p-6"
     >
       <h2 id="results-title" className="font-display text-32 font-extrabold">
         {currentStory().passed}
@@ -255,6 +256,7 @@ export function ResultsCard({ storm, result, footer }: { storm: Storm; result: S
           ? `Existing shelters took ${fmt(result!.baseline.protectedPeople)}. Your plan reached ${fmt(prot - result!.baseline.protectedPeople)} of the ${fmt(prot + strand - result!.baseline.protectedPeople)} residents they could not.`
           : `Your plan reached ${Math.round(prot + strand > 0 ? (100 * prot) / (prot + strand) : 0)}% of the residents ${currentStory().cause} put at risk.`}
       </p>
+      {civic}
       {footer ?? (
         <div className="mt-4 grid grid-cols-2 gap-2">
           <button

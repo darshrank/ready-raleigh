@@ -56,6 +56,8 @@ export interface RoomState {
   results: RoomResult[] | null;
   /** The best possible score on this data (the optimizer), for "% of the best plan". */
   bestPossible: number | null;
+  /** Your stored play this round, for its civic record and cards (P16); null until it is scored. */
+  playId: string | null;
 }
 
 export type ClientMsg =

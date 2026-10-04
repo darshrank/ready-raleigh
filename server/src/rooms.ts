@@ -24,6 +24,8 @@ export interface Player {
   lockedAt: number | null;
   placements: Placement[] | null;
   result: ScoreResult | null;
+  /** This round's stored play (its civic record and cards), set by the scorer. */
+  playId: string | null;
 }
 
 export interface Room {
@@ -86,6 +88,7 @@ export function join(room: Room, name: unknown, candidate: unknown): Player {
     candidate: checkCandidate(room, candidate),
     connected: true,
     lockedAt: null,
+    playId: null,
     placements: null,
     result: null,
   };
@@ -123,6 +126,7 @@ export function start(room: Room, player: Player, now: number): void {
     p.lockedAt = null;
     p.placements = null;
     p.result = null;
+    p.playId = null;
   }
   touch(room, now);
 }
@@ -214,6 +218,7 @@ export function publicState(room: Room, viewer: Player | null, now: number, best
     players: room.players.map((p) => ({ seat: p.seat, name: p.name, candidate: p.candidate, connected: p.connected, locked: p.lockedAt !== null })),
     results: room.phase === 'results' ? room.results : null,
     bestPossible,
+    playId: viewer?.playId ?? null,
   };
 }
 

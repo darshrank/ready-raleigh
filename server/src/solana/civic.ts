@@ -8,8 +8,6 @@ import type { PlayRecord } from '../db/store';
 import { type Chain, explorerTx } from './chain';
 import type { Anchor, CivicStore, PlayProof } from './store';
 
-/** The city whose spots the civic signals follow (signals.ts); plays from every city are recorded. */
-export const PLAY_CITY = 'raleigh';
 /** The city a play was scored in (Plan.city; older plans have none and are Raleigh). */
 export const playCity = (record: PlayRecord) => record.plan.city ?? 'raleigh';
 const MAX_BATCH = 512;

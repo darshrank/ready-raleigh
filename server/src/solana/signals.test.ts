@@ -71,4 +71,24 @@ describe('civic signals on the server', () => {
     expect(listed.signals[0]).toMatchObject({ type: 'consensus', state: 'on', anchor: { status: 'confirmed' } });
     expect(listed.signals[0].playIds).toHaveLength(4);
   });
+
+  it('runs each city on its own: Miami plays build Miami consensus, published under miami', async () => {
+    const before = memos.length;
+    const miami = async (player: string) => {
+      const res = await app.inject({
+        method: 'POST', url: '/api/plays',
+        payload: { plan: { roomCode: 'SOLO', playerId: player, playerName: player, mode: 'flood', placements: [top], spent: 0, city: 'miami' } },
+      });
+      expect(res.statusCode).toBe(201);
+      await new Promise((r) => setTimeout(r, 20));
+    };
+    await miami('mia-1');
+    await miami('mia-2');
+    expect(memos.slice(before).filter((m) => m.includes('.consensus:'))).toEqual([]); // Raleigh's backers do not count for Miami
+    await miami('mia-3');
+    await miami('mia-4');
+    const published = memos.slice(before).filter((m) => m.includes('.consensus:'));
+    expect(published).toHaveLength(1);
+    expect(published[0]).toMatch(/^ready-raleigh:v1:signal:miami:flood\.consensus:/);
+  });
 });

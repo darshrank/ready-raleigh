@@ -49,9 +49,9 @@ export interface PlayStore {
   /** Bus pickups placed in this mode and city since `since`. */
   pickups(mode: Mode, since: Date, city?: CityId): Promise<PickupPicks>;
   /** Plays in this mode with a piece on any of `targets`, newest first (civic signals, P16). */
-  pickers(mode: Mode, targets: string[], limit: number): Promise<Picker[]>;
+  pickers(mode: Mode, targets: string[], limit: number, city?: CityId): Promise<Picker[]>;
   /** The best score in this mode so far, or null before the first play. */
-  bestScore(mode: Mode): Promise<number | null>;
+  bestScore(mode: Mode, city?: CityId): Promise<number | null>;
   close(): Promise<void>;
 }
 
@@ -95,17 +95,17 @@ export class MemoryStore implements PlayStore {
     };
   }
 
-  async pickers(mode: Mode, targets: string[], limit: number): Promise<Picker[]> {
+  async pickers(mode: Mode, targets: string[], limit: number, city: CityId = 'raleigh'): Promise<Picker[]> {
     const want = new Set(targets);
     return this.plays
-      .filter((p) => p.plan.mode === mode && p.placements.some((r) => want.has(r.target)))
+      .filter((p) => p.plan.mode === mode && cityOfPlay(p.plan) === city && p.placements.some((r) => want.has(r.target)))
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, limit)
       .map((p) => ({ playId: p.id, playerId: p.plan.playerId }));
   }
 
-  async bestScore(mode: Mode): Promise<number | null> {
-    const scores = this.plays.filter((p) => p.plan.mode === mode).map((p) => p.score.score);
+  async bestScore(mode: Mode, city: CityId = 'raleigh'): Promise<number | null> {
+    const scores = this.plays.filter((p) => p.plan.mode === mode && cityOfPlay(p.plan) === city).map((p) => p.score.score);
     return scores.length ? Math.max(...scores) : null;
   }
 
@@ -152,19 +152,19 @@ export function failSoft(primary: PlayStore, log: Log): PlayStore {
         return local;
       }
     },
-    async pickers(mode, targets, limit) {
-      const local = await backup.pickers(mode, targets, limit);
+    async pickers(mode, targets, limit, city) {
+      const local = await backup.pickers(mode, targets, limit, city);
       try {
-        return [...local, ...(await primary.pickers(mode, targets, limit))].slice(0, limit);
+        return [...local, ...(await primary.pickers(mode, targets, limit, city))].slice(0, limit);
       } catch (err) {
         log.warn({ err }, 'pickers read failed; answering from memory');
         return local;
       }
     },
-    async bestScore(mode) {
-      const local = await backup.bestScore(mode);
+    async bestScore(mode, city) {
+      const local = await backup.bestScore(mode, city);
       try {
-        const remote = await primary.bestScore(mode);
+        const remote = await primary.bestScore(mode, city);
         return remote === null ? local : local === null ? remote : Math.max(remote, local);
       } catch (err) {
         log.warn({ err }, 'bestScore read failed; answering from memory');

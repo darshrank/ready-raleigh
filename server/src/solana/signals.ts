@@ -6,13 +6,15 @@
 //   blind_spot  one of the data's top BLIND_TOP spots that nobody has picked after BLIND_MIN_PLAYS
 //               plays; it turns off when a play finally covers it (that play earns a card)
 //   new_best    a play beats the best score so far (after NEW_BEST_MIN_PLAYS plays)
-// The rules start from the state at boot without publishing it, so a restart never floods the chain.
+// Every city has its own spots, so the rules run per city and mode on that city's data and crowd,
+// and each memo names the city. The rules start from the state at boot without publishing it, so a
+// restart never floods the chain.
 import { randomUUID } from 'node:crypto';
-import { canonicalJson, engineIndex, merkleTree, sha256Hex, signalMemo, type Mode } from '@shared';
+import { type CityId, canonicalJson, engineIndex, isCityId, merkleTree, sha256Hex, signalMemo, type Mode } from '@shared';
 import type { GameData } from '../data';
 import type { PlayRecord, PlayStore } from '../db/store';
 import { type PlannerResult, type PlannerSpot, rankPlanner } from '../planner';
-import { type CivicLog, type CivicRecord, PLAY_CITY } from './civic';
+import type { CivicLog, CivicRecord } from './civic';
 import type { Signal, SignalType } from './store';
 
 export const CONSENSUS_MIN_PLAYERS = 3;
@@ -72,34 +74,43 @@ export function spotSignals(planner: PlannerResult, before: Set<string>): { on: 
 export interface SignalOptions {
   plays: PlayStore;
   civic: CivicRecord;
-  data: () => GameData | null;
+  /** Game data per city (null when a city pack is missing: its plays move no signals). */
+  data: (city?: CityId) => GameData | null;
   log: CivicLog;
   /** A play earned recognition for a signal (cards, step 4). */
   onAward?: (signal: Signal, play: { playId: string; playerId: string }) => void;
 }
 
 export function civicSignals({ plays, civic, data, log, onAward }: SignalOptions) {
-  const state = new Map<Mode, Set<string>>();
-  const best = new Map<Mode, number | null>();
+  /** Rule state and best score per city and mode (`<city>|<mode>`): each city has its own spots. */
+  const state = new Map<string, Set<string>>();
+  const best = new Map<string, number | null>();
   let queue: Promise<unknown> = Promise.resolve();
 
-  function planner(mode: Mode, game: GameData, crowd: Awaited<ReturnType<PlayStore['crowd']>>) {
-    return rankPlanner(mode, game.bundle, game.optimal(mode), game.extended(mode), crowd);
+  /** One evaluation's scope: a city's data and a mode. */
+  interface Scope {
+    city: CityId;
+    mode: Mode;
+    game: GameData;
+    key: string;
   }
 
-  /** The state at boot (or on the first play): remembered, not published. */
-  async function baseline(mode: Mode, game: GameData, skipPlay: PlayRecord) {
-    if (state.has(mode)) return;
-    const crowd = await plays.crowd(mode);
-    const { on } = spotSignals(planner(mode, game, crowd), new Set());
+  const planner = ({ mode, game }: Scope, crowd: Awaited<ReturnType<PlayStore['crowd']>>) =>
+    rankPlanner(mode, game.bundle, game.optimal(mode), game.extended(mode), crowd);
+
+  /** The state at boot (or on a city's first play): remembered, not published. */
+  async function baseline(scope: Scope, skipPlay: PlayRecord) {
+    if (state.has(scope.key)) return;
+    const crowd = await plays.crowd(scope.mode, scope.city);
+    const { on } = spotSignals(planner(scope, crowd), new Set());
     // Consensus counts only with enough different players, at boot as later.
     for (const key of [...on].filter((k) => k.startsWith('consensus|'))) {
-      if (!(await enoughPlayers(mode, game, key.slice('consensus|'.length)))) on.delete(key);
+      if (!(await enoughPlayers(scope, key.slice('consensus|'.length)))) on.delete(key);
     }
-    state.set(mode, on);
+    state.set(scope.key, on);
     // The best before this play: the store already holds it, so recompute without it when it leads.
-    const top = await plays.bestScore(mode);
-    best.set(mode, top !== null && top <= skipPlay.score.score ? null : top);
+    const top = await plays.bestScore(scope.mode, scope.city);
+    best.set(scope.key, top !== null && top <= skipPlay.score.score ? null : top);
   }
 
   /** Spot targets that count as the same spot (walk-in picks merge within one ring, like the planner). */
@@ -108,61 +119,64 @@ export function civicSignals({ plays, civic, data, log, onAward }: SignalOptions
     return Array.from(engineIndex(game.bundle).disk(Number(target.slice(5)), 1), (c) => `cell:${c}`);
   }
 
-  async function enoughPlayers(mode: Mode, game: GameData, target: string) {
-    const pickers = await plays.pickers(mode, targetsOf(game, target), 200);
+  const pickersOf = (scope: Scope, target: string, limit: number) => plays.pickers(scope.mode, targetsOf(scope.game, target), limit, scope.city);
+
+  async function enoughPlayers(scope: Scope, target: string) {
+    const pickers = await pickersOf(scope, target, 200);
     return new Set(pickers.map((p) => p.playerId)).size >= CONSENSUS_MIN_PLAYERS;
   }
 
-  async function publish(change: Change, mode: Mode, playIds: string[]): Promise<Signal> {
+  async function publish({ city, mode }: Scope, change: Change, playIds: string[]): Promise<Signal> {
     const prints = (await Promise.all(playIds.map((id) => civic.store.play(id)))).flatMap((p) => (p ? [p.fingerprint] : []));
     const evidenceRoot = prints.length ? (await merkleTree(prints)).root : await sha256Hex(canonicalJson(change.evidence));
     const signal: Signal = {
-      id: randomUUID(), city: PLAY_CITY, mode, ...change, playIds, evidenceRoot, anchorId: null, createdAt: new Date().toISOString(),
+      id: randomUUID(), city, mode, ...change, playIds, evidenceRoot, anchorId: null, createdAt: new Date().toISOString(),
     };
-    const anchor = await civic.anchorMemo('signal', PLAY_CITY, evidenceRoot, playIds.length,
-      signalMemo(PLAY_CITY, `${mode}.${change.type}`, change.spot, change.state, evidenceRoot));
+    const anchor = await civic.anchorMemo('signal', city, evidenceRoot, playIds.length,
+      signalMemo(city, `${mode}.${change.type}`, change.spot, change.state, evidenceRoot));
     signal.anchorId = anchor?.id ?? null;
     await civic.store.saveSignal(signal);
-    log.info(`civic signal: ${change.type} ${change.state} at ${change.label}${anchor?.signature ? ` (${anchor.signature.slice(0, 12)}…)` : ''}`);
+    log.info(`civic signal (${city}): ${change.type} ${change.state} at ${change.label}${anchor?.signature ? ` (${anchor.signature.slice(0, 12)}…)` : ''}`);
     return signal;
   }
 
   async function evaluate(record: PlayRecord) {
-    // Signals are about one city's spots: plays from other city packs do not move them.
-    if ((record.plan.city ?? 'raleigh') !== PLAY_CITY) return;
-    const game = data();
+    // Each city's plays move only that city's signals, on that city's data.
+    const city: CityId = isCityId(record.plan.city) ? record.plan.city : 'raleigh';
+    const game = data(city);
     if (!game) return;
     const mode = record.plan.mode;
-    await baseline(mode, game, record);
-    const crowd = await plays.crowd(mode);
-    const result = planner(mode, game, crowd);
-    const before = state.get(mode)!;
+    const scope: Scope = { city, mode, game, key: `${city}|${mode}` };
+    await baseline(scope, record);
+    const crowd = await plays.crowd(mode, city);
+    const result = planner(scope, crowd);
+    const before = state.get(scope.key)!;
     const { on, changes } = spotSignals(result, before);
     const trigger = { playId: record.id, playerId: record.plan.playerId };
     const mine = new Set(record.placements.map((p) => p.target));
 
     for (const change of changes) {
-      const pickers = change.type === 'blind_spot' && change.state === 'on' ? [] : await plays.pickers(mode, targetsOf(game, change.spot), 50);
+      const pickers = change.type === 'blind_spot' && change.state === 'on' ? [] : await pickersOf(scope, change.spot, 50);
       if (change.type === 'consensus' && change.state === 'on' && new Set(pickers.map((p) => p.playerId)).size < CONSENSUS_MIN_PLAYERS) {
         on.delete(`consensus|${change.spot}`); // not enough different people yet: try again later
         continue;
       }
-      const signal = await publish(change, mode, pickers.map((p) => p.playId));
+      const signal = await publish(scope, change, pickers.map((p) => p.playId));
       const caused = targetsOf(game, change.spot).some((t) => mine.has(t));
       // Pushing a spot into consensus, or covering a blind spot first, is the player's doing.
       if (caused && ((change.type === 'consensus' && change.state === 'on') || (change.type === 'blind_spot' && change.state === 'off'))) {
         onAward?.(signal, trigger);
       }
     }
-    state.set(mode, on);
+    state.set(scope.key, on);
 
-    const previous = best.get(mode) ?? null;
-    if (record.score.score > (previous ?? -Infinity)) best.set(mode, record.score.score);
+    const previous = best.get(scope.key) ?? null;
+    if (record.score.score > (previous ?? -Infinity)) best.set(scope.key, record.score.score);
     if (previous !== null && crowd.plays >= NEW_BEST_MIN_PLAYS && record.score.score >= previous + NEW_BEST_MARGIN) {
-      const signal = await publish({
+      const signal = await publish(scope, {
         type: 'new_best', spot: 'city', label: 'Best plan so far', state: 'on',
         evidence: { score: Math.round(record.score.score * 10) / 10, previous: Math.round(previous * 10) / 10, plays: crowd.plays },
-      }, mode, [record.id]);
+      }, [record.id]);
       onAward?.(signal, trigger);
     }
   }

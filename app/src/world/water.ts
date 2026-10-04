@@ -6,6 +6,9 @@
 //   meters so the edge creeps out irregularly. A foam band rides just behind the advancing edge.
 // - Surface: three octaves of scrolling value noise in meters (detail fades out at low zoom),
 //   a fresnel mix with the sky, the sun's highlight by day and the lightning flash at night.
+// - Rain (R6): rings spread from a drop in every 5 m cell while the storm runs (street zoom only).
+// - Ending (R6): as the storm clears the 3D water drains, the foam and the rain stop, and the
+//   waves settle to a slow, flatter surface.
 // - Colors: step 1 the -deep water tokens, step 3 the regular ones, step 2 between; planning
 //   keeps the faint --flood preview. Tilted, the surface rises to its depth after it arrives.
 import { Layer, picking, project32, type DefaultProps, type LayerProps, type UpdateParameters } from '@deck.gl/core';
@@ -130,6 +133,28 @@ float water_rise(float delay, float k) {
 }
 `;
 
+/**
+ * Rain on the water (R6): one drop per 5 m cell at a hashed spot and moment, every 0.9 s; its
+ * ring spreads to 2 m and fades. It tilts the surface normal (so the sky and sun catch it) and
+ * sets `ripple` for a faint highlight. Storm only, street zoom, gone under reduced motion and
+ * as the storm clears.
+ */
+const RIPPLES_GLSL = /* glsl */ `
+  float rain = (water.clock >= 0.0 && !calm ? 1.0 : 0.0) * (1.0 - water.ending) * water.level
+    * clamp((water.zoom - 14.5) / 1.5, 0.0, 1.0);
+  if (rain > 0.0) {
+    vec2 cell = vMeters / 5.0;
+    vec2 ci = floor(cell);
+    vec2 drop = ci + 0.2 + 0.6 * vec2(world_hash(ci), world_hash(ci + 17.3));
+    float ph = fract(water.time / 0.9 + world_hash(ci + 5.1));
+    vec2 d = cell - drop;
+    float r = length(d);
+    float ring = (1.0 - smoothstep(0.0, 0.05, abs(r - ph * 0.4))) * (1.0 - ph) * rain;
+    grad += (r > 1e-4 ? d / r : vec2(0.0)) * ring * 0.35;
+    ripple = ring;
+  }
+`;
+
 const vs = /* glsl */ `\
 #version 300 es
 #define SHADER_NAME world-water-vs
@@ -201,13 +226,17 @@ void main(void) {
 
   // Surface: up to three octaves of scrolling noise in meters (the quality tier's count); the fine
   // ones fade out at low zoom.
-  float t = calm ? 0.0 : water.time;
+  // The waves settle as the storm clears: slower and flatter.
+  float settle = 1.0 - 0.6 * water.ending;
+  float t = calm ? 0.0 : water.time * mix(1.0, 0.4, water.ending);
   float fine = clamp((water.zoom - 12.5) / 2.5, 0.0, 1.0);
   float finer = clamp((water.zoom - 14.5) / 2.0, 0.0, 1.0);
   vec3 n1 = world_noised(vMeters / 42.0 + t * vec2(0.035, 0.021));
   vec3 n2 = ${TIER.octaves >= 2 ? 'world_noised(vMeters / 13.0 + t * vec2(-0.06, 0.045)) * fine' : 'vec3(0.0)'};
   vec3 n3 = ${TIER.octaves >= 3 ? 'world_noised(vMeters / 4.2 + t * vec2(0.11, -0.08)) * finer' : 'vec3(0.0)'};
-  vec2 grad = n1.yz / 42.0 * 1.6 + n2.yz / 13.0 * 0.9 + n3.yz / 4.2 * 0.35;
+  vec2 grad = (n1.yz / 42.0 * 1.6 + n2.yz / 13.0 * 0.9 + n3.yz / 4.2 * 0.35) * settle;
+  float ripple = 0.0;
+  ${TIER.ripples ? RIPPLES_GLSL : ''}
   vec3 N = normalize(vec3(-grad * 9.0, 1.0));
   if (vSide > 0.5) N = normalize(vec3(vSideNormal, 0.25));
   vec3 V = normalize(vCamera - vCommon);
@@ -217,6 +246,8 @@ void main(void) {
   vec3 L = normalize(water.sunDir);
   float spec = pow(max(dot(reflect(-L, N), V), 0.0), 90.0);
   color += water.foam * spec * day * 0.55;
+  // Each ring catches a little light, so the rain reads even from straight above.
+  color = mix(color, water.foam, ripple * 0.18);
   color = mix(color, water.foam, water.flash * water.night * 0.45);
   if (vSide > 0.5) color *= 0.82;
 

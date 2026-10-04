@@ -44,7 +44,8 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - [x] R3 windows (+ flooded windows go dark)
   - [x] R7 tiers, reduced motion, docs (kill switch stays until the final check at the end)
   - [x] R2 ground shadows (cheap projected pass)
-  - [ ] R6 flow, rain, ending, then final rebase checkpoint and screenshots
+  - [x] R6 ending (settling waves on the drain) and rain ripples; creek flow streaks not done
+  - [ ] final rebase checkpoint, then the full matrix + screenshot set + quiet-machine A/B (ask first)
 
 ## Phase 4: bonus challenges
 - [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
@@ -248,6 +249,23 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
     remove them: DELETE FROM placements WHERE play_id IN (SELECT id FROM plays WHERE player_name =
     'Test Mayor'); then DELETE FROM plays WHERE player_name = 'Test Mayor';
 - Next exact step: a weekly board (filter on created_at) if the all-time one fills up.
+
+### 2026-10-04 01:54 EDT Claude (Opus 5.5) lane C, realism R6 (ending, rain ripples)
+- Done: water.ts: the waves settle as the storm clears (amplitude and speed down with `ending`,
+  on top of R4's drain and foam fade); rain ripples (RIPPLES_GLSL: a drop per 5 m cell, ring to
+  2 m over 0.9 s, normal tilt + faint --foam highlight; storm clock, street zoom, not at the
+  ending, not under reduced motion, not on the low tier: `TIER.ripples`). One check frame at
+  Crabtree (night, z17.6): faint rings across the water.
+- Not done: creek flow streaks (user: only if everything else is done; the final checkpoint and
+  the full matrix come first).
+- Checks: typecheck; vitest 85/85; Raleigh /solo storm -> results at 1440 (default and
+  `?quality=low`), no console errors. One 1440 trace (realism, load ~4): 5.5 avg / 8.1 p95 /
+  21 max ms, 59.8 fps.
+- Next exact step: the final rebase checkpoint (Step 0 rules: `git fetch group`; if group/main
+  moved, fast-forward main and rebase, combining conflicts by the same rules; stop and ask only
+  for a product decision). Then the full matrix: every city, realism on and off, 1440 and 390,
+  hosted room, news desk, Python tests, the screenshot set; ask the user before the quiet-machine
+  A/B (5 alternating runs per mode, median). Remove `?realism=off` only after that passes.
 
 ### 2026-10-04 01:49 EDT Claude (Opus 5.5) lane C, realism R2 (cheap ground shadows)
 - Done: buildings.ts draws a shadow pass before the buildings: the same triangles projected along

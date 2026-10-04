@@ -41,7 +41,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - [x] R4 water surface (deck.gl WaterLayer, arrival textures, uniforms only)
   - [x] R5 wet stains (3D water rise landed in R4)
   - [x] rebase checkpoint after R5: onto main 6434b22, conflicts combined; four-city adaptation
-  - [ ] R3 windows (+ flooded windows go dark)
+  - [x] R3 windows (+ flooded windows go dark)
   - [ ] R7 tiers, reduced motion, docs (then remove the kill switch)
   - [ ] R2 shadows
   - [ ] R6 flow, rain, ending, then final rebase checkpoint and screenshots
@@ -248,6 +248,27 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
     remove them: DELETE FROM placements WHERE play_id IN (SELECT id FROM plays WHERE player_name =
     'Test Mayor'); then DELETE FROM plays WHERE player_name = 'Test Mayor';
 - Next exact step: a weekly board (filter on created_at) if the all-time one fills up.
+
+### 2026-10-04 01:37 EDT Claude (Opus 5.5) lane C, realism R3 (windows, flooded windows go dark)
+- Done: `world/windows.ts` (shader module: pane grid from wall meters, ~3 m columns fitted to the
+  wall, 3.2 m floors, fwidth anti-aliasing, fades to the average tone and glow at 0.7-1.6 m per
+  pixel; --glass-day by day, --glass-night and 36% --window-lit at night, the glow added after
+  lighting). `stain_dark` in world/stains.ts: once the water reaches a building its lights flicker
+  and go out up to 4 s later (hash of the seed), storm clock only. buildings.ts wires both
+  (BuildingPaint gains `windows`). Checked by eye at Raleigh downtown (day/night, near/far) and at
+  Crabtree in Dark mode: the flooded mall's windows are lit before the storm and dark after; the
+  dry apartments above stay lit.
+- Checks (user's per-step routine from here: typecheck, TS tests, one Raleigh smoke run, one 1440
+  trace): typecheck; vitest 85/85; Raleigh /solo storm -> results at 1440 (and the four cities,
+  390 for Raleigh/Miami, a hosted room, before the routine changed): no console errors.
+  One 1440 trace (storm time 1 s on): realism 5.4 avg / 8.0 p95 / 20 max ms, 59.9 fps (a
+  realism=off run at the same time: 6.6 / 9.4 / 30). The machine was quiet (load ~3).
+- Next exact step: R7: quality tiers (low/medium/high by device), prefers-reduced-motion for the
+  world layers (no creep, waves, foam, rise, flicker: `frame.reduce` already freezes the water;
+  check windows/stains), DESIGN.md world section, then remove the `?realism=off` kill switch only
+  after R7 passes. The official A/B waits for the end (user: quiet machine, ask first).
+- Gotchas: the quake and heat cities have no flood data, so `stain_dark` never fires there (New
+  York's blackout stays upstream's DOM flicker).
 
 ### 2026-10-04 01:12 EDT Claude (Opus 5.5) lane C, realism rebase onto the four-city main + four-city adaptation
 - Rebased sakhi/realism (semantic zoom S1-F3, realism R0-R5, 17 commits) onto main 6434b22

@@ -67,6 +67,21 @@ float stain_peak(vec2 uv) {
   }
   return h;
 }
+// 1 once this building has lost its power, 0 before: the water reaches the point, then the lights
+// flicker and go out a moment later (up to 4 s, a hash of the building's seed). Storm clock only.
+float stain_dark(vec2 uv, float seed) {
+  if (stain.on < 0.5 || stain.clock < 0.0) return 0.0;
+  vec3 arr = texture(stain_arrival, uv).rgb;
+  vec3 sd = (texture(stain_extent, uv).rgb * 255.0 - 128.0) / 127.0 * ${RANGE_M.toFixed(1)};
+  float arrive = 1.0e9;
+  for (int k = 0; k < 3; k++)
+    if (sd[k] < 0.0) arrive = min(arrive, stain.stepStart[k] + arr[k] * (GROW_MS - PART_MS));
+  float at = arrive + world_hash(vec2(seed * 71.3, 4.1)) * 4000.0;
+  if (stain.clock < at) return 0.0;
+  if (stain.reduce > 0.5 || stain.clock > at + 450.0) return 1.0;
+  // The flicker: off and on twice before it stays off.
+  return step(0.45, world_hash(vec2(floor(stain.clock / 70.0), seed * 13.0)));
+}
 // The wall's base color with the stain: wall = (meters along, meters up, length, seed), aa =
 // fwidth(wall.y) (taken by the caller in uniform control flow).
 vec3 stain_apply(vec3 base, vec2 uv, vec4 wall, float night, float aa) {

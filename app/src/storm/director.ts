@@ -62,7 +62,11 @@ export function directStorm(map: MapLibreMap, flood: FloodView | null, storm: St
   const skipped = now >= STORM_MS;
 
   // The water grows step by step, and the streets under it show once it is there.
-  flood?.setReveal((n) => [1, 2, 3].map((k) => (o.reduce ? Number(n - stormAt >= stepStart(k)) : clamp01((n - stormAt - stepStart(k)) / GROW_MS))));
+  // Each step's growth, then the storm clock (the realistic water rises and drains by it).
+  flood?.setReveal(
+    (n) => [...[1, 2, 3].map((k) => (o.reduce ? Number(n - stormAt >= stepStart(k)) : clamp01((n - stormAt - stepStart(k)) / GROW_MS))), n - stormAt],
+    [1, 2, 3].map(stepStart),
+  );
   for (let k = 1; k <= FINAL_FLOOD_STEP; k++) at(stepStart(k) + GROW_MS * 0.4, () => flood?.showSubmerged(k));
 
   // The helicopter: tilt over the city, then each event in turn.

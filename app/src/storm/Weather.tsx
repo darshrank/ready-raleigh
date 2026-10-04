@@ -5,6 +5,7 @@ import { rgba, tint, tokens } from '../tokens';
 import { FINAL_FLOOD_STEP } from '@shared/config';
 import { buzz, playPowerDown, playRumble, playThunder, startRain, stopRain } from '../ui/sound';
 import { CLEAR_MS, STORM_MS, WIPE_MS, stepStart } from './sim';
+import { strikes } from '../world/state';
 
 /** A fast ink wipe across the screen; the storm's light lands under it (map/mood.ts). */
 export function Wipe() {
@@ -210,6 +211,9 @@ export function Lightning({ stormAt }: { stormAt: number }) {
         ],
         { duration: 520, easing: 'linear' },
       );
+      // The water lights up with the same flashes (world/water.ts via FloodView).
+      strikes.push(performance.now());
+      if (strikes.length > 4) strikes.shift();
       const delay = 0.35 + Math.random() * 0.8;
       playThunder(delay);
       window.setTimeout(() => buzz([60, 40, 140]), delay * 1000);

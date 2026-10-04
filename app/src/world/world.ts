@@ -4,6 +4,7 @@
 // Layer instances are made once and cloned only when a prop really changes (the camera tilts,
 // a site's height is found); per-frame changes go through `frame` (state.ts) into uniforms.
 import type { Layer } from '@deck.gl/core';
+import type { FeatureCollection } from 'geojson';
 import { earcut } from '@math.gl/polygon';
 import { loadMapData } from '../data';
 import { onSiteSolids, type SiteSolid } from '../map/detail';
@@ -14,6 +15,9 @@ import { buildSolids, seedOf, type SolidPart } from './solids';
 import { WorldLights } from './lights';
 import { WORLD_BEFORE } from './state';
 import { tileTemplates } from './tiles';
+import type { FloodData } from './floodData';
+import { submergedLayers } from './submerged';
+import { WaterLayer } from './water';
 
 /** Shelter site footprints (lng/lat polygons) as solid parts, roofs triangulated here (216 sites). */
 function* siteParts(solids: SiteSolid[]): Generator<SolidPart> {
@@ -32,6 +36,8 @@ export class World {
   private threeD = false;
   private buildings: Layer | null = null;
   private sites: Layer[] = [];
+  private water: Layer | null = null;
+  private submerged: Layer[] = [];
   private current: Layer[] = [];
   private listeners = new Set<(layers: Layer[]) => void>();
   private stop: (() => void)[] = [];
@@ -76,6 +82,18 @@ export class World {
     this.emit();
   }
 
+  /** The storm water (world/water.ts), once the flood worker has built it. */
+  setWater(data: FloodData) {
+    this.water = new WaterLayer({ id: 'world-water', flood: data, tokens: this.t, ...{ beforeId: WORLD_BEFORE } });
+    this.emit();
+  }
+
+  /** The streets under water up to step `k`, as clipped from the loaded tiles (not per frame). */
+  setSubmerged(runs: FeatureCollection, k: number) {
+    this.submerged = submergedLayers(runs, k, this.t);
+    this.emit();
+  }
+
   /** Shelter sites stand out in 3D (F1): their own building in the site tint by day. */
   private setSites(solids: SiteSolid[]) {
     const { rgb } = this.t;
@@ -101,7 +119,8 @@ export class World {
     // Dev: ?nocity leaves the tiled city out (frame-time comparisons).
     const city = this.threeD && !(import.meta.env.DEV && /[?&]nocity\b/.test(location.search));
     if (this.buildings && this.buildings.props.visible !== city) this.buildings = this.buildings.clone({ visible: city });
-    this.current = [...(this.buildings ? [this.buildings] : []), ...this.sites];
+    // Draw order: the water, the streets under it, then the buildings (which hide what is behind them).
+    this.current = [...(this.water ? [this.water] : []), ...this.submerged, ...(this.buildings ? [this.buildings] : []), ...this.sites];
     for (const cb of this.listeners) cb(this.current);
   }
 }

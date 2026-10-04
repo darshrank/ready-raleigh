@@ -37,6 +37,12 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   motion + docs, R2 shadows, R6 flow, rain, ending. `?realism=off` keeps the old path until R7.
   - [x] R0 baseline traces
   - [x] R1 deck.gl 3D city, world tokens, piece outlines
+  - [x] R4 water surface (deck.gl WaterLayer, arrival textures, uniforms only)
+  - [ ] R5 3D water + stains, then rebase checkpoint
+  - [ ] R3 windows
+  - [ ] R7 tiers, reduced motion, docs (then remove the kill switch)
+  - [ ] R2 shadows
+  - [ ] R6 flow, rain, ending, then final rebase checkpoint and screenshots
 
 ## Phase 4: bonus challenges
 - [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
@@ -241,6 +247,52 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
     'Test Mayor'); then DELETE FROM plays WHERE player_name = 'Test Mayor';
 - Next exact step: a weekly board (filter on created_at) if the all-time one fills up.
 
+### 2026-10-04 00:05 EDT Claude (Opus 5.5) lane C, realism R4 (living storm water in deck.gl)
+- Done: `world/floodData.ts` + `world/flood.worker.ts` (water geometry + arrival and extent
+  textures, built once in a worker, ~0.5 s), `world/glsl.ts` (hash, value noise with gradient),
+  `world/water.ts` (`WaterLayer`: creep from the creeks, foam band behind the edge, 3 octaves
+  of noise in meters faded by zoom, sky fresnel, sun highlight by day, lightning by night, deep
+  tokens for step 1 / regular for step 3 / blend for step 2, preview blue in planning, 3D rise by
+  DEPTH_M 6/3/1.5 m when tilted, drained by `ending`), `world/submerged.ts` (submerged streets
+  as deck PathLayers with a flowing dash on a time uniform). FloodView: creates the water from the
+  worker, hides the MapLibre water layers under realism, skips its per-frame feature-state and
+  paint writes, and writes `frame` (level, stepP, clock, stepStart, ending, flash, tilt) per
+  frame. director.ts passes the storm clock (RevealFn element 3) and step starts; Weather.tsx
+  publishes lightning strikes. MapLibre path untouched under `?realism=off`.
+- Frame times (A/B medians, `app/scripts/storm-ab.mjs`, from storm time 1 s, same round):
+  | Run | realism=off avg / p95 / max | realism avg / p95 / max |
+  |---|---|---|
+  | 1440 x 900, 3 runs | 10.5 / 20.6 / 80 (57.5 fps) | 10.0 / 17.4 / 83 (58.1 fps) |
+  | 1440 x 900, 3 runs (earlier round) | 8.3 / 13.9 / 74 (59.2 fps) | 10.4 / 19.5 / 128 (56.8 fps) |
+  | 390 x 844, CPU 4x, 2 runs | 30.4 / 42.4 / 84 (30.6 fps) | 25.2 / 35.0 / 60 (38.3 fps) |
+  Dropping the MapLibre per-frame water writes pays for the shader on the phone. At 1440 the
+  p95 is still over 16.7 ms in both modes in a loaded machine; the residents (left as they are,
+  per the user) cost 0.3 ms JS + 0.5-1.5 ms uploads at 1440 and 1.3 ms JS on the phone (R0).
+- Checked: /solo storm + Skip to results, /play/:code?host lobby -> election -> storm -> Skip ->
+  results, with and without `?realism=off`; no console errors. typecheck, vitest 60/60. No
+  Python changes (pytest not installed in this shell's python3; earlier 33/33 in Step 0).
+- Next exact step: R5. The rise is already in water.ts (vertex shader, `water_rise`). Remaining:
+  building stains (BuildingLayer/CityLayer fragment samples the extent texture to find the first
+  step covering a wall, and the arrival texture for when; below the water height use
+  --wet-stain-day/night; the stain uses the peak level so it stays after the ending) and windows
+  going dark per building (arrival + hash(seed) x 4 s; lands with R3 windows if simpler, note it).
+  `floodTextures(device, d)` in water.ts is the shared texture cache to bind into the building
+  layers. Then the rebase checkpoint: `git fetch group`; if group/main moved, fast-forward main
+  and rebase (docs conflicts in time order, PROGRESS newest first; any code conflict: abort and
+  show the user).
+- Decisions a new session needs: step order R0, R1, R4, R5, R3, R7, R2, R6 (one commit + one
+  PROGRESS handoff each, with frame times). R6b dropped: residents, glow, rings and halos in
+  storm/layers.ts stay as they are; the zero-per-frame rule covers the world layers and FloodView
+  only; report the residents' cost separately and ask before touching them if they break the
+  budget. `?realism=off` keeps the MapLibre water and buildings-3d path until R7 passes. Every
+  commit leaves /solo, /host, /play/:code playable; revert a step that breaks the game. Rebase
+  checkpoints after R5 and at the end. No push, no merge commits. Pause/speed/scrub don't exist
+  (only Skip); everything follows the storm clock.
+- Open problems: 1440 p95 sits around 17-20 ms in both modes on this loaded M1 (load 4-20), so
+  the R7 budget check needs a quieter machine or more runs. Pre-existing long tasks when tiles
+  load: flood.ts clipSoon (~68 ms) and detail.ts mark (~42 ms). Camera drags from scripts don't
+  stop the helicopter director; screenshots use the director's views.
+
 ### 2026-10-04 Claude (Opus 5.5) merge of feat/new-features-adit (four cities) into main
 - Done: merged Adit's cities (Miami, San Francisco, New York), globe landing, narrated briefing,
   weak spot, storm timeline, news desk, map modes, themes with tonight's engine work. 10 files
@@ -258,6 +310,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   case (shelter + new stop in Thornton Commons) now adds 56 residents instead of 0.
 - Next: tune BUS_SEAT_SHARE after more playtests; consider fading green dots that existing
   shelters already cover.
+
 
 ### 2026-10-03 23:41 EDT Claude (Opus 5.5) lane C, realism R1 (3D city in deck.gl, world tokens, piece outlines)
 - Done: 15 world tokens in styles.css + tokens.ts (`unit()` gives shader floats). `app/src/world/`:

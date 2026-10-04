@@ -284,6 +284,18 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas: the report needs real plays from at least 5 different people per area; with few
   testers use ?minPlayers=3. A newer GoRaleigh GTFS URL can replace FEEDS[0] in pipeline/transit.py.
 
+### 2026-10-03 20:29 EDT Claude (Opus 5.5) lane C, semantic zoom screenshots and final check
+- Done: docs/screenshots/semantic-zoom/tilted-planning-{1440,390}-z{15,17}.jpg (3D on, pitch
+  45, Broughton High in the site color, unmatched site squares above the 3D buildings; aerial
+  at z17). JPEG, 326-480 KB each (1440 z15 at quality 62, z17 at 70, 390 at 80).
+- Final check: branch = group/main 1f8ec6a + 12 commits, 0 merge commits, nothing pushed.
+  typecheck; 57 TS tests; 33 Python tests (pipeline/.venv); python3 test_detail 9. Two-player
+  room check rerun (host /host/SZQB?host 1440, phone /play/SZQB 390): joined, both locked, storm
+  started on both 2 ms apart; phone detail at z15/z17, none at z12; no console errors.
+- Next exact step: team review of sakhi/semantic-zoom before any merge (none done here).
+- Gotchas: the P9 handoff entry (18:40) sits inside the `<!-- Newest first. Template:` comment in
+  this file, so it is hidden when rendered; left as upstream wrote it.
+
 ### 2026-10-03 20:27 EDT Claude (Opus 5.5) lanes A+C, semantic zoom F3 (nursing homes and assisted living)
 - Finding: 182 z14 tiles over the study area hold one care home (`hospital/nursing_home`,
   Hillcrest); OpenMapTiles drops `amenity=social_facility`, how OSM tags most of them.

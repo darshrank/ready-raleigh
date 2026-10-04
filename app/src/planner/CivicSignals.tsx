@@ -3,6 +3,7 @@
 // now; blind spot = a top priority nobody picks, outreach needed; new best = residents beat the
 // record. Each links to its transaction, so a planner can cite it.
 import { useEffect, useState } from 'react';
+import { currentCityId } from '../story';
 
 const REFRESH_MS = 15_000;
 
@@ -43,7 +44,7 @@ function ago(iso: string): string {
   return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} days ago`;
 }
 
-export function CivicSignalsPanel({ city = 'raleigh' }: { city?: string }) {
+export function CivicSignalsPanel({ city = currentCityId() }: { city?: string }) {
   const [signals, setSignals] = useState<Signal[] | null>(null);
   const [off, setOff] = useState(false);
   useEffect(() => {

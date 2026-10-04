@@ -6,8 +6,10 @@ import { TextLayer } from '@deck.gl/layers';
 import type { BusDemandReport, DemandArea } from '@shared/demand';
 import { withAlpha } from '../map/layers';
 import { tokens } from '../tokens';
+import { currentCityId } from '../story';
 
-const URL = '/api/planner/bus-demand?mode=flood&city=raleigh';
+// The city the page shows (?city=, Raleigh by default), like the map.
+const URL = `/api/planner/bus-demand?mode=flood&city=${currentCityId()}`;
 const REFRESH_MS = 15_000;
 
 type State = { report: BusDemandReport | null; error: boolean };

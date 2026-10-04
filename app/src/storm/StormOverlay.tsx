@@ -6,7 +6,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import { FINAL_FLOOD_STEP } from '@shared/config';
 import type { ScoreResult } from '@shared/types';
 import { usePlan } from '../plan/store';
-import { currentStory } from '../story';
+import { currentCityId, currentStory } from '../story';
 import { GROW_MS, STORM_MS, TICK_MS, stepAt, stepStart, type Storm, type StormEvent } from './sim';
 import { hush } from '../ui/voice';
 import { leaveGame } from '../ui/Exit';
@@ -257,6 +257,16 @@ export function ResultsCard({ storm, result, footer, civic }: { storm: Storm; re
           : `Your plan reached ${Math.round(prot + strand > 0 ? (100 * prot) / (prot + strand) : 0)}% of the residents ${currentStory().cause} put at risk.`}
       </p>
       {civic}
+      {/* The demo's last step: from one game to where the city should act, all residents' plans together. */}
+      <a
+        href={currentCityId() === 'raleigh' ? '/planner' : `/planner?city=${currentCityId()}`}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-3 flex items-center justify-between gap-3 border-(length:--rule) border-ink bg-flood px-3 py-2 font-display text-24 font-extrabold text-bond shadow-piece hover:bg-flood-deep"
+      >
+        <span>See where {currentStory().name} should act</span>
+        <span aria-hidden>→</span>
+      </a>
       {footer ?? (
         <div className="mt-4 grid grid-cols-2 gap-2">
           <button

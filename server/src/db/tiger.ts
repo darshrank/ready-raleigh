@@ -3,7 +3,8 @@
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { type DataBundle, floodRiskShare, weightedPeople } from '@shared';
-import type { Crowd, PickCount, PlayRecord, PlayStore } from './store';
+import type { TransitStops } from '../data';
+import type { Crowd, PickCount, PickupPicks, PlayRecord, PlayStore } from './store';
 
 /**
  * Pool options from a connection URL. sslmode is turned into an explicit `ssl` option: node-postgres
@@ -67,6 +68,19 @@ export class TigerStore implements PlayStore {
     return { plays: plays.rows[0]?.plays ?? 0, picks: picks.rows };
   }
 
+  async pickups(mode: string, since: Date): Promise<PickupPicks> {
+    const [counts, picks] = await Promise.all([
+      this.pool.query<{ plays: number; players: number }>(
+        `SELECT count(*)::int AS plays, count(DISTINCT player_id)::int AS players
+         FROM plays WHERE mode = $1 AND created_at >= $2`, [mode, since]),
+      this.pool.query<{ cell: number; player: string }>(
+        `SELECT p.cell, pl.player_id AS player
+         FROM placements p JOIN plays pl ON pl.id = p.play_id AND pl.created_at = p.created_at
+         WHERE p.type = 'bus_pickup' AND p.mode = $1 AND p.cell IS NOT NULL AND p.created_at >= $2`, [mode, since]),
+    ]);
+    return { plays: counts.rows[0]?.plays ?? 0, players: counts.rows[0]?.players ?? 0, picks: picks.rows };
+  }
+
   async close() {
     await this.pool.end();
   }
@@ -83,8 +97,9 @@ export function schemaStatements(sql = SCHEMA): string[] {
 }
 
 /** Applies the schema and reloads cells/sites/roads if the data build changed. Returns what it did. */
-export async function prepareTiger(pool: pg.Pool, data?: DataBundle) {
+export async function prepareTiger(pool: pg.Pool, data?: DataBundle, transit?: TransitStops | null) {
   for (const statement of schemaStatements()) await pool.query(statement);
+  if (transit) await seedTransit(pool, transit);
   if (!data) return { seeded: false };
   const build = data.meta?.buildDate ?? 'unknown';
   const last = await pool.query<{ build_date: string; cells: number; sites: number }>(
@@ -125,6 +140,30 @@ async function seedReference(pool: pg.Pool, data: DataBundle, build: string) {
     }
     await client.query('INSERT INTO data_builds (build_date, cells, sites) VALUES ($1, $2, $3)',
       [build, cells.length, sites.length]);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/** Existing bus stops, reloaded when the transit file was rebuilt. */
+async function seedTransit(pool: pg.Pool, transit: TransitStops) {
+  const { rows } = await pool.query<{ built: string | null }>('SELECT max(built) AS built FROM transit_stops');
+  if (rows[0]?.built === transit.built) return;
+  const { stops, sources } = transit;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('TRUNCATE transit_stops');
+    await client.query(
+      `INSERT INTO transit_stops (agency, name, lon, lat, feed_end, built)
+       SELECT * FROM unnest($1::text[], $2::text[], $3::float8[], $4::float8[], $5::date[], $6::text[])`,
+      [stops.map((s) => sources[s[3]]?.agency ?? ''), stops.map((s) => s[2]), stops.map((s) => s[0]),
+        stops.map((s) => s[1]), stops.map((s) => sources[s[3]]?.feedEnd ?? null), stops.map(() => transit.built)],
+    );
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

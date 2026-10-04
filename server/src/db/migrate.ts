@@ -13,7 +13,7 @@ const pool = new pg.Pool(poolConfig(url));
 try {
   const game = loadGameData();
   const t0 = performance.now();
-  const result = await prepareTiger(pool, game.bundle);
+  const result = await prepareTiger(pool, game.bundle, game.transit);
   console.log(`schema applied; ${result.seeded ? `reference data loaded (build ${result.build})` : 'reference data up to date'} ` +
     `from ${game.dir} in ${Math.round(performance.now() - t0)} ms`);
   const counts = await pool.query(`SELECT (SELECT count(*) FROM plays)::int AS plays,

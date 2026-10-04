@@ -29,11 +29,21 @@ export interface Crowd {
   picks: PickCount[];
 }
 
+/** Every bus pickup placed in a mode, with who placed it, for the demand report. */
+export interface PickupPicks {
+  plays: number;
+  /** Distinct players with at least one play. */
+  players: number;
+  picks: { cell: number; player: string }[];
+}
+
 export interface PlayStore {
   readonly kind: 'tiger' | 'memory';
   savePlay(play: PlayRecord): Promise<void>;
   /** How many plays there are in this mode and how often each spot was picked. */
   crowd(mode: Mode): Promise<Crowd>;
+  /** Bus pickups placed in this mode since `since`. */
+  pickups(mode: Mode, since: Date): Promise<PickupPicks>;
   close(): Promise<void>;
 }
 
@@ -59,6 +69,17 @@ export class MemoryStore implements PlayStore {
       }
     }
     return { plays, picks: [...picks.values()] };
+  }
+
+  async pickups(mode: Mode, since: Date): Promise<PickupPicks> {
+    const plays = this.plays.filter((p) => p.plan.mode === mode && p.createdAt >= since);
+    return {
+      plays: plays.length,
+      players: new Set(plays.map((p) => p.plan.playerId)).size,
+      picks: plays.flatMap((p) => p.placements
+        .filter((r) => r.type === 'bus_pickup' && r.cell !== null)
+        .map((r) => ({ cell: r.cell!, player: p.plan.playerId }))),
+    };
   }
 
   async close() {}
@@ -90,6 +111,17 @@ export function failSoft(primary: PlayStore, log: Log): PlayStore {
         return mergeCrowds(await primary.crowd(mode), local);
       } catch (err) {
         log.warn({ err }, 'crowd read failed; answering from memory');
+        return local;
+      }
+    },
+    async pickups(mode, since) {
+      const local = await backup.pickups(mode, since);
+      try {
+        const remote = await primary.pickups(mode, since);
+        // Players in both could be counted twice; the memory side only holds plays from an outage.
+        return { plays: remote.plays + local.plays, players: remote.players + local.players, picks: [...remote.picks, ...local.picks] };
+      } catch (err) {
+        log.warn({ err }, 'pickups read failed; answering from memory');
         return local;
       }
     },

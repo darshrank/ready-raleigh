@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
+import type { LayersList } from '@deck.gl/core';
 import { useMapData } from '../data';
 import { MapView } from '../map/MapView';
 import { useFloodMap } from '../map/useFloodMap';
@@ -8,9 +9,15 @@ import { Link } from '../router';
  * Map with a rail. Desktop: map left, rail right (30%). Phone: map on top, rail as a bottom sheet.
  * The map is always the largest thing on screen.
  */
-export function MapScreen({ title, rail }: { title: string; rail: (data: ReturnType<typeof useMapData>) => ReactNode }) {
+export function MapScreen({ title, rail, extraLayers }: {
+  title: string;
+  rail: (data: ReturnType<typeof useMapData>) => ReactNode;
+  /** Drawn on top of the base map layers (the planner's demand areas). */
+  extraLayers?: LayersList;
+}) {
   const state = useMapData();
-  const { layers, frame, onClick } = useFloodMap(state.data);
+  const { layers: base, frame, onClick } = useFloodMap(state.data);
+  const layers = useMemo(() => (extraLayers?.length ? [...base, ...extraLayers] : base), [base, extraLayers]);
 
   return (
     <div className="flex h-full flex-col lg:flex-row">

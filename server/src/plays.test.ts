@@ -76,6 +76,7 @@ describe('failSoft', () => {
       kind: 'tiger',
       savePlay: async () => { throw new Error('down'); },
       crowd: async () => { throw new Error('down'); },
+      pickups: async () => { throw new Error('down'); },
       close: async () => {},
     };
     const warnings: string[] = [];

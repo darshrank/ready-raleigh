@@ -72,6 +72,21 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas:
 -->
 
+### 2026-10-03 20:55 EDT Claude (Opus 5.5) lanes A+D+C, bus pickup demand report for planners
+- Done: pipeline/transit.py + app/public/data/transit_stops.json (GoRaleigh 2024 feed, flagged
+  expired; GoTriangle current). server/src/demand.ts (report, CSV, GeoJSON), store.pickups() on
+  memory and Tiger (placements join plays), transit_stops table, GET /api/planner/bus-demand.
+  app: solo games POST to /api/plays (app/src/api.ts), /planner panel + map hexagons
+  (app/src/planner/BusDemand.tsx).
+- Verified live on Tiger: 13 test plays (8 players) -> 2 areas shown, 1 hidden; Dacian Valley:
+  6 players, 109 households with no car (46 in flood risk), nearest stop 500 m -> gap. CSV and
+  GeoJSON download. /planner checked at desktop and 390 px. Test plays deleted. 64/65 tests
+  (only the old bench timeout).
+- Next: Gemini summary in place of the template (P12); same report for shelters and roads; a
+  "why here?" tap after placing a piece; show planners the crowd ranking from GET /api/planner too.
+- Gotchas: the report needs real plays from at least 5 different people per area; with few
+  testers use ?minPlayers=3. A newer GoRaleigh GTFS URL can replace FEEDS[0] in pipeline/transit.py.
+
 ### 2026-10-03 19:45 EDT Claude (Opus 5.5) lanes B+C (+D planner text), flood evacuation chain
 - Done: shared/src/engine/coverage.ts reworked (see DECISIONS "Evacuation chain"): bus pickups feed
   shelters and share their seats (drivers first), roads save whole dry cut-off blocks, shelters are

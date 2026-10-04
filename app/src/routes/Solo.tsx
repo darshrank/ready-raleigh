@@ -36,6 +36,7 @@ import { MapControls, PLATE, SoundButton, Status, TopHud, Tray } from '../ui/Hud
 import { NeighborhoodCard } from '../ui/MapRail';
 import { playAlert } from '../ui/sound';
 import { Title, useTitleOrbit } from '../ui/Title';
+import { saveSoloPlay } from '../api';
 
 /** Phones open on the highest-risk area at street level instead of the whole city. */
 const PHONE = '(max-width: 639px)';
@@ -243,6 +244,8 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
       setStormStart(usePlan.getState().stormAt);
       playAlert();
     }
+    // A finished solo game feeds the planners' reports (rooms are saved by the server).
+    if (phase === 'results' && was === 'storm' && !roomRef.current) void saveSoloPlay(usePlan.getState().placements);
     // Another round: back to the calm board.
     if (mapInst && phase === 'planning' && (was === 'results' || was === 'storm')) resetWater(mapInst, floodViewOf(mapInst));
   }, [phase, mapInst]);

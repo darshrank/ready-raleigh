@@ -3,6 +3,7 @@ import type { GameData } from './data';
 import { MemoryStore, type PlayStore } from './db/store';
 import { type LiveStore, MemoryLiveStore } from './live/store';
 import { summarize } from './live/summary';
+import { busDemand, demandCsv, demandGeoJson } from './demand';
 import { rankPlanner } from './planner';
 import { BadPlay, buildPlay } from './plays';
 import { lanAddresses } from './net';
@@ -46,6 +47,29 @@ export function buildServer({ store = new MemoryStore(), data = () => null, live
     const crowd = await store.crowd(mode);
     return { store: store.kind, ...rankPlanner(mode, game.bundle, game.optimal(mode), game.extended(mode), crowd) };
   });
+
+  // Bus pickup demand for transit and emergency planners: ?mode=flood&days=30&minPlayers=5&format=json|csv|geojson
+  app.get<{ Querystring: { mode?: string; days?: string; minPlayers?: string; format?: string } }>(
+    '/api/planner/bus-demand', async (req, reply) => {
+      const mode = req.query.mode ?? 'flood';
+      if (mode !== 'flood' && mode !== 'heat') return reply.code(400).send({ error: 'mode must be flood or heat' });
+      const game = data();
+      if (!game) return reply.code(503).send({ error: 'game data not loaded' });
+      const days = Number(req.query.days);
+      const since = Number.isFinite(days) && days > 0 ? new Date(Date.now() - days * 86_400_000) : new Date(0);
+      const minPlayers = req.query.minPlayers === undefined ? undefined : Number(req.query.minPlayers) || undefined;
+      const report = busDemand({ mode, data: game.bundle, transit: game.transit, pickups: await store.pickups(mode, since), since, minPlayers });
+      const stamp = report.generatedAt.slice(0, 10);
+      if (req.query.format === 'csv') {
+        return reply.type('text/csv; charset=utf-8')
+          .header('Content-Disposition', `attachment; filename="bus-pickup-demand-${stamp}.csv"`).send(demandCsv(report));
+      }
+      if (req.query.format === 'geojson') {
+        return reply.type('application/geo+json')
+          .header('Content-Disposition', `attachment; filename="bus-pickup-demand-${stamp}.geojson"`).send(demandGeoJson(report));
+      }
+      return { store: store.kind, ...report };
+    });
 
   // Live feeds: the latest reading per gauge, with trend and flood stage, plus weather.
   app.get('/api/live/gauges', async () => {

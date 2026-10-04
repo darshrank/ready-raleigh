@@ -135,6 +135,15 @@ CREATE TABLE IF NOT EXISTS flood_roads (
   flood_step smallint NOT NULL,
   unlocks    integer[] NOT NULL
 );
+-- Existing bus stops (GTFS, python -m pipeline.transit), for the bus pickup demand report.
+CREATE TABLE IF NOT EXISTS transit_stops (
+  agency   text             NOT NULL,
+  name     text             NOT NULL,
+  lon      double precision NOT NULL,
+  lat      double precision NOT NULL,
+  feed_end date,
+  built    text             NOT NULL
+);
 CREATE TABLE IF NOT EXISTS data_builds (
   build_date text        NOT NULL,
   cells      integer     NOT NULL,

@@ -25,7 +25,7 @@ if (process.env.DATABASE_URL) {
   const pool = new pg.Pool(poolConfig(process.env.DATABASE_URL));
   pool.on('error', () => {}); // idle client errors; queries report their own
   try {
-    const prepared = await prepareTiger(pool, game?.bundle);
+    const prepared = await prepareTiger(pool, game?.bundle, game?.transit);
     store = new TigerStore(pool);
     live = new TigerLiveStore(pool);
     storeNote = `Tiger Data ready${prepared.seeded ? `, reference data loaded (build ${prepared.build})` : ''}`;

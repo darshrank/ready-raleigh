@@ -48,6 +48,11 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas:
 -->
 
+### 2026-10-04 02:55 (machine clock) Claude (Opus 5.5) for Adit, lane C, Score page without "Where the plan fell short" (branch feat/leaderboard)
+- Done: storm/Results.tsx ScorePage ends at the two protection meters; Meter lost its unit.
+  biggestGaps (storm/debrief.ts) still feeds the debrief's "biggest gap" sentence.
+- Verified: typecheck; browser at 1440 and 390 (the page fits on a phone without scrolling).
+
 ### 2026-10-04 02:50 (machine clock) Claude (Opus 5.5) for Adit, lane C, leaderboard shows the top 5 (branch feat/leaderboard)
 - Done: the results' board (solo and the room's all-time board) asks for limit=5 (BOARD_TOP in
   app/src/api.ts) and lists the top 5 with the best plan row; a lower player's own row follows

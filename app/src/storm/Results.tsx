@@ -1,5 +1,5 @@
 // After the storm, the results in three pages (like the results flow on feat/ready-raleigh-adit):
-// 1. Score: how the plan did, against the best plan the data found, and where it fell short.
+// 1. Score: how the plan did, against the best plan the data found.
 // 2. Leaderboard: the city's all-time board; in a room, this election's results first.
 // 3. Debrief: a short summary Gemini writes from the engine's numbers (POST /api/debrief), read
 //    aloud by the ElevenLabs narrator, and the play's public record on Solana.
@@ -18,7 +18,7 @@ import { leaveGame } from '../ui/Exit';
 import { PLATE } from '../ui/Hud';
 import { playStamp } from '../ui/sound';
 import { hush, prefetchSpeech, say, useVoice } from '../ui/voice';
-import { biggestGaps, debriefFacts, templateDebrief } from './debrief';
+import { debriefFacts, templateDebrief } from './debrief';
 import { LeaderboardBody, useBoard } from './Leaderboard';
 import type { Storm } from './sim';
 
@@ -227,7 +227,6 @@ function ScorePage({ storm, result, story }: { storm: Storm; result: ScoreResult
   const score = result?.score ?? 0;
   const best = result?.bestPossible ?? 0;
   const baseline = result?.baseline.protectedPeople ?? 0;
-  const gaps = result ? biggestGaps(result) : [];
   return (
     <div>
       <h2 className="font-display text-32 font-extrabold">{story.passed}</h2>
@@ -261,34 +260,19 @@ function ScorePage({ storm, result, story }: { storm: Storm; result: ScoreResult
           <Meter label="Everyone protected" pct={result.vulnerable.everyonePct} ink="bg-safe" />
         </div>
       )}
-      {gaps.length > 0 && (
-        <div className="mt-4 border-t-(length:--rule) border-ink pt-3">
-          <h3 className="text-15 font-semibold">Where the plan fell short</h3>
-          <ul className="mt-2 grid gap-3">
-            {gaps.map((g) => (
-              <li key={g.hood}>
-                <Meter label={g.hood} pct={g.leftPct} ink="bg-alarm" unit="left exposed" />
-                {g.reason && <p className="mt-0.5 text-13">{g.reason.charAt(0).toUpperCase() + g.reason.slice(1)}.</p>}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }
 
 /** A flat bar in an ink rule: the share filled in `ink`. */
-function Meter({ label, pct, ink, unit = '' }: { label: string; pct: number; ink: string; unit?: string }) {
+function Meter({ label, pct, ink }: { label: string; pct: number; ink: string }) {
   const reduce = useReducedMotion();
   const p = Math.max(0, Math.min(100, pct));
   return (
     <div>
       <div className="flex items-baseline justify-between gap-2 text-15">
         <span className="truncate font-semibold">{label}</span>
-        <span className="tabular shrink-0">
-          {Math.round(p)}%{unit ? ` ${unit}` : ''}
-        </span>
+        <span className="tabular shrink-0">{Math.round(p)}%</span>
       </div>
       <div className="mt-1 h-3 border-(length:--rule) border-ink bg-bond">
         <motion.div

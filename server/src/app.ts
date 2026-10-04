@@ -8,7 +8,10 @@ import { rankPlanner } from './planner';
 import { BadPlay, buildPlay } from './plays';
 import { lanAddresses } from './net';
 import { roomServer } from './roomSocket';
-import { gemini } from './ai/gemini';
+import { type Gemini, gemini as defaultGemini } from './ai/gemini';
+import { cardService } from './cards/cards';
+import type { Minter } from './cards/mint';
+import { registerCards } from './cards/routes';
 import { registerNews } from './news';
 import { type CivicRecord, civicRecord } from './solana/civic';
 import { registerCivic } from './solana/routes';
@@ -27,10 +30,15 @@ export interface ServerOptions {
   civic?: CivicRecord;
   /** A play earned a card for a civic signal (tests listen here; cards hook in too). */
   onAward?: (signal: Signal, play: { playId: string; playerId: string }) => void;
+  /** Mints claimed cards; null until the card collection exists. */
+  minter?: Minter | null;
+  gemini?: Gemini;
+  /** Paint card art with Gemini (tests turn it off). */
+  cardArt?: boolean;
 }
 
 /** Builds the server without listening, so tests can inject requests. */
-export function buildServer({ store = new MemoryStore(), data = () => null, live = new MemoryLiveStore(), civic, onAward }: ServerOptions = {}) {
+export function buildServer({ store = new MemoryStore(), data = () => null, live = new MemoryLiveStore(), civic, onAward, minter = null, gemini = defaultGemini, cardArt = true }: ServerOptions = {}) {
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
   const record = civic ?? civicRecord({
     store: new MemoryCivicStore(),
@@ -39,8 +47,18 @@ export function buildServer({ store = new MemoryStore(), data = () => null, live
     log: { info: (m) => app.log.info(m), warn: (o, m) => app.log.warn(o, m) },
   });
   registerCivic(app, record);
+  const civicLog = { info: (m: string) => app.log.info(m), warn: (o: unknown, m: string) => app.log.warn(o, m) };
+  // Contribution cards: earned through signals and room elections, minted when claimed.
+  const cards = cardService({ civic: record, gemini, log: civicLog, minter, art: cardArt });
+  registerCards(app, cards);
   // Civic signals: the rules run after each fingerprinted play (room or solo).
-  const signals = civicSignals({ plays: store, civic: record, data, onAward, log: { info: (m) => app.log.info(m), warn: (o, m) => app.log.warn(o, m) } });
+  const signals = civicSignals({
+    plays: store, civic: record, data, log: civicLog,
+    onAward: (signal, play) => {
+      onAward?.(signal, play);
+      void cards.fromSignal(signal, play).catch((err) => app.log.warn({ err }, 'cards: award failed'));
+    },
+  });
   record.onRecorded((play) => void signals.onPlay(play));
 
   app.get('/api/health', async () => ({ ok: true, voice: voiceReady(), ai: gemini.ready() }));
@@ -113,7 +131,19 @@ export function buildServer({ store = new MemoryStore(), data = () => null, live
   });
 
   // Rooms (P9): candidates plan the same storm; locked platforms are scored and stored like plays.
-  const rooms = roomServer({ store, data, log: app.log, civic: record });
+  const rooms = roomServer({
+    store, data, log: app.log, civic: record,
+    // The election's winner is the mayor-elect: their card, with the room's numbers.
+    onFinish: (room) => {
+      const top = room.results?.[0];
+      const winner = top?.submitted ? room.players.find((p) => p.seat === top.seat) : undefined;
+      if (!top || !winner?.playId) return;
+      void cards.award({
+        kind: 'mayor_elect', playId: winner.playId, playerId: winner.id, spot: null, signal: null,
+        facts: { protectedPeople: Math.round(top.protectedPeople), score: Math.round(top.score * 10) / 10, candidates: room.results!.length, room: room.code },
+      }).catch((err) => app.log.warn({ err }, 'cards: mayor-elect award failed'));
+    },
+  });
   app.server.on('upgrade', rooms.onUpgrade);
   app.addHook('onClose', async () => {
     await rooms.close();

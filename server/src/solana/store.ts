@@ -69,8 +69,8 @@ export interface Card {
   attributes: { key: string; value: string }[];
   signalId: string | null;
   art: 'pending' | 'gemini' | 'template';
-  /** SHA-256 of the claim code; the code itself is shown once, to the player. */
-  claimHash: string;
+  /** Lets the player claim from another device. Private: only ever sent to the card's player. */
+  claimCode: string;
   status: 'unclaimed' | 'minting' | 'minted';
   asset: string | null;
   owner: string | null;

@@ -7,7 +7,8 @@
     "start": "tsx --env-file-if-exists=../.env src/index.ts",
     "typecheck": "tsc -p tsconfig.json",
     "db:migrate": "tsx --env-file-if-exists=../.env src/db/migrate.ts",
-    "ai:smoke": "tsx --env-file-if-exists=../.env scripts/ai-smoke.ts"
+    "ai:smoke": "tsx --env-file-if-exists=../.env scripts/ai-smoke.ts",
+    "sol:collection": "tsx --env-file-if-exists=../.env scripts/sol-collection.ts"
   },
   "dependencies": {
     "@google/genai": "^2.27.0",

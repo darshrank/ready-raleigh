@@ -8,6 +8,7 @@ import { startLiveFeeds, studyArea } from './live/job';
 import { type LiveStore, MemoryLiveStore, TigerLiveStore, failSoftLive } from './live/store';
 import { devnetChain, loadAuthority } from './solana/chain';
 import { civicRecord } from './solana/civic';
+import { coreMinter, umiFor } from './cards/mint';
 import { type CivicStore, MemoryCivicStore, TigerCivicStore } from './solana/store';
 
 const port = Number(process.env.PORT || 8787);
@@ -51,8 +52,12 @@ const civic = civicRecord({
   dataBuild: () => game?.bundle.meta?.buildDate ?? 'unknown',
   log: { info: (m) => app.log.info(m), warn: (o, m) => app.log.warn(o, m) },
 });
-const app = buildServer({ store: store.kind === 'tiger' ? failSoft(store, log) : store, data: () => game, live, civic });
+// Cards are minted into the soulbound collection (npm run sol:collection -w server creates it).
+const collection = process.env.SOLANA_CARD_COLLECTION?.trim();
+const minter = chain && authority.key && collection ? coreMinter(umiFor(authority.key, chain.rpcUrl), collection) : null;
+const app = buildServer({ store: store.kind === 'tiger' ? failSoft(store, log) : store, data: () => game, live, civic, minter });
 app.log.info(chain ? `Solana devnet record on, authority ${chain.address} (${civicStore.kind})` : `Solana record off: ${authority.reason}`);
+app.log.info(minter ? `cards mint into collection ${collection}` : 'cards are kept unminted until SOLANA_CARD_COLLECTION is set (npm run sol:collection -w server)');
 if (chain) chain.balanceSol().then((sol) => app.log.info(`Solana authority balance: ${sol} SOL (devnet)`), () => {});
 app.log.info(storeNote);
 if (game) {

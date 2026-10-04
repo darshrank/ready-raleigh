@@ -39,6 +39,19 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 ## Handoff log
 <!-- Newest first. Template:
 
+### 2026-10-04 00:40 EDT Claude (Opus 5.5) lanes B+C+D, Gemini news desk
+- Done: the news anchor's reports come from Gemini (POST /api/news, server/src/news.ts) in a
+  sensational cable-news voice, about the storm and the mayors' plans (rooms: rivals by name).
+  Facts from app/src/storm/newsFacts.ts; types in shared/src/news.ts; NewsDesk swaps lines in as
+  the script arrives, template per line otherwise. Harness fix: no server deadline (Google needs
+  >= 10 s), default model gemini-3.8-flash.
+- Verified: typecheck, tests (4 new), live route ~1.8-3.7 s, solo storm in the browser at 1440 and
+  390 px: Gemini lines on the desk, no page errors.
+- Half done: the first report can miss the script on a slow machine (falls back to its template).
+  Possible next step: start the request earlier (e.g. when the plan is locked in rooms).
+- Gotcha: .env GEMINI_MODEL=gemini-2.5-flash is retired for our key; set gemini-3.8-flash (the
+  harness skips the 404 either way).
+
 ### 2026-10-04 00:15 EDT Claude (Opus 5.5) lane D, Gemini harness
 - Done: server/src/ai/gemini.ts, one Gemini client for the whole server: `gemini.json()` (schema
   output), `gemini.text()`, `gemini.image()`, `GROUNDED` prompt rules, `AIError` on any failure,

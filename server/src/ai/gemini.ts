@@ -78,7 +78,7 @@ export interface GeminiOptions {
   imageTimeoutMs?: number;
 }
 
-const TEXT_FALLBACKS = ['gemini-2.5-flash', 'gemini-flash-latest'];
+const TEXT_FALLBACKS = ['gemini-3.8-flash', 'gemini-flash-latest'];
 const IMAGE_FALLBACKS = ['gemini-3.1-flash-image', 'gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image'];
 const uniq = (xs: (string | undefined)[]) => [...new Set(xs.map((x) => x?.trim()).filter((x): x is string => !!x))];
 
@@ -199,7 +199,8 @@ export class Gemini {
     return client.models.generateContent({
       model,
       contents,
-      config: { ...config, abortSignal: AbortSignal.timeout(timeoutMs), httpOptions: { timeout: timeoutMs } },
+      // Client-side only: Google refuses a server deadline (httpOptions.timeout) under 10 s.
+      config: { ...config, abortSignal: AbortSignal.timeout(timeoutMs) },
     });
   }
 }

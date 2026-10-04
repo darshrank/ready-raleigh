@@ -37,6 +37,7 @@ import { stormRenderer, stormWarmLayers } from '../storm/layers';
 import { CLEAR_MS, RESULTS_AFTER_MS, STORM_MS, buildStorm, type StormEvent } from '../storm/sim';
 import { Broadcast, Counters, ResultsCard, SkipStorm } from '../storm/StormOverlay';
 import { NewsDesk, preloadAnchors, useStormFx } from '../storm/NewsDesk';
+import { newsFacts, type Mayor } from '../storm/newsFacts';
 import { StormTimeline } from '../storm/Timeline';
 import { Heat, Lightning, Quake, Rain, Wipe } from '../storm/Weather';
 import { MapControls, MapLookButtons, PLATE, SoundButton, Status, TopHud, Tray } from '../ui/Hud';
@@ -84,6 +85,9 @@ export interface RoomMode {
   waiting: ReactNode;
   /** Shown on the results card instead of "Play again". */
   footer: ReactNode;
+  /** This candidate's name and the other candidates' plans, for the news desk. */
+  mayor: string;
+  rivals: Mayor[];
 }
 
 export function Solo({ room }: { room?: RoomMode } = {}) {
@@ -244,6 +248,13 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
 
   // The storm: built once when planning ends (the plan is locked), animated by MapView's frame loop.
   const storm = useMemo(() => (data && storming ? buildStorm(data, placements) : null), [data, storming, placements]);
+  // What the news desk reports on: the storm's moments and the plans in it (Gemini writes the lines).
+  // Play builds the rivals array on every render, so the memo keys on its content.
+  const rivalsKey = JSON.stringify(room?.rivals ?? []);
+  const facts = useMemo(
+    () => (data && storm ? newsFacts(storm, data, story, placements, roomRef.current?.mayor ?? null, JSON.parse(rivalsKey) as Mayor[]) : null),
+    [data, storm, story, placements, rivalsKey],
+  );
   const frameLayers = useMemo(() => {
     if (!data || !storm || stormAt === null || !pieces) return null;
     const renderer = stormRenderer(storm, reduce);
@@ -457,7 +468,7 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
             </div>
           </div>
           <div className="flex min-h-0 flex-1 flex-col items-stretch px-3 pt-14 pb-2 lg:items-start lg:px-6 lg:pt-1">
-            {phase === 'storm' && (!cleared || anchorTalking) && <NewsDesk storm={storm} stormAt={stormAt} />}
+            {phase === 'storm' && (!cleared || anchorTalking) && <NewsDesk storm={storm} stormAt={stormAt} facts={facts} />}
           </div>
           {phase === 'results' ? (
             <div className="flex shrink-0 justify-center px-3 pb-4 lg:justify-start lg:px-8 lg:pb-8">

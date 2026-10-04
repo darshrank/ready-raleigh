@@ -33,6 +33,8 @@ export function Play({ code }: { code: string }) {
           stormGo: s.phase === 'results',
           waiting: <Waiting state={s} />,
           footer: <Standing state={s} room={room} />,
+          mayor: me.name,
+          rivals: (s.results ?? []).filter((r) => r.seat !== s.you && r.submitted).map((r) => ({ name: r.name, placements: r.placements })),
         }}
       />
     );

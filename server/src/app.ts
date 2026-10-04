@@ -9,6 +9,7 @@ import { BadPlay, buildPlay } from './plays';
 import { lanAddresses } from './net';
 import { roomServer } from './roomSocket';
 import { gemini } from './ai/gemini';
+import { registerNews } from './news';
 import { registerVoice, voiceReady } from './voice';
 
 export interface ServerOptions {
@@ -26,6 +27,7 @@ export function buildServer({ store = new MemoryStore(), data = () => null, live
 
   app.get('/api/health', async () => ({ ok: true, voice: voiceReady(), ai: gemini.ready() }));
   registerVoice(app);
+  registerNews(app);
 
   // Where phones join a room: PUBLIC_URL (our domain or a tunnel) when set, else this machine's LAN
   // address. The page adds its own port, since in development it is served by Vite, not here.

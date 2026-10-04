@@ -4,9 +4,14 @@
 // names). Earlier lines are spoken only if they end before the last report is due, so the last one
 // always gets its slot; it may run through the clear-up and finish over the results card. A line
 // that cannot finish in its window stays on the feed as a caption (long Hindi lines do not all fit).
+// The reports are written by Gemini from the storm's facts and the mayors' plans (POST /api/news,
+// storm/newsFacts.ts) when the server has a key; each one falls back to its template in news.ts,
+// and a script that arrives mid-storm takes over from the next line.
 // The anchor is a portrait from app/public/anchors/ when there is one (a second, mouth-open frame
 // makes it talk), else a cartoon in the inks. Either way it moves with the loudness of the voice.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { NewsFacts, NewsScript } from '@shared/news';
+import { fetchNews } from '../api';
 import { useReducedMotion } from 'motion/react';
 import { FINAL_FLOOD_STEP } from '@shared/config';
 import { CHANNELS, channelById, newsBook, useChannel, type ChannelId, type Lang } from '../news';
@@ -38,18 +43,41 @@ export interface Headline {
   text: string;
 }
 
-/** What the anchor says, in `lang`: the alert, then one report per place the helicopter goes. */
-export function headlines(storm: Storm, story: Story, lang: Lang): Headline[] {
+/** The template report for helicopter stop `k`, in `lang`. */
+export function templateReport(storm: Storm, story: Story, lang: Lang, k: number): string {
   const book = newsBook(lang, story.hazard);
+  const e = storm.events[k]!;
+  const step = storm.timeline.find((s) => s.step === e.step);
+  const stranded = step ? Math.round(step.strandedPeople) : 0;
+  const what =
+    e.about.kind === 'road' ? book.road(e.about.name) : e.about.kind === 'cut' ? book.cut(e.about.name) : book.area(e.about.name, e.step);
+  return `${what} ${stranded > 0 ? book.stranded(stranded) : book.safe}`;
+}
+
+/**
+ * What the anchor says, in `lang`: the alert, then one report per place the helicopter goes,
+ * Gemini's where the script has one, else the template.
+ */
+export function headlines(storm: Storm, story: Story, lang: Lang, script: NewsScript | null = null): Headline[] {
   const out: Headline[] = [{ at: ALERT_AT, text: story.alert[lang] }];
-  for (const e of storm.events) {
-    const step = storm.timeline.find((s) => s.step === e.step);
-    const stranded = step ? Math.round(step.strandedPeople) : 0;
-    const what =
-      e.about.kind === 'road' ? book.road(e.about.name) : e.about.kind === 'cut' ? book.cut(e.about.name) : book.area(e.about.name, e.step);
-    out.push({ at: stepStart(e.step) + REPORT_AFTER_STEP_MS, text: `${what} ${stranded > 0 ? book.stranded(stranded) : book.safe}` });
-  }
+  storm.events.forEach((e, k) => {
+    out.push({ at: stepStart(e.step) + REPORT_AFTER_STEP_MS, text: script?.lines[k]?.[lang] || templateReport(storm, story, lang, k) });
+  });
   return out;
+}
+
+/** Gemini's script for this storm, once it arrives (null until then, and when the AI is off). */
+function useNewsScript(facts: NewsFacts | null): NewsScript | null {
+  const [script, setScript] = useState<{ for: NewsFacts; script: NewsScript } | null>(null);
+  useEffect(() => {
+    if (!facts) return;
+    let live = true;
+    void fetchNews(facts).then((s) => live && s && setScript({ for: facts, script: s }));
+    return () => {
+      live = false;
+    };
+  }, [facts]);
+  return script && script.for === facts ? script.script : null;
 }
 
 /** The sounds and buzzes the storm clock drives: the siren at the start, rushing water per step. */
@@ -84,11 +112,15 @@ interface FeedItem {
   lang: Lang;
 }
 
-export function NewsDesk({ storm, stormAt }: { storm: Storm; stormAt: number }) {
+export function NewsDesk({ storm, stormAt, facts = null }: { storm: Storm; stormAt: number; facts?: NewsFacts | null }) {
   const story = useMemo(() => currentStory(), []);
   const channelId = useChannel((s) => s.id);
   const channel = channelById(channelId);
-  const lines = useMemo(() => headlines(storm, story, channel.lang), [storm, story, channel.lang]);
+  const script = useNewsScript(facts);
+  const lines = useMemo(() => headlines(storm, story, channel.lang, script), [storm, story, channel.lang, script]);
+  /** The reading loop reads the newest lines, so a script that arrives does not restart it. */
+  const linesRef = useRef(lines);
+  linesRef.current = lines;
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const line = useVoice((s) => s.line);
   /** The first line not yet read to the end: a channel switch reads it again, in the new language. */
@@ -104,10 +136,13 @@ export function NewsDesk({ storm, stormAt }: { storm: Storm; stormAt: number }) 
       lines.slice(next.current).map((l) => l.text),
       channel.voice,
     );
+  }, [lines, channel.voice]);
+
+  useEffect(() => {
     let cancelled = false;
     void (async () => {
-      for (let k = next.current; k < lines.length; k++) {
-        const h = lines[k]!;
+      for (let k = next.current; k < linesRef.current.length; k++) {
+        const h = linesRef.current[k]!;
         const wait = stormAt + h.at - performance.now();
         if (wait > 0) await sleep(wait);
         if (cancelled) return;
@@ -116,8 +151,9 @@ export function NewsDesk({ storm, stormAt }: { storm: Storm; stormAt: number }) 
         if (t > STORM_MS - 600) return;
         const item: FeedItem = { k, clock: clockLabel(stormHour(h.at)), text: h.text, lang: channel.lang };
         setFeed((f) => [item, ...f.filter((x) => x.k !== k)].slice(0, 3));
-        const last = k === lines.length - 1;
-        const until = stormAt + (last ? SPEECH_END_MS : lines[lines.length - 1]!.at);
+        const all = linesRef.current;
+        const last = k === all.length - 1;
+        const until = stormAt + (last ? SPEECH_END_MS : all[all.length - 1]!.at);
         if (t - h.at <= MAX_LATE_MS) await say(h.text, channel.voice, { until });
         if (cancelled) return;
         next.current = k + 1;
@@ -129,7 +165,7 @@ export function NewsDesk({ storm, stormAt }: { storm: Storm; stormAt: number }) 
       // report is allowed to finish while the results card comes up.
       if (performance.now() - stormAt < STORM_MS) hush();
     };
-  }, [lines, stormAt, channel.voice, channel.lang]);
+  }, [storm, stormAt, channel.voice, channel.lang]);
 
   const current = line ?? feed[0]?.text ?? null;
   return (

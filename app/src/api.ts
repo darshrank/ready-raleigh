@@ -1,5 +1,6 @@
 // Calls to the game server (proxied under /api by Vite). Every call fails soft: the game works
 // without the server, it just does not add to the planners' data.
+import type { NewsFacts, NewsScript } from '@shared/news';
 import type { Placement } from '@shared/types';
 import { soloPlan } from './plan/usePlanScore';
 
@@ -34,5 +35,25 @@ export async function saveSoloPlay(placements: Placement[]): Promise<void> {
     });
   } catch {
     // Server down or offline: the game goes on.
+  }
+}
+
+const aiOn = import.meta.env.VITE_FEATURE_AI !== 'false';
+
+/** The storm's reports written by Gemini (POST /api/news), or null: the desk then reads its templates. */
+export async function fetchNews(facts: NewsFacts): Promise<NewsScript | null> {
+  if (!aiOn) return null;
+  try {
+    const res = await fetch('/api/news', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ facts }),
+      signal: AbortSignal.timeout(9000),
+    });
+    if (!res.ok) return null;
+    const script = (await res.json()) as NewsScript;
+    return Array.isArray(script?.lines) ? script : null;
+  } catch {
+    return null;
   }
 }

@@ -11,8 +11,9 @@ import { Link, navigate } from '../router';
 import { storyOf } from '../story';
 import { tokens } from '../tokens';
 import { money } from '../ui/format';
+import { useMapUi } from '../store';
 import { useTheme } from '../theme';
-import { MapButton, PLATE, SoundButton, ThemeButton } from '../ui/Hud';
+import { MapButton, PLATE, SatelliteButton, SoundButton, ThemeButton } from '../ui/Hud';
 import { Skyline } from '../ui/Skyline';
 import { playStamp, unlockAudio } from '../ui/sound';
 import { orbitCamera } from '../ui/Title';
@@ -44,16 +45,16 @@ export function Landing() {
   focusRef.current = focus;
   const markers = useRef(new Map<CityId, HTMLButtonElement>());
 
-  /** Which inks the globe is printed in now. */
-  const printedDark = useRef(false);
+  /** Which inks the globe is printed in now, and whether the imagery is on. */
+  const printed = useRef({ dark: false, satellite: false });
 
   // The globe and its markers, made once.
   useEffect(() => {
     if (!container.current) return;
-    printedDark.current = useTheme.getState().theme === 'dark';
+    printed.current = { dark: useTheme.getState().theme === 'dark', satellite: useMapUi.getState().satellite };
     const m = new MapLibreMap({
       container: container.current,
-      style: globeStyle(tokens(), printedDark.current),
+      style: globeStyle(tokens(), printed.current.dark, printed.current.satellite),
       center: HOME.center,
       zoom: phone ? 1.1 : HOME.zoom,
       minZoom: 0.6,
@@ -87,13 +88,15 @@ export function Landing() {
     };
   }, [phone]);
 
-  // Light or Dark: the globe re-prints in the other inks (a style diff: only paint values change).
+  // Light or Dark, Satellite or printed: the globe re-prints (a style diff: paint values change, the
+  // imagery source and layer come and go).
   const dark = useTheme((s) => s.theme === 'dark');
+  const satellite = useMapUi((s) => s.satellite);
   useEffect(() => {
-    if (!map || printedDark.current === dark) return;
-    printedDark.current = dark;
-    map.setStyle(globeStyle(tokens(), dark));
-  }, [map, dark]);
+    if (!map || (printed.current.dark === dark && printed.current.satellite === satellite)) return;
+    printed.current = { dark, satellite };
+    map.setStyle(globeStyle(tokens(), dark, satellite));
+  }, [map, dark, satellite]);
 
   // Spin while idle; any drag, scroll or pinch pauses it for a few seconds.
   useEffect(() => {
@@ -172,17 +175,19 @@ export function Landing() {
           </motion.div>
           <motion.div {...appear(0.2)} className="pointer-events-auto flex flex-col items-end gap-2">
             <div className="flex gap-2">
+              <SatelliteButton />
               <ThemeButton />
               <SoundButton />
+              {/* Phones pinch to zoom; the buttons would push the row off the screen. */}
               {map && (
-                <>
+                <div className="hidden gap-2 sm:flex">
                   <MapButton on={false} label="Zoom in" onClick={() => map.zoomIn()}>
                     +
                   </MapButton>
                   <MapButton on={false} label="Zoom out" onClick={() => map.zoomOut()}>
                     −
                   </MapButton>
-                </>
+                </div>
               )}
             </div>
             <Rooms compact={phone} />

@@ -17,7 +17,9 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [x] V1 Visual overhaul: title and briefing, game HUD, realistic water, night storm with helicopter camera, daylight end (C)
 - [x] V2 Four cities and the broadcast: globe landing, Miami / San Francisco / New York on the same engine, narrated briefing tour, Find the weak spot, storm timeline, news desk with anchor, hazard sound and vibration (C + D, branch feat/new-features-adit)
 - [x] V3 Map looks and two news channels: Satellite toggle, Light / Dark map, each city's own storm clock with daylight on the map, America News (English) and Bharat News (Hindi), news timed to end with the storm (C + D, branch feat/new-features-adit). Anchor portraits in (V3.1)
-- [ ] P8 Results screen with score breakdown and optimal plan side by side (C)
+- [x] L1 Leaderboard after the storm: each city's all-time board (best play per player, Tiger Data), the best plan as the score to beat, your name on the board (C + D, branch feat/leaderboard)
+- [x] L2 Results in three pages (Score, Leaderboard, Debrief) in solo and rooms, the election above the all-time board, Gemini debrief read by the ElevenLabs narrator, per-city news anchors (B + C + D, branch feat/leaderboard)
+- [~] P8 Results screen with score breakdown and optimal plan side by side (C). Score breakdown done (L2); the best plan on the map is open
 - [~] P9 Rooms: (aum) done: lobby + QR, mayoral candidates, any player hosts, shared clock, storm starts together, ranked results stored in Tiger Data. Open: crowd heatmap, perception gap
 
 ## Phase 2: heatwave
@@ -27,7 +29,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [~] P11 Tiger Data storage and planner dashboard (D + C). Lane D done (Claude, D); /planner page (C) next
 
 ## Phase 4: bonus challenges
-- [ ] P12 Gemini briefing and debrief (D)
+- [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
 - [x] P13 ElevenLabs broadcast and narration (D): POST /api/tts, narrated briefing, news anchor (V2)
 - [ ] P14 GoDaddy domain and deploy (any)
 - [~] P15 Live mode: USGS gauges and NWS weather into Tiger Data (D). Server done (Claude, D); title-screen live line (C) next
@@ -38,6 +40,91 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 
 ## Handoff log
 <!-- Newest first. Template:
+
+### [time] [agent] [lane] [task id]
+- Done:
+- Half done:
+- Next exact step:
+- Gotchas:
+-->
+
+### 2026-10-04 02:50 (machine clock) Claude (Opus 5.5) for Adit, lane C, leaderboard shows the top 5 (branch feat/leaderboard)
+- Done: the results' board (solo and the room's all-time board) asks for limit=5 (BOARD_TOP in
+  app/src/api.ts) and lists the top 5 with the best plan row; a lower player's own row follows
+  after "… N more mayors" (no gap row at #6). No server change: limit was already supported.
+- Verified: typecheck; browser at 1440 and 390 on the Raleigh board (you at #11 of 38: ranks
+  1 to 5, "… 5 more mayors", your row), plus #6 and #3 set in the store (no gap, no extra row).
+  The save, debrief and voice calls were stubbed in the page, so no test play was added.
+
+### 2026-10-04 02:40 (machine clock) Claude (Opus 5.5) for Adit, lane C, weak spot card under the clock (branch feat/leaderboard)
+- Done: plan/WeakSpot.tsx split into WeakSpotPower (the button, the scan timing, the flight) and
+  WeakSpotPanel (the scan and the card), rendered in Solo's top grid under the TopHud (phones:
+  under the controls row). The scan's line count moved into the useWeakSpot store.
+- Verified: typecheck; browser at 1440 (gap 8 px under the clock), 1100 (clock 147 px tall,
+  still 8 px), 390 (card under the controls row); Protect it places the road and the slot closes.
+
+### 2026-10-04 02:30 (machine clock) Claude (Opus 5.5) for Adit, lane C, Satellite on the landing and the title (branch feat/leaderboard)
+- Done: the Satellite button on the landing (beside Light / Dark) and on the title screen (between
+  Main menu and Sound). globeStyle(tokens, dark, satellite) adds the Esri imagery to the globe;
+  the title's map already followed the setting (map/mood.ts). Phones: the title's buttons wrap
+  in two rows, the landing hides its zoom buttons under 640 px.
+- Verified: typecheck; browser at 1440 and 390 (globe printed and satellite, Dark dims the
+  imagery, fly to Miami, Play to the Raleigh title with the imagery on, off again from the title).
+- Next exact step: as in the L2 entry below.
+
+### 2026-10-04 02:10 (machine clock) Claude (Opus 5.5) for Adit, lanes B + C + D, merge of main (PR #3) into feat/leaderboard
+- Done:
+  - Took main's city plumbing as is (Plan.city, CityId in shared/src/room.ts, data.ts
+    cityLoader, per-city planner / bus demand / civic record / signals, rooms with a city) and
+    dropped L1's own version (city beside the plan, PLANNER_CITY). On top of it: PlayStore.bests
+    and renamePlayer, GET /api/leaderboard (city must be in CITY_IDS), POST /api/players/name,
+    POST /api/debrief, Tiger indexes plays_board and plays_player. saveSoloPlay sends plan.city.
+  - Room results: main's new host actions (Next election in <city> = again + start, Choose another
+    city, Leave room; the others' Leave room) are on the last results page (Play.tsx
+    NextElection). "Change city" on phones so the footer fits two rows. Main menu is solo only.
+  - Fixed: rooms played Raleigh's story whatever the room's city (Solo.tsx storyOf('raleigh'),
+    also on main), so a Miami room showed Raleigh's board and debrief facts. Gemini debriefs that
+    run long now keep their whole sentences instead of falling back to the template.
+- Verified: typecheck; npm test 124, all but bench.test.ts (two timing tests, machine load ~68).
+  Browser: Miami solo (board and Solana play memo say miami), Miami room (election, "All time in
+  Miami", Gemini debrief on Miami shelters, footer at 1440 and 390, Next election goes straight to
+  planning).
+- Next exact step: as in the L2 entry below.
+
+### 2026-10-04 01:45 (machine clock) Claude (Opus 5.5) for Adit, lanes B + C + D, L2 results in three pages (branch feat/leaderboard)
+- Done:
+  - Pulled main (Solana record and cards, Gemini harness and news desk, Main menu) into
+    feat/leaderboard and merged it with L1. (Its civic-city and Raleigh-only-signals changes were
+    replaced by main's own versions in the next merge, above.)
+  - Results in three pages, the same in solo and rooms (storm/Results.tsx, replaces ResultsCard):
+    Score (score, % of the best plan, protected / stranded, the vulnerable and everyone meters, the
+    three neighborhoods that lost the most, with the engine's reason), Leaderboard (L1's board;
+    rooms: this election ranked above "All time in Raleigh", the row found by the room player
+    id), Debrief. Numbered tabs (no numbers on phones), Back / Next, Play again on page 1, Main menu
+    on page 3, the host's Next election there in rooms.
+  - Debrief: shared/src/debrief.ts DebriefFacts (built in app/src/storm/debrief.ts from the score),
+    POST /api/debrief (server/src/debrief.ts: Gemini, 40 to 560 characters, numbers checked
+    against the facts, people counts given commas, cached by hash). The template summary when
+    Gemini is off or refused. Written once per round, after the board (for the rank) or 5 s; the
+    narrator clip (ElevenLabs) is prefetched and read once on arrival; Listen / Stop. The public
+    record and the cards moved to this page.
+  - Per-city anchors: app/public/anchors/<city>/{america,bharat}.jpg from Adit's six images;
+    NewsDesk looks for the city's file first, then the root (Raleigh's).
+- Verified: typecheck; npm test 19 files, 118 tests (new server/src/debrief.test.ts). Browser on
+  the real server: solo at 1440 and 390 (the three pages; tabs on one line on a phone), Gemini
+  debrief in ~2.5 s, narrator clip in ~5 s while on page 1, Listen plays it; Miami, San
+  Francisco, New York anchors on both channels; a room through two elections (standings,
+  all-time row, "Candidate ..." debrief, on Solana, Mayor-elect card, Next election to the lobby;
+  the board resets when each storm starts).
+- Gotchas:
+  - The automatic read needs audio unlocked by a click (browser autoplay rules); players have
+    clicked by then. Scripted clicks do not count, so tests see "Listen" until a real click.
+  - Vite HMR of Results.tsx or Solo.tsx reloads the game (dev only). From the console, import
+    app modules by the URL in performance entries (with ?t=), or you get a second store.
+  - More test plays on the real board: "Test Mayor" (solo) and "Test Priya" (rooms VRYP, MLFH).
+    Delete them like L1's note, with player_name IN ('Test Mayor', 'Test Priya').
+- Next exact step: the rest of P8, the best plan drawn on the map beside yours on the Score page
+  (optimal_flood.json), or a Gemini-written briefing (P12).
 
 ### 2026-10-04 01:30 EDT Claude (Opus 5.5) lanes B+C+D, P16 Solana MVP (branch solana)
 - Done (5 commits): shared/src/proof.ts (fingerprints, Merkle proofs); server/src/solana/ (devnet
@@ -107,12 +194,37 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas: rooms live in server memory (a server restart ends them; plays are already stored).
   Phones on Wi-Fi need `npm run dev` to expose Vite (host: true is set) and PUBLIC_URL for a tunnel.
 
-### [time] [agent] [lane] [task id]
-- Done:
-- Half done:
-- Next exact step:
+### 2026-10-04 01:00 (machine clock) Claude (Opus 5.5) for Adit, lanes C + D, L1 leaderboard (branch feat/leaderboard)
+- Done (like the "The room" step on feat/ready-raleigh-adit, in main's look):
+  - Server: plays carry `city` (POST /api/plays body `city`, default raleigh). index.ts loads
+    app/public/data/cities/<id> the first time a city's play arrives and scores it there (under
+    1 s per city); an unknown city is a 400. GET /api/leaderboard?city&mode&playerId&limit ranks
+    each player's best play (leaderboard.ts rankBoard: best score, ties to the earlier play),
+    marks the asker's row, and never sends player ids. POST /api/players/name renames a player's
+    plays (all cities). Old solo plays named "You" show as "Mayor XXXX" (first 4 of the id), the
+    default the browser now uses.
+  - Stores: PlayStore.bests and renamePlayer (memory, Tiger, failSoft merges memory after an
+    outage). Tiger: plays.city column (default raleigh) and two indexes, applied on start. The
+    planner and bus demand report count only Raleigh plays (PLANNER_CITY): other cities skip the
+    placements table, and crowd() counts from plays because leaderboard_hourly has no city.
+  - App: storm/Leaderboard.tsx. After a solo storm useBoard saves the play, then loads the board
+    (one retry after 2.5 s, then "Try again"). The plate: Leaderboard and the city, "You placed 3
+    of 27.", rows like the room's Standing (rank, crown on 1, name, protected and spent, score and
+    % of best), the best plan as a dashed row where its score falls, your row on signal (pinned
+    under the list if you are below the top 8), the name form, and where the board is kept.
+    Desktop: results card left, board right (resultsPad right 480). Under 1024 px: "Your result"
+    and "Leaderboard · #N" tabs, one card at a time, Play again on both. Rooms keep Standing.
+- Verified: typecheck; npm test 84 of 86 (new server/src/leaderboard.test.ts: 9). The two
+  failures are shared/src/engine/bench.test.ts timing out (also alone, without these changes).
+  Browser on the real Tiger Data: Raleigh board at 1440 x 860 (12 mayors), rename, the pinned row,
+  390 x 844 tabs, Miami's own board (3 shelters: client 17, server 17, 81% of best).
 - Gotchas:
--->
+  - After the server starts it warms the optimizer for about 80 s and answers nothing meanwhile;
+    the board shows "The leaderboard needs the game server" with Try again until then.
+  - My test runs are on the real board as "Test Mayor" (score 0 in Raleigh, 17 in Miami). To
+    remove them: DELETE FROM placements WHERE play_id IN (SELECT id FROM plays WHERE player_name =
+    'Test Mayor'); then DELETE FROM plays WHERE player_name = 'Test Mayor';
+- Next exact step: a weekly board (filter on created_at) if the all-time one fills up.
 
 ### 2026-10-04 Claude (Opus 5.5) merge of feat/new-features-adit (four cities) into main
 - Done: merged Adit's cities (Miami, San Francisco, New York), globe landing, narrated briefing,

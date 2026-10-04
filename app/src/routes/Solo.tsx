@@ -28,14 +28,14 @@ import {
 } from '../plan/layers';
 import { busStops, usefulRoads } from '../plan/targets';
 import { lastLandingAt, usePlan } from '../plan/store';
-import { useWeakSpot, WeakSpotPower, weakSpotLayers } from '../plan/WeakSpot';
+import { useWeakSpot, WeakSpotPanel, WeakSpotPower, weakSpotLayers } from '../plan/WeakSpot';
 import { floodAtRisk, soloPlan, usePlanScore } from '../plan/usePlanScore';
 import { focusMap, usePlanning } from '../plan/usePlanning';
 import { Link } from '../router';
 import { directStorm, resetWater } from '../storm/director';
 import { stormRenderer, stormWarmLayers } from '../storm/layers';
 import { CLEAR_MS, RESULTS_AFTER_MS, STORM_MS, buildStorm, type StormEvent } from '../storm/sim';
-import { Broadcast, Counters, ResultsCard, SkipStorm } from '../storm/StormOverlay';
+import { Broadcast, Counters, SkipStorm } from '../storm/StormOverlay';
 import { NewsDesk, preloadAnchors, useStormFx } from '../storm/NewsDesk';
 import { newsFacts, type Mayor } from '../storm/newsFacts';
 import { StormTimeline } from '../storm/Timeline';
@@ -44,10 +44,10 @@ import { MapControls, MapLookButtons, PLATE, SoundButton, Status, TopHud, Tray }
 import { NeighborhoodCard } from '../ui/MapRail';
 import { playAlert } from '../ui/sound';
 import { Title, useBriefingTour, useTitleOrbit } from '../ui/Title';
-import { playerId as anonPlayerId, saveSoloPlay } from '../api';
-import { CivicRecord } from '../civic/CivicRecord';
+import { useBoard } from '../storm/Leaderboard';
+import { ResultsPanel } from '../storm/Results';
 import { cityById } from '../cities';
-import { currentStory, storyOf, type Hazard } from '../story';
+import { currentStory, type Hazard } from '../story';
 import { useTheme } from '../theme';
 import { score } from '@shared/engine';
 import { useVoice } from '../ui/voice';
@@ -84,8 +84,10 @@ export interface RoomMode {
   stormGo: boolean;
   /** Shown while this candidate waits for the others. */
   waiting: ReactNode;
-  /** Shown on the results card instead of "Play again". */
-  footer: ReactNode;
+  /** The election's results, on the results' leaderboard page above the city's all-time board. */
+  standings: ReactNode;
+  /** What comes next, on the results' last page instead of "Play again" (the host's Next election). */
+  actions: ReactNode;
   /** This round's stored play and this player's id, for the public record and cards (P16). */
   playId: string | null;
   owner: string | null;
@@ -98,7 +100,8 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
   const roomRef = useRef(room);
   roomRef.current = room;
   // One city per page (?city=); rooms stay on Raleigh, the city their server scores.
-  const story = useMemo(() => (room ? storyOf('raleigh') : currentStory()), [room]);
+  // Rooms too: the room page keeps ?city= on the room's city and remounts the game when it changes.
+  const story = useMemo(() => currentStory(), [room]);
   const { data, error } = useMapData();
   const armed = usePlan((s) => s.armed);
   const selectedId = usePlan((s) => s.selectedId);
@@ -163,8 +166,9 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
     () => (compact ? { top: 110, right: 16, bottom: 130, left: 16 } : { top: 130, right: 40, bottom: 200, left: 40 }),
     [compact],
   );
+  // The results panel sits at the bottom left on a wide screen (storm/Results.tsx, max-w-lg).
   const resultsPad = useMemo(
-    () => (compact ? { top: 110, right: 16, bottom: phone ? 420 : 380, left: 16 } : { top: 110, right: 40, bottom: 40, left: 520 }),
+    () => (compact ? { top: 110, right: 16, bottom: phone ? 420 : 380, left: 16 } : { top: 110, right: 40, bottom: 40, left: 580 }),
     [compact, phone],
   );
   const cityFrame = useMemo(() => (data && phone ? riskFocusPoints(data) : fm.frame), [data, phone, fm.frame]);
@@ -296,22 +300,30 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
 
   // The wipe and the alert chime play once, when the storm starts (not again on a skip).
   const [stormStart, setStormStart] = useState<number | null>(null);
-  /** The stored solo play, for its public record (null until the server has it). */
-  const [soloPlayId, setSoloPlayId] = useState<string | null>(null);
   const lastPhase = useRef(phase);
   useEffect(() => {
     const was = lastPhase.current;
     lastPhase.current = phase;
     if (phase === 'storm' && was === 'planning') {
-      setSoloPlayId(null);
       setStormStart(usePlan.getState().stormAt);
       playAlert();
     }
-    // A finished solo game feeds the planners' reports (rooms are saved by the server).
-    if (phase === 'results' && was === 'storm' && !roomRef.current) void saveSoloPlay(usePlan.getState().placements).then(setSoloPlayId);
+    // A room's next round mounts a new game, so the last round's board is cleared here, not on Play again.
+    if (phase === 'storm' && was !== 'storm') useBoard.getState().reset();
+    // A finished game goes on its city's leaderboard. Solo plays are saved here (they also feed the
+    // planners' reports and the public record); a room's were saved by the server, so its board
+    // only loads, with this candidate's row marked.
+    if (phase === 'results' && was === 'storm') {
+      const r = roomRef.current;
+      if (r) useBoard.getState().watch(story.id, r.owner ?? '');
+      else useBoard.getState().submit(usePlan.getState().placements, story.id);
+    }
     // Another round: back to the calm board.
-    if (mapInst && phase === 'planning' && (was === 'results' || was === 'storm')) resetWater(floodViewOf(mapInst));
-  }, [phase, mapInst]);
+    if (phase === 'planning' && (was === 'results' || was === 'storm')) {
+      useBoard.getState().reset();
+      if (mapInst) resetWater(floodViewOf(mapInst));
+    }
+  }, [phase, mapInst, story]);
 
   useEffect(() => {
     if (phase !== 'storm' || stormAt === null) return;
@@ -402,7 +414,8 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
 
       {phase === 'planning' && data && (
         <div className="pointer-events-none absolute inset-0 flex flex-col justify-between gap-3 p-3 lg:p-5">
-          <div className="flex flex-col gap-2 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:items-start">
+          {/* A second row holds the weak spot's panel under the clock; the controls span both rows. */}
+          <div className="flex flex-col gap-2 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:grid-rows-[auto_1fr] lg:items-start">
             <motion.p {...enter('top')} className={PLATE + ' pointer-events-auto hidden justify-self-start px-3 py-2 lg:block'}>
               <Link to="/" className="font-display text-24 leading-none font-extrabold">
                 Mayday Mayor
@@ -414,7 +427,7 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
             <motion.div {...enter('top', 0.05)} className="flex justify-center">
               <TopHud left={left} result={result} compact={compact} />
             </motion.div>
-            <motion.div {...enter('top', 0.1)} className="flex flex-col items-end gap-2 justify-self-end">
+            <motion.div {...enter('top', 0.1)} className="flex flex-col items-end gap-2 justify-self-end lg:row-span-2">
               <div className="flex items-start gap-2">
                 <MenuButton />
                 <MapControls phase="planning" />
@@ -425,6 +438,11 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
                 </div>
               )}
             </motion.div>
+            {data.floodRoads.length > 0 && (
+              <div className="flex justify-center empty:hidden lg:col-start-2">
+                <WeakSpotPanel data={data} />
+              </div>
+            )}
           </div>
           <motion.div {...enter('bottom', 0.1)} className="flex flex-col items-center gap-2">
             {phone && (
@@ -478,17 +496,18 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
             {phase === 'storm' && (!cleared || anchorTalking) && <NewsDesk storm={storm} stormAt={stormAt} facts={facts} />}
           </div>
           {phase === 'results' ? (
-            <div className="flex shrink-0 justify-center px-3 pb-4 lg:justify-start lg:px-8 lg:pb-8">
-              <ResultsCard
-                storm={storm}
-                result={result}
-                footer={room?.footer}
-                civic={(() => {
-                  const id = room ? room.playId : soloPlayId;
-                  return id ? <CivicRecord key={id} playId={id} owner={room ? room.owner : anonPlayerId()} /> : null;
-                })()}
-              />
-            </div>
+            data && (
+              <div className="flex shrink-0 justify-center px-3 pb-4 lg:justify-start lg:px-8 lg:pb-8">
+                <ResultsPanel
+                  storm={storm}
+                  result={result}
+                  data={data}
+                  placements={placements}
+                  story={story}
+                  room={room ? { standings: room.standings, actions: room.actions, playId: room.playId, owner: room.owner, mayor: room.mayor } : undefined}
+                />
+              </div>
+            )
           ) : (
             <div className="flex shrink-0 flex-col items-center">
               <StormTimeline storm={storm} stormAt={stormAt} />

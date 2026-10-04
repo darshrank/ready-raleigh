@@ -147,10 +147,12 @@ or drop precision to 5 decimals.
 ### Server API
 REST:
 - `GET  /api/health`
-- `POST /api/debrief` body `{ mode, score: ScoreResult }` -> `{ text }` (Gemini)
+- `POST /api/debrief` body `{ facts: DebriefFacts }` -> `{ text, by: 'gemini' }` (Gemini; 503 without a key, 502 on a refused answer: the app shows its template)
 - `POST /api/tts` body `{ text, voice: 'broadcast' | 'narrator' }` -> audio/mpeg (ElevenLabs, cached by hash)
-- `POST /api/plays` body `{ plan, score }` -> stored in database
-- `GET  /api/planner?mode=flood` -> ranked sites from all plays
+- `POST /api/plays` body `{ plan, score }` (`plan.city`, default raleigh) -> scored on the server against that city's data, stored in database
+- `GET /api/leaderboard?city=raleigh&mode=flood&playerId=` -> each player's best play in the city, ranked
+- `POST /api/players/name` body `{ playerId, name }` -> the name a player shows on the leaderboards
+- `GET  /api/planner?mode=flood&city=raleigh` -> ranked sites from that city's plays
 - `GET  /api/live/gauges` -> latest USGS gauge readings
 - `POST /api/solana/record` body `{ playId, planHash }` -> `{ signature, explorerUrl }`
 

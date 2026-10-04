@@ -1,6 +1,7 @@
 // Where plays are kept. Tiger Data (Postgres + TimescaleDB) when DATABASE_URL is set, else memory.
 // Both stores have the same interface; failSoft() wraps Tiger so a database outage never breaks a game.
 import type { CityId, InterventionType, Mode, Plan, ScoreResult } from '@shared';
+import type { PlayerBest } from '../leaderboard';
 
 /** A play's city; plays saved before cities existed are Raleigh. */
 export const cityOfPlay = (plan: Plan): string => plan.city ?? 'raleigh';
@@ -52,6 +53,10 @@ export interface PlayStore {
   pickers(mode: Mode, targets: string[], limit: number, city?: CityId): Promise<Picker[]>;
   /** The best score in this mode so far, or null before the first play. */
   bestScore(mode: Mode, city?: CityId): Promise<number | null>;
+  /** Each player's best play in a city and mode, for the leaderboard (leaderboard.ts ranks them). */
+  bests(city: CityId, mode: Mode): Promise<PlayerBest[]>;
+  /** The name a player shows on the leaderboard, on all their plays. Returns how many changed. */
+  renamePlayer(playerId: string, name: string): Promise<number>;
   close(): Promise<void>;
 }
 
@@ -107,6 +112,38 @@ export class MemoryStore implements PlayStore {
   async bestScore(mode: Mode, city: CityId = 'raleigh'): Promise<number | null> {
     const scores = this.plays.filter((p) => p.plan.mode === mode && cityOfPlay(p.plan) === city).map((p) => p.score.score);
     return scores.length ? Math.max(...scores) : null;
+  }
+
+  async bests(city: CityId, mode: Mode): Promise<PlayerBest[]> {
+    const best = new Map<string, PlayerBest>();
+    for (const p of this.plays) {
+      if (p.plan.mode !== mode || cityOfPlay(p.plan) !== city) continue;
+      const row: PlayerBest = {
+        playerId: p.plan.playerId,
+        name: p.plan.playerName,
+        score: p.score.score,
+        protectedPeople: p.score.protectedPeople,
+        strandedPeople: p.score.strandedPeople,
+        spent: p.plan.spent,
+        createdAt: p.createdAt,
+        plays: 1,
+      };
+      const have = best.get(row.playerId);
+      if (!have) best.set(row.playerId, row);
+      else if (row.score > have.score) best.set(row.playerId, { ...row, plays: have.plays + 1 });
+      else have.plays++;
+    }
+    return [...best.values()];
+  }
+
+  async renamePlayer(playerId: string, name: string) {
+    let changed = 0;
+    for (const p of this.plays) {
+      if (p.plan.playerId !== playerId) continue;
+      p.plan = { ...p.plan, playerName: name };
+      changed++;
+    }
+    return changed;
   }
 
   async close() {}
@@ -168,6 +205,25 @@ export function failSoft(primary: PlayStore, log: Log): PlayStore {
         return remote === null ? local : local === null ? remote : Math.max(remote, local);
       } catch (err) {
         log.warn({ err }, 'bestScore read failed; answering from memory');
+        return local;
+      }
+    },
+    // Both lists together: rankBoard keeps each player's better play.
+    async bests(city, mode) {
+      const local = await backup.bests(city, mode);
+      try {
+        return [...(await primary.bests(city, mode)), ...local];
+      } catch (err) {
+        log.warn({ err }, 'leaderboard read failed; answering from memory');
+        return local;
+      }
+    },
+    async renamePlayer(playerId, name) {
+      const local = await backup.renamePlayer(playerId, name);
+      try {
+        return (await primary.renamePlayer(playerId, name)) + local;
+      } catch (err) {
+        log.warn({ err }, 'rename failed; renamed in memory only');
         return local;
       }
     },

@@ -142,7 +142,7 @@ function meters(a: LngLat, b: LngLat): number {
 }
 
 
-/** Each usable shelter's index in `places`, by site id: where travellers end up. */
+/** Each usable shelter's index in `places`, by site id: where travellers end up (existing ones too). */
 function shelterPlaces(data: MapData, placements: Placement[], places: LngLat[]) {
   const idx = engineIndex(data);
   const out = new Map<string, number>();
@@ -150,6 +150,7 @@ function shelterPlaces(data: MapData, placements: Placement[], places: LngLat[])
     const site = p.type === 'shelter' && p.siteId !== undefined ? idx.sites.get(p.siteId) : undefined;
     if (site && placementEffect(p, idx)) out.set(site.id, places.push([site.lon, site.lat]) - 1);
   }
+  for (const site of idx.existing) out.set(site.id, places.push([site.lon, site.lat]) - 1);
   return out;
 }
 
@@ -160,7 +161,8 @@ function pickupsByCell(data: MapData, placements: Placement[]) {
   for (const p of placements) {
     const eff = p.type === 'bus_pickup' ? placementEffect(p, idx) : null;
     if (!eff || eff.kind !== 'pickup' || p.cell === undefined) continue;
-    const at = cellCenter(data, p.cell);
+    const stop = p.stopId !== undefined ? idx.stops.get(p.stopId)?.stop : undefined;
+    const at: LngLat = stop ? [stop.lon, stop.lat] : cellCenter(data, p.cell);
     for (const i of eff.cells) {
       const list = out.get(i);
       if (list) list.push(at);

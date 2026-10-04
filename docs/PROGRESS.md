@@ -72,6 +72,23 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas:
 -->
 
+### 2026-10-03 22:40 EDT Claude (Opus 5.5) lanes A+B+C+D, existing shelters, stop pickups, less clutter
+- Done: existing_shelters.json (FEMA NSS, npm run shelters), transit_stops.json now has stop ids.
+  Engine: existing shelters as baseline, score = share of the gap, split seating, stop pickups
+  ($0.5M), bus cells only, faster optimizer. Server: stopId through plays/planner/demand
+  (report names the existing stop players chose). App: contextual targets (sites only while a
+  shelter is armed, bus area + stops while a bus is armed), existing shelter markers everywhere,
+  bus -> shelter link lines, HUD "covered of M at risk" after existing shelters, results text,
+  legend, storm residents also go to existing shelters.
+- Verified: typecheck all; 70/71 tests (only the old bench timeout). In the app: clean board,
+  shelter mode, bus mode (yellow area + stops), stop pickup at $0.5M, a bus adding 114 residents
+  once shelters have seats, link line drawn, storm with 273 dots to existing shelters; 390 px.
+- Next: the shelter-armed view still shows ~200 dry sites; size or fade them by how many people
+  they would add. P8 results could list bus routes ("N rode from <stop> to <shelter>").
+- Gotchas: re-run npm run shelters after the pipeline rebuilds roads_graph.json or cells.json
+  (catchments use cell indices). score() needs existing_shelters.json in the data folder to match
+  the app; fixtures have none (baseline 0).
+
 ### 2026-10-03 20:55 EDT Claude (Opus 5.5) lanes A+D+C, bus pickup demand report for planners
 - Done: pipeline/transit.py + app/public/data/transit_stops.json (GoRaleigh 2024 feed, flagged
   expired; GoTriangle current). server/src/demand.ts (report, CSV, GeoJSON), store.pickups() on

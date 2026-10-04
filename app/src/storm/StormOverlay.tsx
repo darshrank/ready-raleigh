@@ -248,8 +248,9 @@ export function ResultsCard({ storm, result, footer }: { storm: Storm; result: S
         </div>
       </dl>
       <p className="mt-2 text-15">
-        Your plan reached {Math.round(prot + strand > 0 ? (100 * prot) / (prot + strand) : 0)}% of the residents the
-        water put at risk.
+        {(result?.baseline.protectedPeople ?? 0) >= 1
+          ? `Existing shelters took ${fmt(result!.baseline.protectedPeople)}. Your plan reached ${fmt(prot - result!.baseline.protectedPeople)} of the ${fmt(prot + strand - result!.baseline.protectedPeople)} residents they could not.`
+          : `Your plan reached ${Math.round(prot + strand > 0 ? (100 * prot) / (prot + strand) : 0)}% of the residents the water put at risk.`}
       </p>
       {footer ?? (
         <button

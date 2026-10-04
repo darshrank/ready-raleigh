@@ -69,14 +69,14 @@ export function PeopleLayerControl() {
   );
 }
 
-/** Facilities: hospitals and shelter sites. On by default; sites still show while placing a shelter. */
+/** Facilities: hospitals. On by default. (Candidate shelter sites show only while placing a shelter.) */
 export function FacilitiesControl() {
   const on = useMapUi((s) => s.showFacilities);
   const set = useMapUi((s) => s.setShowFacilities);
   return (
     <button type="button" aria-pressed={on} onClick={() => set(!on)} className="flex items-center gap-2 text-15 font-semibold">
       <span aria-hidden className={'size-4 shrink-0 border-(length:--rule) border-ink ' + (on ? 'bg-ink' : 'bg-bond')} />
-      Hospitals and shelter sites
+      Hospitals
     </button>
   );
 }
@@ -100,6 +100,34 @@ export function Legend({ planning = false, storm = false }: { planning?: boolean
               {FLOOD_STEP_NAMES[step]}
             </li>
           ))}
+        </ul>
+      </div>
+      <div>
+        <p className="text-15 font-semibold">Already in place</p>
+        <ul className="mt-1.5 grid gap-1">
+          <li className="flex items-center gap-2">
+            <svg width="24" height="20" viewBox="0 0 40 40" aria-hidden className="shrink-0">
+              <path d="M4 19 20 5l16 14v17H4z" className="fill-safe stroke-ink" strokeWidth="3" />
+              <rect x="16" y="24" width="8" height="12" className="fill-bond stroke-ink" strokeWidth="2" />
+            </svg>
+            Registered shelter (FEMA, seats in brackets)
+          </li>
+          <li className="flex items-center gap-2">
+            <svg width="24" height="16" viewBox="0 0 24 24" aria-hidden className="shrink-0">
+              <rect x="2" y="2" width="20" height="20" className="fill-bond stroke-ink" strokeWidth="3" />
+              <rect x="7" y="8" width="10" height="7" className="fill-ink" />
+            </svg>
+            Bus stop (shown while placing a bus pickup)
+          </li>
+          {planning && (
+            <li className="flex items-center gap-2">
+              <svg width="24" height="14" aria-hidden className="shrink-0">
+                <line x1="2" y1="7" x2="22" y2="7" className="stroke-ink" strokeWidth="6" />
+                <line x1="2" y1="7" x2="22" y2="7" className="stroke-safe" strokeWidth="3" />
+              </svg>
+              Bus riders to their shelter
+            </li>
+          )}
         </ul>
       </div>
       {storm && (

@@ -1,6 +1,7 @@
 // deck.gl layers for the planning phase: flood roads, coverage halftone, previews, cursor, pieces.
 import { H3HexagonLayer } from '@deck.gl/geo-layers';
-import { IconLayer, PathLayer, ScatterplotLayer } from '@deck.gl/layers';
+import { IconLayer, LineLayer, PathLayer, ScatterplotLayer } from '@deck.gl/layers';
+import { engineIndex } from '@shared/engine';
 import type { FloodRoad, Placement } from '@shared/types';
 import type { MapData } from '../data';
 import { withAlpha } from '../map/layers';
@@ -212,3 +213,45 @@ export function ghostLayer(data: MapData, piece: Placement | null, selected: boo
     parameters: { depthCompare: 'always' },
   });
 }
+
+/** Where a bus pickup helps (no-car residents at risk within a short walk): a faint signal tint. */
+export function busAreaLayer(data: MapData, visible: boolean) {
+  const { rgb } = tokens();
+  return new H3HexagonLayer<number>({
+    id: 'bus-area',
+    data: busAreaCells(data),
+    visible,
+    getHexagon: (i) => data.cells[i]!.h3,
+    extruded: false,
+    stroked: false,
+    getFillColor: withAlpha(rgb.signal, 0.28),
+  });
+}
+
+const busAreaCache = new WeakMap<MapData, number[]>();
+function busAreaCells(data: MapData): number[] {
+  let out = busAreaCache.get(data);
+  if (!out) {
+    const ok = engineIndex(data).busOk;
+    out = [];
+    for (let i = 0; i < ok.length; i++) if (ok[i]) out.push(i);
+    busAreaCache.set(data, out);
+  }
+  return out;
+}
+
+export interface Link {
+  from: LngLat;
+  to: LngLat;
+}
+
+/** Bus pickup to the shelter its riders reach: a --safe line with an ink casing. */
+export function linkLayers(links: Link[], id = 'links') {
+  const { rgb } = tokens();
+  const common = { data: links, getSourcePosition: (l: Link) => l.from, getTargetPosition: (l: Link) => l.to, widthUnits: 'pixels' as const, parameters: { depthCompare: 'always' as const } };
+  return [
+    new LineLayer<Link>({ id: `${id}-casing`, ...common, getColor: rgb.ink, getWidth: 6 }),
+    new LineLayer<Link>({ id, ...common, getColor: rgb.safe, getWidth: 3 }),
+  ];
+}
+

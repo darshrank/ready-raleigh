@@ -92,10 +92,31 @@ function distToSegment(p: Px, a: Px, b: Px): number {
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
 
+/** Existing bus stops where a pickup helps (in a bus cell), built once per bundle. */
+const busStopsCache = new WeakMap<MapData, { id: string; cell: number; lon: number; lat: number }[]>();
+export function busStops(data: MapData) {
+  let out = busStopsCache.get(data);
+  if (!out) {
+    const idx = engineIndex(data);
+    out = [...idx.stops.values()].filter(({ cell }) => idx.busOk[cell]).map(({ stop, cell }) => ({ id: stop.id, cell, lon: stop.lon, lat: stop.lat }));
+    busStopsCache.set(data, out);
+  }
+  return out;
+}
+
+/** Usable candidate sites: a shelter in a building that floods helps no one, so it is not offered. */
+const usableCache = new WeakMap<MapData, MapData['sites']>();
+export const usableSites = (data: MapData) => {
+  let out = usableCache.get(data);
+  if (!out) usableCache.set(data, (out = data.sites.filter((s) => s.floodStep === null || s.floodStep > 3)));
+  return out;
+};
+
 /**
- * The target for `piece` at screen point `p`. Shelters snap to the nearest site, roads to the
- * nearest flood road, bus pickups take the cell under the point. Sites and roads that already hold
- * a piece are skipped, except the one held by `movingId` (a piece may be dropped back in place).
+ * The target for `piece` at screen point `p`. Shelters snap to the nearest usable site, roads to
+ * the nearest flood road. Bus pickups snap to an existing bus stop nearby (cheaper), else take the
+ * cell under the point if a bus helps there. Sites, stops and roads that already hold a piece are
+ * skipped, except the one held by `movingId` (a piece may be dropped back in place).
  */
 export function targetAt(
   piece: FloodPiece,
@@ -108,15 +129,25 @@ export function targetAt(
 ): Target | null {
   const others = placements.filter((q) => q.id !== movingId);
   if (piece === 'bus_pickup') {
+    const taken = new Set(others.map((q) => q.stopId).filter(Boolean));
+    let stop: ReturnType<typeof busStops>[number] | null = null;
+    let bestD = SNAP_PX[snap].site * 0.6;
+    for (const s of busStops(data)) {
+      if (taken.has(s.id)) continue;
+      const q = map.project([s.lon, s.lat]);
+      const d = Math.hypot(q.x - p.x, q.y - p.y);
+      if (d < bestD) [stop, bestD] = [s, d];
+    }
+    if (stop) return { type: 'bus_pickup', cell: stop.cell, stopId: stop.id };
     const ll = map.unproject([p.x, p.y]);
     const cell = cellAt(data, [ll.lng, ll.lat]);
-    return cell === undefined ? null : { type: 'bus_pickup', cell };
+    return cell === undefined || !engineIndex(data).busOk[cell] ? null : { type: 'bus_pickup', cell };
   }
   if (piece === 'shelter') {
     const taken = new Set(others.filter((q) => q.type === 'shelter').map((q) => q.siteId));
     let best: string | null = null;
     let bestD = SNAP_PX[snap].site;
-    for (const s of data.sites) {
+    for (const s of usableSites(data)) {
       if (taken.has(s.id)) continue;
       const q = map.project([s.lon, s.lat]);
       const d = Math.hypot(q.x - p.x, q.y - p.y);
@@ -145,7 +176,11 @@ export function anchorOf(data: MapData, t: Target): LngLat | null {
     const s = idx.sites.get(t.siteId);
     return s ? [s.lon, s.lat] : null;
   }
-  if (t.type === 'bus_pickup') return t.cell >= 0 && t.cell < data.cells.length ? cellCenter(data, t.cell) : null;
+  if (t.type === 'bus_pickup') {
+    const stop = t.stopId !== undefined ? idx.stops.get(t.stopId)?.stop : undefined;
+    if (stop) return [stop.lon, stop.lat];
+    return t.cell >= 0 && t.cell < data.cells.length ? cellCenter(data, t.cell) : null;
+  }
   const r = idx.roads.get(t.roadId);
   return r ? roadMidpoint(r) : null;
 }
@@ -180,5 +215,7 @@ export function targetLabel(data: MapData, t: Target): string {
     const r = idx.roads.get(t.roadId);
     return r ? roadLabel(data, r) : 'Unknown road';
   }
-  return data.cells[t.cell]?.hood ?? 'Unknown place';
+  const stop = t.stopId !== undefined ? idx.stops.get(t.stopId)?.stop : undefined;
+  if (stop) return `${stop.agency} stop ${stop.name}`;
+  return `New stop in ${data.cells[t.cell]?.hood ?? 'an unknown place'}`;
 }

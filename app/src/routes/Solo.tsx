@@ -10,19 +10,22 @@ import { useMapData } from '../data';
 import { floodViewOf } from '../map/flood';
 import { riskFocusPoints } from '../map/frame';
 import { MapView } from '../map/MapView';
-import { HOSPITAL_LABEL_ZOOM, hospitalLayers } from '../map/layers';
+import { HOSPITAL_LABEL_ZOOM, busStopsLayer, existingSheltersLayers, hospitalLayers } from '../map/layers';
 import { useFloodMap } from '../map/useFloodMap';
 import { AimChip, LandingFx } from '../plan/Juice';
 import {
+  busAreaLayer,
   coverageLayer,
   cursorLayer,
   floodRoadsLayer,
+  linkLayers,
   ghostLayer,
   piecesLayer,
   previewLayer,
   protectedRoadsLayers,
   targetLayers,
 } from '../plan/layers';
+import { busStops } from '../plan/targets';
 import { lastLandingAt, usePlan } from '../plan/store';
 import { floodAtRisk, usePlanScore } from '../plan/usePlanScore';
 import { focusMap, usePlanning } from '../plan/usePlanning';
@@ -102,7 +105,7 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
     if (skipTitle) s.beginIntro();
   }, [skipTitle]);
 
-  const { placements, result, shares, preview, left } = usePlanScore(data);
+  const { placements, result, shares, preview, links, left } = usePlanScore(data);
   const moving = movingId ? placements.find((p) => p.id === movingId) : undefined;
   const fm = useFloodMap(data, { targetingSites: armed === 'shelter' || moving?.type === 'shelter' });
   const { onReady: planningReady, mapRef, selectFromList } = usePlanning(data);
@@ -170,6 +173,13 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
     () => (data ? protectedRoadsLayers(data.floodRoads.filter((r: FloodRoad) => protectedIds.has(r.id))) : []),
     [data, protectedIds],
   );
+  // Bus pickups: while one is being placed, where it helps and the existing stops there.
+  const placingBus = armed === 'bus_pickup' || moving?.type === 'bus_pickup';
+  const busArea = useMemo(() => (data ? busAreaLayer(data, placingBus) : null), [data, placingBus]);
+  const stops = useMemo(() => (data ? busStopsLayer(busStops(data), placingBus) : null), [data, placingBus]);
+  // Bus -> shelter lines: the preview's while aiming, else the plan's.
+  const shownLinks = preview && !preview.problem && (preview.piece.type === 'bus_pickup' || preview.piece.type === 'shelter') ? preview.links : links;
+  const linkLayer = useMemo(() => linkLayers(shownLinks), [shownLinks]);
   // While a piece is dragged to a valid spot, it lifts off its old place and shows at the new one.
   const hiddenId = dragging && preview && !preview.problem ? movingId : null;
   const pieces = useMemo(
@@ -184,12 +194,16 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
     const roadTarget = hover?.type === 'road_protection';
     return [
       ...fm.base,
+      ...(busArea ? [busArea] : []),
       coverage,
       previewLayer(data, preview?.cells ?? []),
       ...(roadTarget ? target : []),
       roads,
       ...protectedRoads,
       ...fm.hospitals,
+      ...linkLayer,
+      ...fm.existing,
+      ...(stops ? [stops] : []),
       fm.sites,
       ...cursorLayer(data, cursor),
       ...(roadTarget ? [] : target),
@@ -200,17 +214,18 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
       // ones), so hand it clones. The props are unchanged, so deck.gl updates nothing.
     ].map((l) => l.clone({}));
     // `storming` is a dependency on purpose: coming back from the storm needs fresh clones.
-  }, [data, phase, fm.base, fm.hospitals, fm.sites, coverage, roads, protectedRoads, pieces, preview, hover, cursor, movingId, storming]);
+  }, [data, phase, fm.base, fm.hospitals, fm.existing, fm.sites, busArea, stops, linkLayer, coverage, roads, protectedRoads, pieces, preview, hover, cursor, movingId, storming]);
 
   // The storm: built once when planning ends (the plan is locked), animated by MapView's frame loop.
   const storm = useMemo(() => (data && storming ? buildStorm(data, placements) : null), [data, storming, placements]);
   const frameLayers = useMemo(() => {
     if (!data || !storm || stormAt === null || !pieces) return null;
     const renderer = stormRenderer(storm, reduce);
-    // Shelter sites are planning targets; the storm shows only the plan's pieces and the hospitals,
-    // named in the night label colors until the sky clears.
-    const night: LayersList = [...hospitalLayers(data.hospitals, true, HOSPITAL_LABEL_ZOOM, true), pieces];
-    const day: LayersList = [...hospitalLayers(data.hospitals, true, HOSPITAL_LABEL_ZOOM), pieces];
+    // Shelter sites are planning targets; the storm shows only the plan's pieces, the existing
+    // shelters (people head there too) and the hospitals, named in the night label colors until the sky clears.
+    const night: LayersList = [...hospitalLayers(data.hospitals, true, HOSPITAL_LABEL_ZOOM, true),
+      ...existingSheltersLayers(data.existingShelters, 0, true), pieces];
+    const day: LayersList = [...hospitalLayers(data.hospitals, true, HOSPITAL_LABEL_ZOOM), ...existingSheltersLayers(data.existingShelters, 0), pieces];
     let done = false;
     return (now: number) => {
       if (done) return null;

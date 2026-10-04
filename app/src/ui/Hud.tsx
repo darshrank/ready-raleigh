@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'r
 import { BUDGET } from '@shared/config';
 import type { Placement, ScoreResult } from '@shared/types';
 import type { MapData } from '../data';
-import { DISC_BOX, FLOOD_PIECES, PIECE_INFO, discSvg, pieceCost, type FloodPiece } from '../plan/pieces';
+import { DISC_BOX, FLOOD_PIECES, PIECE_INFO, discSvg, minPieceCost, pieceCost, type FloodPiece } from '../plan/pieces';
 import { targetOf, usePlan } from '../plan/store';
 import { targetLabel } from '../plan/targets';
 import { pieceGain, type Preview } from '../plan/usePlanScore';
@@ -94,18 +94,26 @@ function Timer({ compact }: { compact: boolean }) {
   );
 }
 
-/** "Residents covered", straight from score().protectedPeople. */
+/**
+ * Residents the plan covers, out of the people still at risk once the existing shelters are full
+ * (score() minus its baseline).
+ */
 function Covered({ result, compact }: { result: ScoreResult | null; compact: boolean }) {
-  const atRisk = result ? result.protectedPeople + result.strandedPeople : 0;
+  const existing = result?.baseline.protectedPeople ?? 0;
+  const stillAtRisk = result ? result.protectedPeople + result.strandedPeople - existing : 0;
+  const covered = result ? result.protectedPeople - existing : 0;
   return (
     <div className="flex flex-col justify-center px-3 py-1.5 lg:px-4 lg:py-2" aria-live="polite" aria-atomic>
       <p className="tabular flex items-baseline gap-1.5 leading-none">
-        <span className={'font-display font-extrabold ' + (compact ? 'text-32' : 'text-48')}>{fmt(result?.protectedPeople ?? 0)}</span>
+        <span className={'font-display font-extrabold ' + (compact ? 'text-32' : 'text-48')}>{fmt(covered)}</span>
         <span className="text-13">covered</span>
       </p>
       <p className="tabular mt-1 text-13 leading-none">
-        of {fmt(atRisk)} at risk{compact ? '' : `, score ${Math.round(result?.score ?? 0)}`}
+        of {fmt(stillAtRisk)} at risk{compact ? '' : `, score ${Math.round(result?.score ?? 0)}`}
       </p>
+      {!compact && existing >= 1 && (
+        <p className="tabular mt-1 text-13 leading-none">existing shelters already take {fmt(existing)}</p>
+      )}
     </div>
   );
 }
@@ -127,8 +135,9 @@ function TrayPiece({ piece, left, size, onArmed }: { piece: FloodPiece; left: nu
   const arm = usePlan((s) => s.arm);
   const phase = usePlan((s) => s.phase);
   const cost = pieceCost(piece);
+  const least = minPieceCost(piece);
   const planning = phase === 'planning';
-  const affordable = cost <= left;
+  const affordable = least <= left;
   const usable = affordable && planning;
   const on = armed === piece;
   const info = PIECE_INFO[piece];
@@ -164,7 +173,7 @@ function TrayPiece({ piece, left, size, onArmed }: { piece: FloodPiece; left: nu
       </span>
       <span className="mt-1 text-13 leading-tight font-semibold lg:text-15">{info.name}</span>
       <span className={'tabular font-display text-24 leading-none font-extrabold ' + (affordable || !planning ? '' : 'text-alarm')}>
-        {money(cost)}
+        {least < cost ? `$${least / 1e6}–${cost / 1e6}M` : money(cost)}
       </span>
     </button>
   );
@@ -253,8 +262,8 @@ export function Tray({
 }
 
 const ARMED_HINT: Record<FloodPiece, string> = {
-  shelter: 'Tap a building square on the map to open a shelter there.',
-  bus_pickup: 'Tap the map where a bus should pick up people with no car.',
+  shelter: 'Tap a building square on the map to open a shelter there. Green houses are shelters that already exist.',
+  bus_pickup: 'Tap a yellow block, where people without a car are at risk. Small squares are existing bus stops ($0.5M).',
   road_protection: 'Tap a pink flood-prone road to keep it open.',
 };
 
@@ -289,9 +298,9 @@ export function Status({ data, preview }: { data: MapData; preview: Preview | nu
               ? '. This building floods, so a shelter here helps no one.'
               : preview.piece.type === 'bus_pickup' && preview.gain < 0.5
                 ? placements.some((p) => p.type === 'shelter')
-                  ? '. Buses need a shelter with free seats within 15 minutes of these blocks.'
-                  : '. A bus needs somewhere to go: place a shelter first.'
-                : `: covers ${fmt(preview.gain)} more residents.`}
+                  ? '. No shelter within 15 minutes of these blocks has seats left for bus riders.'
+                  : '. The nearby shelters are full: place a shelter within 15 minutes, then the bus has somewhere to go.'
+                : `: covers ${fmt(preview.gain)} more residents${preview.piece.stopId ? '. Existing stop, $0.5M' : ''}.`}
       </p>
     );
   } else if (armed) body = <p>{ARMED_HINT[armed]} Press Esc to cancel.</p>;

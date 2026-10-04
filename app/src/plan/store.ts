@@ -1,15 +1,18 @@
 // Planning phase state (P6). The engine stays the judge of coverage and score; this store only
 // holds what the player did and refuses moves the rules forbid (over budget, two pieces on one site).
 import { create } from 'zustand';
-import { BUDGET, COSTS, PLANNING_SECONDS } from '@shared/config';
+import { BUDGET, PLANNING_SECONDS, placementCost } from '@shared/config';
 import { planCost } from '@shared/engine';
 import type { Placement } from '@shared/types';
-import type { FloodPiece } from './pieces';
+import { minPieceCost, type FloodPiece } from './pieces';
 
-/** Where a piece can go: shelters on a site, bus pickups on a cell, road protection on a flood road. */
+/**
+ * Where a piece can go: shelters on a site, bus pickups on a cell (at an existing bus stop when
+ * `stopId` is set, which costs less), road protection on a flood road.
+ */
 export type Target =
   | { type: 'shelter'; siteId: string }
-  | { type: 'bus_pickup'; cell: number }
+  | { type: 'bus_pickup'; cell: number; stopId?: string }
   | { type: 'road_protection'; roadId: string };
 
 /**
@@ -31,7 +34,7 @@ export const targetOf = (p: Placement): Target | null =>
   p.type === 'shelter' && p.siteId !== undefined
     ? { type: 'shelter', siteId: p.siteId }
     : p.type === 'bus_pickup' && p.cell !== undefined
-      ? { type: 'bus_pickup', cell: p.cell }
+      ? { type: 'bus_pickup', cell: p.cell, ...(p.stopId !== undefined ? { stopId: p.stopId } : {}) }
       : p.type === 'road_protection' && p.roadId !== undefined
         ? { type: 'road_protection', roadId: p.roadId }
         : null;
@@ -48,7 +51,10 @@ export function targetProblem(placements: Placement[], t: Target, movingId: stri
     return 'This building already has a shelter.';
   if (t.type === 'road_protection' && others.some((p) => p.type === 'road_protection' && p.roadId === t.roadId))
     return 'This road is already protected.';
-  if (movingId === null && COSTS[t.type] > budgetLeft(placements)) return 'Not enough budget left for this piece.';
+  if (t.type === 'bus_pickup' && t.stopId !== undefined && others.some((p) => p.stopId === t.stopId))
+    return 'This bus stop is already a pickup.';
+  const extra = placementCost(t) - (movingId === null ? 0 : placementCost(placements.find((p) => p.id === movingId) ?? t));
+  if (extra > budgetLeft(placements)) return 'Not enough budget left for this piece.';
   return null;
 }
 
@@ -121,7 +127,7 @@ export const usePlan = create<PlanStore>((set, get) => ({
   ...fresh(),
 
   arm: (armed) => {
-    if (armed && COSTS[armed] > budgetLeft(get().placements)) {
+    if (armed && minPieceCost(armed) > budgetLeft(get().placements)) {
       set({ notice: 'Not enough budget left for this piece. Remove one to free up money.' });
       return;
     }

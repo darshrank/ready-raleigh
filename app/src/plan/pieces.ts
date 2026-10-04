@@ -1,6 +1,6 @@
 // The flood game pieces: round discs like board game tokens (DESIGN.md "Game pieces").
 // One SVG source draws both the tray buttons (DOM) and the map icons (deck.gl atlas).
-import { COSTS } from '@shared/config';
+import { BUS_STOP_ACTIVATE_COST, COSTS } from '@shared/config';
 
 export type FloodPiece = 'shelter' | 'bus_pickup' | 'road_protection';
 export const FLOOD_PIECES: FloodPiece[] = ['shelter', 'bus_pickup', 'road_protection'];
@@ -15,7 +15,7 @@ export const PIECE_INFO: Record<FloodPiece, { name: string; verb: string; covers
   bus_pickup: {
     name: 'Bus pickup',
     verb: 'Place bus pickup',
-    covers: 'Takes households with no car to a shelter',
+    covers: 'Takes households with no car to a shelter. $0.5M at an existing bus stop',
     key: '2',
   },
   road_protection: {
@@ -27,6 +27,8 @@ export const PIECE_INFO: Record<FloodPiece, { name: string; verb: string; covers
 };
 
 export const pieceCost = (p: FloodPiece) => COSTS[p];
+/** The least a piece can cost: a bus pickup at an existing stop is cheaper than a new one. */
+export const minPieceCost = (p: FloodPiece) => (p === 'bus_pickup' ? Math.min(COSTS[p], BUS_STOP_ACTIVATE_COST) : COSTS[p]);
 
 // Pictograms on a 64 x 64 grid, drawn in `ink` with `face` cut-outs.
 const PICTOGRAM: Record<FloodPiece, (ink: string, face: string) => string> = {

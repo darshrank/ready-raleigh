@@ -152,3 +152,87 @@ export function hospitalLayers(hospitals: Hospital[], visible: boolean, zoom: nu
     }),
   ];
 }
+
+// An existing registered shelter: a --safe house with an ink edge, so it reads as "already here"
+// next to the round bond pieces the player places.
+const existingShelterIcon = ({ ink, safe, bond }: { ink: string; safe: string; bond: string }) =>
+  'data:image/svg+xml;charset=utf-8,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40">` +
+      `<path d="M4 19 20 5l16 14v17H4z" fill="${safe}" stroke="${ink}" stroke-width="3" stroke-linejoin="miter"/>` +
+      `<rect x="16" y="24" width="8" height="12" fill="${bond}" stroke="${ink}" stroke-width="2"/>` +
+      `</svg>`,
+  );
+
+export interface ExistingShelter {
+  id: string;
+  name: string;
+  lon: number;
+  lat: number;
+  capacity?: number;
+}
+
+/** Registered shelters already in place, with their names from zoom 12. */
+export function existingSheltersLayers(shelters: ExistingShelter[], zoom: number, night = false) {
+  const { hex, rgb } = tokens();
+  return [
+    new IconLayer<ExistingShelter>({
+      id: 'existing-shelters',
+      data: shelters,
+      getIcon: () => ({ url: existingShelterIcon(hex), width: 40, height: 40, id: 'existing-shelter' }),
+      getPosition: (s) => [s.lon, s.lat],
+      getSize: 22,
+      sizeUnits: 'pixels',
+      pickable: true,
+      parameters: { depthCompare: 'always' },
+    }),
+    new TextLayer<ExistingShelter>({
+      id: 'existing-shelter-names',
+      data: shelters,
+      visible: zoom >= 12,
+      getPosition: (s) => [s.lon, s.lat],
+      getText: (s) => (s.capacity ? `${s.name} (${s.capacity.toLocaleString('en-US')})` : s.name),
+      getSize: 13,
+      getColor: night ? rgb['storm-label'] : rgb.ink,
+      getTextAnchor: 'start',
+      getAlignmentBaseline: 'center',
+      getPixelOffset: [15, 0],
+      fontFamily: '"Public Sans", system-ui, sans-serif',
+      fontWeight: 600,
+      characterSet: 'auto',
+      fontSettings: { sdf: true },
+      outlineWidth: 4,
+      outlineColor: [...(night ? rgb['storm-land'] : rgb.chalk), 255],
+      parameters: { depthCompare: 'always' },
+    }),
+  ];
+}
+
+// An existing bus stop: a small bond sign with an ink edge and a bus bar.
+const busStopIcon = ({ ink, bond }: { ink: string; bond: string }) =>
+  'data:image/svg+xml;charset=utf-8,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24">` +
+      `<rect x="2" y="2" width="20" height="20" fill="${bond}" stroke="${ink}" stroke-width="3"/>` +
+      `<rect x="7" y="8" width="10" height="7" fill="${ink}"/>` +
+      `</svg>`,
+  );
+
+/** Existing bus stops where a pickup helps: shown while a bus pickup is being placed. */
+export function busStopsLayer(stops: { id: string; lon: number; lat: number }[], visible: boolean) {
+  const { hex } = tokens();
+  return new IconLayer<{ id: string; lon: number; lat: number }>({
+    id: 'bus-stops',
+    data: stops,
+    visible,
+    getIcon: () => ({ url: busStopIcon(hex), width: 24, height: 24, id: 'bus-stop' }),
+    getPosition: (s) => [s.lon, s.lat],
+    // 70 m across: specks at the city view, full-size signs from about z14.
+    getSize: 70,
+    sizeUnits: 'meters',
+    sizeMinPixels: 4,
+    sizeMaxPixels: 16,
+    parameters: { depthCompare: 'always' },
+  });
+}
+

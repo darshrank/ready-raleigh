@@ -128,6 +128,8 @@ export interface ScoreResult {
 | `hospitals.json` | `{name, lon, lat, node}[]` |
 | `optimal_flood.json`, `optimal_heat.json` | best plan from the optimizer |
 | `meta.json` | build date, sources, thresholds |
+| `existing_shelters.json` | registered shelters (FEMA NSS) with capacity and catchments, `npm run shelters` |
+| `transit_stops.json` | existing bus stops (GTFS), `python -m pipeline.transit` |
 
 Size budget: keep every file under 5 MB uncompressed. If one grows past that, simplify geometry
 or drop precision to 5 decimals.

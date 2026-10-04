@@ -10,6 +10,9 @@ import { lanAddresses } from './net';
 import { roomServer } from './roomSocket';
 import { gemini } from './ai/gemini';
 import { registerNews } from './news';
+import { type CivicRecord, civicRecord } from './solana/civic';
+import { registerCivic } from './solana/routes';
+import { MemoryCivicStore } from './solana/store';
 import { registerVoice, voiceReady } from './voice';
 
 export interface ServerOptions {
@@ -19,11 +22,20 @@ export interface ServerOptions {
   data?: () => GameData | null;
   /** Live gauges and weather (P15). Defaults to an empty memory store. */
   live?: LiveStore;
+  /** The civic record on Solana (P16). Defaults to memory with the chain off. */
+  civic?: CivicRecord;
 }
 
 /** Builds the server without listening, so tests can inject requests. */
-export function buildServer({ store = new MemoryStore(), data = () => null, live = new MemoryLiveStore() }: ServerOptions = {}) {
+export function buildServer({ store = new MemoryStore(), data = () => null, live = new MemoryLiveStore(), civic }: ServerOptions = {}) {
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
+  const record = civic ?? civicRecord({
+    store: new MemoryCivicStore(),
+    chain: null,
+    dataBuild: () => data()?.bundle.meta?.buildDate ?? 'unknown',
+    log: { info: (m) => app.log.info(m), warn: (o, m) => app.log.warn(o, m) },
+  });
+  registerCivic(app, record);
 
   app.get('/api/health', async () => ({ ok: true, voice: voiceReady(), ai: gemini.ready() }));
   registerVoice(app);
@@ -37,6 +49,8 @@ export function buildServer({ store = new MemoryStore(), data = () => null, live
     try {
       const play = buildPlay(req.body, data());
       await store.savePlay(play);
+      // Fingerprinted now, anchored on Solana with the next batch. Never holds up the answer.
+      record.recordPlay(play).catch((err) => app.log.warn({ err }, 'civic: play not fingerprinted'));
       return reply.code(201).send({ id: play.id, score: play.score, store: store.kind });
     } catch (err) {
       if (err instanceof BadPlay) return reply.code(400).send({ error: 'invalid play', problems: err.problems });
@@ -93,10 +107,11 @@ export function buildServer({ store = new MemoryStore(), data = () => null, live
   });
 
   // Rooms (P9): candidates plan the same storm; locked platforms are scored and stored like plays.
-  const rooms = roomServer({ store, data, log: app.log });
+  const rooms = roomServer({ store, data, log: app.log, civic: record });
   app.server.on('upgrade', rooms.onUpgrade);
   app.addHook('onClose', async () => {
     await rooms.close();
+    record.close();
     await store.close();
   });
 

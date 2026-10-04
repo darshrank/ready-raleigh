@@ -82,7 +82,10 @@ export function LandingFx({ map, data }: { map: MapLibreMap | null; data: MapDat
         const landed = s.placements.filter((p: Placement) => before.get(p.id) !== JSON.stringify(targetOf(p)));
         const m = mapRef.current;
         if (landed.length === 0 || !m) return;
-        const gain = score(soloPlan(s.placements), data).protectedPeople - score(soloPlan(prev.placements), data).protectedPeople;
+        // What the landed pieces cover where they are now (a moved piece is not compared with its old spot).
+        const ids = new Set(landed.map((p) => p.id));
+        const gain = Math.max(0, score(soloPlan(s.placements), data).protectedPeople -
+          score(soloPlan(s.placements.filter((p) => !ids.has(p.id))), data).protectedPeople);
         playStamp();
         if (coarse()) navigator.vibrate?.(15);
         const out: Landing[] = [];

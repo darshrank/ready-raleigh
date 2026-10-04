@@ -10,7 +10,7 @@ import { loadMapData } from '../data';
 import { onSiteSolids, type SiteSolid } from '../map/detail';
 import { siteTints } from '../map/basemap';
 import type { Tokens } from '../tokens';
-import { BuildingLayer, buildingMaterial, buildingPaint, buildingsLayer, BUILDINGS_MIN_ZOOM } from './buildings';
+import { BuildingLayer, buildingMaterial, CityLayer, buildingPaint, buildingsLayer, BUILDINGS_MIN_ZOOM } from './buildings';
 import { buildSolids, seedOf, type SolidPart } from './solids';
 import { WorldLights } from './lights';
 import { WORLD_BEFORE } from './state';
@@ -34,9 +34,11 @@ function* siteParts(solids: SiteSolid[]): Generator<SolidPart> {
 export class World {
   readonly lights: WorldLights;
   private threeD = false;
-  private buildings: Layer | null = null;
-  private sites: Layer[] = [];
+  private buildings: CityLayer | null = null;
+  private sites: BuildingLayer[] = [];
   private water: Layer | null = null;
+  /** The flood worker's data: the water, and the buildings' wet stains. */
+  private flood: FloodData | null = null;
   private submerged: Layer[] = [];
   private current: Layer[] = [];
   private listeners = new Set<(layers: Layer[]) => void>();
@@ -50,7 +52,7 @@ export class World {
         let [w, s, e, n] = [180, 90, -180, -90];
         for (const p of data.sites) [w, s, e, n] = [Math.min(w, p.lon), Math.min(s, p.lat), Math.max(e, p.lon), Math.max(n, p.lat)];
         const m = 0.02;
-        this.buildings = buildingsLayer(templates, t, [w - m, s - m, e + m, n + m]).clone({ visible: false });
+        this.buildings = buildingsLayer(templates, t, [w - m, s - m, e + m, n + m], this.flood).clone({ visible: false });
         this.emit();
       },
       (e: unknown) => console.warn('3D buildings did not load:', e),
@@ -84,7 +86,11 @@ export class World {
 
   /** The storm water (world/water.ts), once the flood worker has built it. */
   setWater(data: FloodData) {
+    this.flood = data;
     this.water = new WaterLayer({ id: 'world-water', flood: data, tokens: this.t, ...{ beforeId: WORLD_BEFORE } });
+    // Walls that stand in the water keep a wet stain (world/stains.ts).
+    this.buildings = this.buildings?.clone({ flood: data }) ?? null;
+    this.sites = this.sites.map((l) => l.clone({ flood: data }));
     this.emit();
   }
 
@@ -108,6 +114,7 @@ export class World {
           // In the storm they turn to the night wall color with every other building.
           paint: buildingPaint(this.t, { day: tints[kind], night: rgb['wall-night'] }),
           visible: this.threeD,
+          flood: this.flood,
           minZoom: BUILDINGS_MIN_ZOOM,
           ...{ beforeId: WORLD_BEFORE }, // @deck.gl/mapbox interleaving prop
         }),

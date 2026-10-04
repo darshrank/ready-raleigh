@@ -96,11 +96,25 @@ const waterModule = {
   },
 } as const;
 
-/** GLSL shared by both stages: a point's arrival delay and how far it has risen. */
-const ARRIVAL_GLSL = /* glsl */ `\
+/**
+ * GLSL: how far the water has risen at a point, 0..1, over RISE_MS after it arrives on the storm
+ * clock (`start` = its step's start, `delay` = its arrival delay). With no storm clock, or with
+ * reduced motion, a step is either all there or not yet. The stains (stains.ts) share it.
+ */
+export const RISE_GLSL = /* glsl */ `\
 const float GROW_MS = ${GROW_MS.toFixed(1)};
 const float PART_MS = ${PART_MS.toFixed(1)};
 const float RISE_MS = ${RISE_MS.toFixed(1)};
+float flood_rise(float P, float start, float delay, float clock, float reduce) {
+  if (clock < 0.0 || reduce > 0.5) return P >= 0.999 ? 1.0 : 0.0;
+  float arrive = start + delay * (GROW_MS - PART_MS);
+  return smoothstep(0.0, 1.0, (clock - arrive) / RISE_MS);
+}
+`;
+
+/** GLSL shared by both stages: a point's arrival delay and how far it has risen. */
+const ARRIVAL_GLSL = /* glsl */ `\
+${RISE_GLSL}
 float water_pick(vec3 v, float k) {
   return k < 1.5 ? v.x : k < 2.5 ? v.y : v.z;
 }
@@ -110,12 +124,8 @@ float water_since(float delay, float k, float jitter) {
   if (P >= 0.999) return 1.0e6;
   return P * GROW_MS - delay * (GROW_MS - PART_MS) + jitter;
 }
-// 0..1, how far the surface has risen: over RISE_MS after arrival on the storm clock.
 float water_rise(float delay, float k) {
-  float P = water_pick(water.stepP, k);
-  if (water.clock < 0.0 || water.reduce > 0.5) return P >= 0.999 ? 1.0 : 0.0;
-  float arrive = water_pick(water.stepStart, k) + delay * (GROW_MS - PART_MS);
-  return smoothstep(0.0, 1.0, (water.clock - arrive) / RISE_MS);
+  return flood_rise(water_pick(water.stepP, k), water_pick(water.stepStart, k), delay, water.clock, water.reduce);
 }
 `;
 
@@ -250,14 +260,27 @@ function sunDir(): Vec3 {
   return [Math.sin(a) * Math.cos(e), Math.cos(a) * Math.cos(e), Math.sin(e)];
 }
 
-// The flood textures, shared by the water and (R5) the buildings' stains.
-let textures: { arrival: Texture; extent: Texture } | null = null;
-export function floodTextures(device: Layer['context']['device'], d: FloodData) {
-  if (textures) return textures;
-  const sampler = { minFilter: 'linear', magFilter: 'linear', addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' } as const;
-  const make = (data: Uint8Array) => device.createTexture({ data, width: d.grid.w, height: d.grid.h, format: 'rgba8unorm', sampler });
-  textures = { arrival: make(d.arrival), extent: make(d.extent) };
-  return textures;
+// The flood textures, shared by the water and the buildings' stains (stains.ts). One set per
+// device: a new map (leaving /solo and coming back) has a new GL context.
+type FloodTextures = { arrival: Texture; extent: Texture };
+const textures = new WeakMap<object, FloodTextures>();
+const SAMPLER = { minFilter: 'linear', magFilter: 'linear', addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' } as const;
+export function floodTextures(device: Layer['context']['device'], d: FloodData): FloodTextures {
+  let t = textures.get(device);
+  if (t) return t;
+  const make = (data: Uint8Array) => device.createTexture({ data, width: d.grid.w, height: d.grid.h, format: 'rgba8unorm', sampler: SAMPLER });
+  t = { arrival: make(d.arrival), extent: make(d.extent) };
+  textures.set(device, t);
+  return t;
+}
+
+// Before the flood worker is done: one texel of dry land (as far from the water as the extent
+// texture reaches), so layers that sample the flood can draw.
+const dry = new WeakMap<object, Texture>();
+export function dryTexture(device: Layer['context']['device']): Texture {
+  let t = dry.get(device);
+  if (!t) dry.set(device, (t = device.createTexture({ data: new Uint8Array([255, 255, 255, 255]), width: 1, height: 1, format: 'rgba8unorm', sampler: SAMPLER })));
+  return t;
 }
 
 type WaterProps = { flood: FloodData | null; tokens: Tokens | null };

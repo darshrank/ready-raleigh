@@ -3,14 +3,17 @@
 //
 // The geometry (roofs, walls, normals, wall coordinates) is built once per tile in a worker
 // (world/solids.ts, world/tile.worker.ts); BuildingLayer only uploads it and draws it. Colors,
-// the day/night mix and the zoom gate are uniforms, so nothing is re-uploaded per frame.
+// the day/night mix, the zoom gate and the flood's wet stains (stains.ts) are uniforms, so
+// nothing is re-uploaded per frame.
 import { Layer, phongMaterial, picking, project32, type DefaultProps, type LayerProps, type UpdateParameters } from '@deck.gl/core';
 import { _Tileset2D as Tileset2D } from '@deck.gl/geo-layers';
 import { Buffer, type VertexArray } from '@luma.gl/core';
 import { Model } from '@luma.gl/engine';
 import { tint, unit, type RGB, type Tokens } from '../tokens';
+import type { FloodData } from './floodData';
 import type { Solids } from './solids';
 import { frame, WORLD_BEFORE } from './state';
+import { stainBindings, stainModule, stainPaint, stainProps } from './stains';
 import { loadBuildings, TILE_MAX_ZOOM } from './tiles';
 
 /** Buildings start at this zoom, like the basemap's footprints. */
@@ -22,6 +25,7 @@ export interface BuildingPaint {
   wallNight: Vec3;
   roofDay: Vec3;
   roofNight: Vec3;
+  stain: ReturnType<typeof stainPaint>;
 }
 
 const uniformBlock = /* glsl */ `\
@@ -65,8 +69,10 @@ out vec3 vNormal;
 out vec4 vWall;
 out float vSide;
 out vec3 vCamera;
+out vec2 vFloodUv;
 void main(void) {
   geometry.worldPosition = positions;
+  vFloodUv = ((positions.xy - stain.origin) + positions64Low.xy) / stain.cellDeg / stain.gridSize;
   // Below minZoom the layer draws nothing (like a MapLibre layer's minzoom).
   if (building.zoom < building.minZoom) {
     gl_Position = vec4(0.0);
@@ -95,11 +101,14 @@ in vec3 vNormal;
 in vec4 vWall;
 in float vSide;
 in vec3 vCamera;
+in vec2 vFloodUv;
 out vec4 fragColor;
 void main(void) {
   vec3 wallColor = mix(building.wallDay, building.wallNight, building.night);
   vec3 roofColor = mix(building.roofDay, building.roofNight, building.night);
   vec3 base = mix(roofColor, wallColor, vSide);
+  float upAA = max(fwidth(vWall.y), 1e-3);
+  if (vSide > 0.5) base = stain_apply(base, vFloodUv, vWall, building.night, upAA);
   vec3 lit = lighting_getLightColor(base, vCamera, vCommon, normalize(vNormal));
   fragColor = vec4(lit, 1.0);
 }
@@ -154,12 +163,13 @@ function free(g: Gpu | null | undefined) {
  * Shared by both building layers: one Model; each draw binds a Solids set's buffers and draws it,
  * so many tiles cost one set of uniform updates per frame, not one per tile.
  */
-abstract class SolidsLayer<P> extends Layer<P & { paint: BuildingPaint; minZoom: number; material: Material } & LayerProps> {
+type SolidsProps = { paint: BuildingPaint; minZoom: number; material: Material; flood: FloodData | null };
+abstract class SolidsLayer<P> extends Layer<P & SolidsProps & LayerProps> {
   static layerName = 'WorldSolidsLayer';
-  declare state: { model: Model | null } & Record<string, unknown>;
+  declare state: { model: Model | null; stainOf?: FloodData | null } & Record<string, unknown>;
 
   getShaders() {
-    return super.getShaders({ vs, fs, modules: [project32, picking, phongMaterial, buildingModule] });
+    return super.getShaders({ vs, fs, modules: [project32, picking, phongMaterial, buildingModule, stainModule] });
   }
 
   protected model(): Model {
@@ -189,8 +199,16 @@ abstract class SolidsLayer<P> extends Layer<P & { paint: BuildingPaint; minZoom:
   protected drawSets(sets: Gpu[]) {
     if (!sets.length) return;
     const model = this.model();
+    const { stain, ...paint } = this.props.paint;
+    const flood = this.props.flood;
+    // The flood textures, once the flood worker is done (dry land until then).
+    if (this.state.stainOf !== flood) {
+      this.state.stainOf = flood;
+      model.setBindings(stainBindings(this.context.device, flood));
+    }
     model.shaderInputs.setProps({
-      building: { ...this.props.paint, night: frame.night, zoom: this.context.viewport.zoom, minZoom: this.props.minZoom, farM: farMeters(this.context.viewport) },
+      building: { ...paint, night: frame.night, zoom: this.context.viewport.zoom, minZoom: this.props.minZoom, farM: farMeters(this.context.viewport) },
+      stain: stainProps(flood, stain),
     });
     const [first, ...rest] = sets;
     model.setAttributes(first!.attributes);
@@ -229,6 +247,7 @@ const solidsDefaults = {
   paint: { type: 'object', value: null, compare: false },
   minZoom: 0,
   material: { type: 'object', value: null, compare: false },
+  flood: { type: 'object', value: null, compare: true },
 };
 
 /** Draws one fixed Solids set (the shelter sites). */
@@ -344,7 +363,8 @@ export class CityLayer extends SolidsLayer<CityProps> {
 }
 
 /** Wall and roof colors from the tokens: roofs a touch darker than the walls by day. */
-export function buildingPaint({ rgb }: Tokens, walls?: { day: RGB; night: RGB }): BuildingPaint {
+export function buildingPaint(t: Tokens, walls?: { day: RGB; night: RGB }): BuildingPaint {
+  const { rgb } = t;
   const day = walls?.day ?? rgb['wall-day'];
   const night = walls?.night ?? rgb['wall-night'];
   return {
@@ -352,6 +372,7 @@ export function buildingPaint({ rgb }: Tokens, walls?: { day: RGB; night: RGB })
     wallNight: unit(night),
     roofDay: unit(tint(day, rgb.shadow, 0.06)),
     roofNight: unit(tint(night, rgb.bond, 0.06)),
+    stain: stainPaint(t),
   };
 }
 
@@ -362,10 +383,11 @@ export function buildingMaterial({ rgb }: Tokens): Material {
 }
 
 /** The tiled 3D city, inside `extent` ([w, s, e, n], the study area). */
-export function buildingsLayer(templates: string[], t: Tokens, extent: [number, number, number, number]): Layer {
+export function buildingsLayer(templates: string[], t: Tokens, extent: [number, number, number, number], flood: FloodData | null): CityLayer {
   return new CityLayer({
     id: 'world-buildings',
     templates,
+    flood,
     extent,
     paint: buildingPaint(t),
     material: buildingMaterial(t),

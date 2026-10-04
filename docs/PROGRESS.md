@@ -35,11 +35,13 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [~] RL Game-quality 3D city and living flood water (Claude, C). Order: R0 baseline, R1 deck.gl
   buildings + tokens, R4 water surface, R5 3D water + stains, R3 windows, R7 tiers + reduced
   motion + docs, R2 shadows, R6 flow, rain, ending. `?realism=off` keeps the old path until R7.
+  R5 is the wet stains only; flooded windows going dark moved to R3 (they live in the windows shader).
   - [x] R0 baseline traces
   - [x] R1 deck.gl 3D city, world tokens, piece outlines
   - [x] R4 water surface (deck.gl WaterLayer, arrival textures, uniforms only)
-  - [ ] R5 3D water + stains, then rebase checkpoint
-  - [ ] R3 windows
+  - [x] R5 wet stains (3D water rise landed in R4)
+  - [ ] rebase checkpoint after R5 (Step 0 rules, pytest from pipeline/.venv)
+  - [ ] R3 windows (+ flooded windows go dark)
   - [ ] R7 tiers, reduced motion, docs (then remove the kill switch)
   - [ ] R2 shadows
   - [ ] R6 flow, rain, ending, then final rebase checkpoint and screenshots
@@ -246,6 +248,46 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
     remove them: DELETE FROM placements WHERE play_id IN (SELECT id FROM plays WHERE player_name =
     'Test Mayor'); then DELETE FROM plays WHERE player_name = 'Test Mayor';
 - Next exact step: a weekly board (filter on created_at) if the all-time one fills up.
+
+### 2026-10-04 00:28 EDT Claude (Opus 5.5) lane C, realism R5 (wet stains on walls)
+- Scope (user decision): R5 = wet stains on walls below the water line that stay after the water
+  drops. The flooded-window blackout moved to R3 (it lives in the windows shader). The 3D water
+  rise already landed in R4.
+- Done: `world/stains.ts` (shader module `stain`: samples the flood worker's extent texture for
+  where each step's water reaches and the arrival texture for when; peak height = DEPTH_M[k] x
+  rise x a taper near the step's edge, max over the 3 steps; walls below it get --wet-stain-day /
+  --wet-stain-night, darkest at the foot, a ragged wicking edge ~0.2 m above the water line in
+  wall meters, and a darker tide line; gated by `frame.level` so planning shows none). The rise is
+  monotonic (the ending only drains the surface), so stains keep the peak through the results.
+  `world/water.ts`: the rise formula is shared GLSL (`RISE_GLSL`, `flood_rise`) used by the water
+  and the stains; the flood textures are cached per device (a WeakMap; the module-level cache
+  would hand a second map, e.g. /solo left and re-entered, textures from a dead GL context);
+  `dryTexture()` (1x1 dry land) is bound until the worker is done, since luma.gl throws on a
+  missing binding. `world/buildings.ts`: `flood` prop on both building layers, stain module,
+  bindings set once when the flood data changes. `world/world.ts`: setWater passes the data to
+  the city and the site layers (clone, not per frame).
+- Frame times (A/B medians, `app/scripts/storm-ab.mjs`, from storm time 1 s, load average ~4):
+  | Run | realism=off avg / p95 / max | realism avg / p95 / max |
+  |---|---|---|
+  | 1440 x 900, 3 runs | 8.4 / 13.9 / 56 (59.2 fps) | 7.5 / 15.1 / 41 (58.7 fps) |
+  | 390 x 844, CPU 4x, 2 runs | 29.1 / 41.6 / 70 (34.1 fps) | 25.4 / 34.7 / 66 (38.4 fps) |
+  1440 p95 is unconfirmed until the R7 check on a quiet machine (user decision: 5 alternating
+  runs per mode, median, ask the user first; they stop Codex and other servers).
+- Checked: close shots at Crabtree Valley (results: lower walls stained after the drain; planning:
+  clean walls; storm: the 3D water covers the lower walls), /solo storm + Skip at 1440 and 390,
+  `?realism=off` storm + results, /play/:code?host lobby -> election -> storm -> Skip -> results;
+  no console errors. typecheck, vitest 60/60. No Python changes.
+- Next exact step: the rebase checkpoint (Step 0 rules): `git fetch group`; if group/main moved,
+  fast-forward main and rebase sakhi/realism on it (docs conflicts in time order, PROGRESS newest
+  first; any code conflict: abort and show the user). Run pytest from the pipeline's own venv
+  (pipeline/README.md; create it per the README if missing). Then R3 windows, including flooded
+  windows going dark per building (arrival + hash(seed) x 4 s, from the stain module's textures).
+- Gotchas: GLSL `smoothstep(e0, e1, x)` with e0 > e1 is undefined (on Metal it gave no stain at
+  all); write `1.0 - smoothstep(e1, e0, x)`. Take `fwidth` in uniform control flow (main) and pass
+  it in. MapLibre caps pitch at 60, so walls are seen at a glancing angle and the day stain reads
+  as a darker band low on the walls. drive.mjs: a `waitFor`/`eval` that returns a non-serializable
+  object (e.g. `window.__world`) crashes the script; use `!!`. Stubbing `__map.flyTo/easeTo/jumpTo`
+  from a script pins the camera mostly, but the director still moves it sometimes.
 
 ### 2026-10-04 00:05 EDT Claude (Opus 5.5) lane C, realism R4 (living storm water in deck.gl)
 - Done: `world/floodData.ts` + `world/flood.worker.ts` (water geometry + arrival and extent

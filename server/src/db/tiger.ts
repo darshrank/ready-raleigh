@@ -73,12 +73,13 @@ export class TigerStore implements PlayStore {
       this.pool.query<{ plays: number; players: number }>(
         `SELECT count(*)::int AS plays, count(DISTINCT player_id)::int AS players
          FROM plays WHERE mode = $1 AND created_at >= $2`, [mode, since]),
-      this.pool.query<{ cell: number; player: string }>(
-        `SELECT p.cell, pl.player_id AS player
+      this.pool.query<{ cell: number; player: string; target: string }>(
+        `SELECT p.cell, pl.player_id AS player, p.target
          FROM placements p JOIN plays pl ON pl.id = p.play_id AND pl.created_at = p.created_at
          WHERE p.type = 'bus_pickup' AND p.mode = $1 AND p.cell IS NOT NULL AND p.created_at >= $2`, [mode, since]),
     ]);
-    return { plays: counts.rows[0]?.plays ?? 0, players: counts.rows[0]?.players ?? 0, picks: picks.rows };
+    const rows = picks.rows.map(({ cell, player, target }) => ({ cell, player, ...(target.startsWith('stop:') ? { stopId: target.slice(5) } : {}) }));
+    return { plays: counts.rows[0]?.plays ?? 0, players: counts.rows[0]?.players ?? 0, picks: rows };
   }
 
   async close() {

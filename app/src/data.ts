@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Cell, FloodRoad, Site } from '@shared/types';
-import type { DataBundle, Hospital } from '@shared/data';
+import { type BusStop, type DataBundle, type ExistingShelters, type Hospital, type TransitStopsFile, stopsFromTransit } from '@shared/data';
 
 /** Where the static data lives: the real pipeline output, or /data/fixtures for the small test set. */
 export const DATA_BASE: string = import.meta.env.VITE_DATA_BASE || '/data';
@@ -11,12 +11,18 @@ async function getJson<T>(file: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** An optional file: null if it is missing (the fixtures have no shelters or stops). */
+const maybeJson = <T>(file: string): Promise<T | null> => getJson<T>(file).catch(() => null);
+
 /**
  * Everything the map and the engine read. It is the engine's DataBundle too: the engine caches its
  * index by object identity, so this object is built once per page load and never changed.
  */
 export interface MapData extends DataBundle {
   hospitals: Hospital[];
+  /** Registered shelters already in place, and existing bus stops ([] when the files are missing). */
+  existingShelters: ExistingShelters['shelters'];
+  stops: BusStop[];
 }
 
 // One fetch per page load, shared by every route.
@@ -28,7 +34,13 @@ export function loadMapData(): Promise<MapData> {
     getJson<Site[]>('sites.json'),
     getJson<FloodRoad[]>('flood_roads.json'),
     getJson<Hospital[]>('hospitals.json'),
-  ]).then(([cells, sites, floodRoads, hospitals]) => ({ cells, sites, floodRoads, hospitals }));
+    maybeJson<ExistingShelters>('existing_shelters.json'),
+    maybeJson<TransitStopsFile>('transit_stops.json'),
+  ]).then(([cells, sites, floodRoads, hospitals, existing, transit]) => ({
+    cells, sites, floodRoads, hospitals,
+    existingShelters: existing?.shelters ?? [],
+    stops: transit ? stopsFromTransit(transit) : [],
+  }));
   mapData.catch(() => (mapData = null)); // let a later mount retry
   return mapData;
 }

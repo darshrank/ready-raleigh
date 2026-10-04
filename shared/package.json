@@ -7,7 +7,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "fixtures": "node --import tsx scripts/make-fixtures.ts",
-    "optimize": "node --import tsx scripts/optimize.ts"
+    "optimize": "node --import tsx scripts/optimize.ts",
+    "shelters": "node --import tsx scripts/existing-shelters.ts"
   },
   "dependencies": {
     "h3-js": "^4.5.0"

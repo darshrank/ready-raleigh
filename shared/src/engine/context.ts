@@ -1,8 +1,8 @@
 // A typed-array index over a DataBundle, built once per bundle and cached, so scoring a plan is
 // a few passes over flat arrays instead of object lookups.
-import { gridDisk } from 'h3-js';
-import { NO_CAR_HH_WEIGHT, weightedPeople } from '../config';
-import type { DataBundle } from '../data';
+import { gridDisk, latLngToCell } from 'h3-js';
+import { NO_CAR_HH_WEIGHT, WALK_RING, weightedPeople } from '../config';
+import type { BusStop, DataBundle } from '../data';
 import type { FloodRoad, Mode, Site } from '../types';
 import { atRiskMask, floodRiskShare, heatThreshold } from './atRisk';
 
@@ -34,8 +34,17 @@ export interface EngineIndex {
   hoods: string[];
   heatThreshold: number;
   mode: Record<Mode, ModeIndex>;
+  /** Candidate sites a player can put a shelter on. */
   sites: Map<string, Site>;
+  /** Registered shelters already in place (flood baseline). */
+  existing: Site[];
+  /** Every shelter by id, candidates and existing: what seat allocation looks up. */
+  shelterSites: Map<string, Site>;
   roads: Map<string, FloodRoad>;
+  /** Existing bus stops with the cell each one is in (stops outside the study area are dropped). */
+  stops: Map<string, { stop: BusStop; cell: number }>;
+  /** Flood: 1 where a bus pickup can reach no-car residents at risk (within its walking ring). */
+  busOk: Uint8Array;
   /** Cell index for an H3 id, or undefined if the cell is not in the bundle. */
   cellOfH3(h3: string): number | undefined;
   /** Cell indices within `k` rings of cell `i` that exist in the bundle (cached). */
@@ -135,8 +144,26 @@ function buildIndex(data: DataBundle): EngineIndex {
       heat: { atRisk: heatRisk, partW: heatW, riskShare: Float64Array.from(heatRisk) },
     },
     sites: new Map(data.sites.map((s) => [s.id, s])),
+    existing: data.existingShelters ?? [],
+    shelterSites: new Map([...data.sites, ...(data.existingShelters ?? [])].map((s) => [s.id, s])),
     roads: new Map(data.floodRoads.map((r) => [r.id, r])),
+    stops: new Map((data.stops ?? []).flatMap((stop) => {
+      const cell = cellOfH3(latLngToCell(stop.lat, stop.lon, 9));
+      return cell === undefined ? [] : [[stop.id, { stop, cell }] as const];
+    })),
+    busOk: busCells(floodRisk, floodW, n, disk),
     cellOfH3,
     disk,
   };
 }
+
+/** Cells within a bus pickup's walking ring of an at-risk cell with no-car residents. */
+function busCells(atRisk: Uint8Array, partW: Float64Array, n: number, disk: (i: number, k: number) => Int32Array): Uint8Array {
+  const ok = new Uint8Array(n);
+  const ring = WALK_RING.bus_pickup ?? 0;
+  for (let i = 0; i < n; i++) {
+    if (atRisk[i] && partW[PART_NO_CAR * n + i]! > 0) for (const j of disk(i, ring)) ok[j] = 1;
+  }
+  return ok;
+}
+

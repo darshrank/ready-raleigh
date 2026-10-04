@@ -34,7 +34,8 @@ export interface PickupPicks {
   plays: number;
   /** Distinct players with at least one play. */
   players: number;
-  picks: { cell: number; player: string }[];
+  /** stopId: the pickup was an existing bus stop the player chose to use. */
+  picks: { cell: number; player: string; stopId?: string }[];
 }
 
 export interface PlayStore {
@@ -78,7 +79,7 @@ export class MemoryStore implements PlayStore {
       players: new Set(plays.map((p) => p.plan.playerId)).size,
       picks: plays.flatMap((p) => p.placements
         .filter((r) => r.type === 'bus_pickup' && r.cell !== null)
-        .map((r) => ({ cell: r.cell!, player: p.plan.playerId }))),
+        .map((r) => ({ cell: r.cell!, player: p.plan.playerId, ...(r.target.startsWith('stop:') ? { stopId: r.target.slice(5) } : {}) }))),
     };
   }
 

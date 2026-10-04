@@ -11,6 +11,7 @@ import {
   engineIndex,
   placementEffect,
   planState,
+  shelterIdOf,
   simTimeline,
   type TimelineStep,
 } from '@shared/engine';
@@ -211,7 +212,7 @@ function sampleResidents(data: MapData, placements: Placement[], places: LngLat[
       const covered = state.cover[k]! > 0;
       // The engine's seat: a protected road keeps the block safe at home, else a shelter seat.
       const byRoad = covered && state.directCover[k]! > 0;
-      const shelter = covered && !byRoad ? shelters.get(state.shelterOf[k] ?? '') : undefined;
+      const shelter = covered && !byRoad ? shelters.get(shelterIdOf(state, k) ?? '') : undefined;
       const stops = part === PART_NO_CAR ? pickups.get(i) : undefined;
       for (let r = 0; r < count; r++) {
         const h = scatter(center, HOME_SPREAD_M, rand);

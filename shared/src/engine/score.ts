@@ -15,12 +15,37 @@ export function score(plan: Plan, data: DataBundle, budget = BUDGET): ScoreResul
   assertValidPlan(plan, data, budget);
   const idx = engineIndex(data);
   const result = summarize(plan, idx, planState(plan, idx));
+  const baseline = baselineOf(plan.mode, data);
+  // The score is the share of the people the existing shelters miss that the plan protects.
+  const gap = result.atRiskWeighted - baseline.protectedWeighted;
+  const pctOfGap = (w: number) => (gap > 1e-9 ? Math.min(100, (100 * w) / gap) : 100);
   const best = optimize(plan.mode, data, budget);
-  const bestPossible = result.atRiskWeighted > 0 ? 100 * best.protectedWeighted / result.atRiskWeighted : 100;
-  return { ...result, bestPossible };
+  return {
+    ...result,
+    score: pctOfGap(result.protectedWeighted - baseline.protectedWeighted),
+    bestPossible: pctOfGap(best.protectedWeighted),
+    baseline,
+  };
 }
 
-function summarize(plan: Plan, idx: EngineIndex, state: CoverState): Omit<ScoreResult, 'bestPossible'> {
+const baselineCache = new WeakMap<DataBundle, Map<string, ScoreResult['baseline']>>();
+
+/** What the existing shelters protect with no plan at all (cached per bundle and mode). */
+export function baselineOf(mode: Plan['mode'], data: DataBundle): ScoreResult['baseline'] {
+  let byMode = baselineCache.get(data);
+  if (!byMode) baselineCache.set(data, (byMode = new Map()));
+  let b = byMode.get(mode);
+  if (!b) {
+    const idx = engineIndex(data);
+    const none: Plan = { roomCode: '', playerId: '', playerName: '', mode, placements: [], spent: 0 };
+    const r = summarize(none, idx, planState(none, idx));
+    b = { protectedPeople: r.protectedPeople, protectedWeighted: r.protectedWeighted };
+    byMode.set(mode, b);
+  }
+  return b;
+}
+
+function summarize(plan: Plan, idx: EngineIndex, state: CoverState): Omit<ScoreResult, 'bestPossible' | 'baseline'> {
   const { n } = idx;
   const m = idx.mode[plan.mode];
   const hoodRisk = new Float64Array(idx.hoods.length);

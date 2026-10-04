@@ -36,6 +36,7 @@ export function readPlan(body: unknown): Plan {
       ...(typeof p.cell === 'number' ? { cell: p.cell } : {}),
       ...(typeof p.siteId === 'string' ? { siteId: p.siteId } : {}),
       ...(typeof p.roadId === 'string' ? { roadId: p.roadId } : {}),
+      ...(typeof p.stopId === 'string' ? { stopId: p.stopId } : {}),
     });
   }
   if (problems.length > 0) throw new BadPlay(problems);
@@ -67,7 +68,7 @@ export function buildPlay(body: unknown, data: GameData | null, now = new Date()
   }
   const placements = plan.placements.map((p) => (data ? placementRow(p, data.bundle) : {
     type: p.type,
-    target: p.siteId !== undefined ? `site:${p.siteId}` : p.roadId !== undefined ? `road:${p.roadId}` : `cell:${p.cell}`,
+    target: p.siteId !== undefined ? `site:${p.siteId}` : p.roadId !== undefined ? `road:${p.roadId}` : p.stopId !== undefined ? `stop:${p.stopId}` : `cell:${p.cell}`,
     cell: p.cell ?? null,
   }));
   return { id: randomUUID(), createdAt: now, plan, score: result, placements };

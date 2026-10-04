@@ -18,7 +18,7 @@ const [lat, lon] = cellToLatLng(cells[first]!.h3);
 const transit: TransitStops = {
   built: 'test',
   sources: [{ agency: 'GoRaleigh', url: 'x', feedStart: '2024-01-26', feedEnd: '2024-03-31', expired: true, stops: 2 }],
-  stops: [[lon + 0.0005, lat, 'Next door', 0], [lon + 0.5, lat + 0.5, 'Far away', 0]],
+  stops: [[lon + 0.0005, lat, 'Next door', 0, 'goraleigh-1'], [lon + 0.5, lat + 0.5, 'Far away', 0, 'goraleigh-2']],
 };
 const picks = (cell: number, players: string[]) => players.map((player) => ({ cell, player }));
 const pickups = {
@@ -55,6 +55,15 @@ describe('bus pickup demand', () => {
     expect(report.areas[0]!.gap).toBe(true);
     expect(report.gaps).toBe(1);
     expect(report.summary).toMatch(/feed that ended 2024-03-31/);
+  });
+
+  it('names the existing stop players chose to use', () => {
+    const withStops = { ...pickups, picks: [...pickups.picks, ...['a', 'b', 'c'].map((player) => ({ cell: first, player, stopId: 'goraleigh-1' }))] };
+    const r = busDemand({ mode: 'flood', data: game.bundle, transit, pickups: withStops, since: new Date(0) });
+    const near = r.areas.find((a) => a.area === areaOf(first))!;
+    expect(near.stopRequests).toBe(3);
+    expect(near.requestedStop).toMatchObject({ id: 'goraleigh-1', name: 'Next door', players: 3 });
+    expect(near.reason).toMatch(/chose the existing GoRaleigh stop Next door/);
   });
 
   it('never goes below the privacy floor', () => {

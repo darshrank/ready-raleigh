@@ -13,6 +13,13 @@ export const COSTS: Record<InterventionType, number> = {
   water_station: 250_000,
 };
 
+/** A bus pickup at an existing bus stop: the stop and its sign are already there. */
+export const BUS_STOP_ACTIVATE_COST = 500_000;
+
+/** What one placement costs: an existing bus stop is cheaper than a new pickup. */
+export const placementCost = (p: { type: InterventionType; stopId?: string }): number =>
+  p.type === 'bus_pickup' && p.stopId !== undefined ? BUS_STOP_ACTIVATE_COST : COSTS[p.type];
+
 /** Which interventions each mode offers. */
 export const MODE_INTERVENTIONS: Record<Mode, InterventionType[]> = {
   flood: ['shelter', 'bus_pickup', 'road_protection'],

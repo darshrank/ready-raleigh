@@ -1,9 +1,10 @@
 // Test helpers: a seeded synthetic bundle of any size, and random valid plans. Not exported from
 // the engine index; tests import it directly.
 import { gridDisk, gridDistance, latLngToCell } from 'h3-js';
-import { BUDGET, COSTS, MODE_INTERVENTIONS } from '../config';
+import { BUDGET, MODE_INTERVENTIONS, placementCost } from '../config';
 import type { DataBundle } from '../data';
 import type { Cell, FloodRoad, Mode, Placement, Plan, Site } from '../types';
+import { engineIndex } from './context';
 
 export function mulberry32(seed: number) {
   let a = seed;
@@ -88,7 +89,12 @@ export function allPlacements(mode: Mode, data: DataBundle): Omit<Placement, 'id
   for (const type of MODE_INTERVENTIONS[mode]) {
     if (type === 'shelter') for (const s of data.sites) out.push({ type, siteId: s.id });
     else if (type === 'road_protection') for (const r of data.floodRoads) out.push({ type, roadId: r.id });
-    else for (const c of data.cells) out.push({ type, cell: c.i });
+    else if (type === 'bus_pickup') {
+      // New pickups only where a bus can reach someone; existing stops too.
+      const idx = engineIndex(data);
+      for (const c of data.cells) if (idx.busOk[c.i]) out.push({ type, cell: c.i });
+      for (const [stopId, { cell }] of idx.stops) if (idx.busOk[cell]) out.push({ type, cell, stopId });
+    } else for (const c of data.cells) out.push({ type, cell: c.i });
   }
   return out;
 }
@@ -101,7 +107,7 @@ export function makePlan(mode: Mode, placements: Omit<Placement, 'id'>[]): Plan 
     playerName: 'Tester',
     mode,
     placements: ps,
-    spent: ps.reduce((s, p) => s + COSTS[p.type], 0),
+    spent: ps.reduce((s, p) => s + placementCost(p), 0),
   };
 }
 
@@ -116,14 +122,14 @@ export function randomPlan(mode: Mode, data: DataBundle, rand: () => number, sto
   let left = budget;
   for (;;) {
     if (rand() < stopChance) break;
-    const fits = pool.filter((p) => COSTS[p.type] <= left && !used.has(key(p)));
+    const fits = pool.filter((p) => placementCost(p) <= left && !used.has(key(p)));
     if (fits.length === 0) break;
     const p = fits[Math.floor(rand() * fits.length)]!;
     chosen.push(p);
-    left -= COSTS[p.type];
+    left -= placementCost(p);
     if (p.siteId || p.roadId) used.add(key(p));
   }
   return makePlan(mode, chosen);
 }
 
-export const key = (p: Omit<Placement, 'id'>) => `${p.type}:${p.siteId ?? p.roadId ?? p.cell}`;
+export const key = (p: Omit<Placement, 'id'>) => `${p.type}:${p.siteId ?? p.roadId ?? p.stopId ?? p.cell}`;

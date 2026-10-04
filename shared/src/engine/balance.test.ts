@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { DataBundle } from '../data';
 import type { Cell, Site } from '../types';
-import { engineIndex, optimize, placementCoverage, planState, protectorOf, score, simTimeline } from './index';
+import { cellToLatLng } from 'h3-js';
+import { BUS_STOP_ACTIVATE_COST } from '../config';
+import { engineIndex, optimize, placementCoverage, planCost, planProblems, planState, protectorOf, score, simTimeline } from './index';
 import { makePlan, syntheticBundle } from './testData';
 
 const base = syntheticBundle(5, 9, 0, 0);
@@ -151,3 +153,62 @@ describe('protection source and timeline consistency', () => {
     }
   });
 });
+
+describe('existing shelters and bus stops', () => {
+  // Cell 0 floods (8,000 people). A registered shelter with 3,000 seats already serves it; site 'a'
+  // is a candidate with the usual 10,000. Cell 1 is dry and safe; a bus stop stands in cell 0.
+  const [lat, lon] = cellToLatLng(base.cells[0]!.h3);
+  const data: DataBundle = {
+    cells: [cell(0, 8000, { noCarHH: 400 }), cell(1, 500, { floodStep: null, floodFrac: 0 })],
+    sites: [site('a', [0], [20])],
+    floodRoads: [],
+    existingShelters: [{ ...site('fema-1', [0], [10]), capacity: 3000 }],
+    stops: [{ id: 'goraleigh-9', name: 'Main St', agency: 'GoRaleigh', lon, lat }],
+  };
+  const none = makePlan('flood', []);
+
+  it('count as protection before any plan, and the score measures the rest', () => {
+    const empty = score(none, data);
+    close(empty.baseline.protectedPeople, 3000);
+    close(empty.protectedPeople, 3000);
+    expect(empty.score).toBe(0);
+    const owner = protectorOf(none, data).get(0)!.find((s) => s.part === 'car')!;
+    expect(owner.existing).toBe(true);
+    expect(owner.placement.id).toBe('existing:fema-1');
+    const plan = makePlan('flood', [shelter('a')]);
+    const r = score(plan, data);
+    // Drivers fill both shelters: 3,000 + 10,000 seats for 8,000 * 8000/9000 drivers.
+    expect(r.protectedPeople).toBeGreaterThan(empty.protectedPeople);
+    close(r.score, (100 * (r.protectedWeighted - r.baseline.protectedWeighted)) / (r.atRiskWeighted - r.baseline.protectedWeighted));
+  });
+
+  it('players cannot place a shelter on an existing one', () => {
+    expect(planProblems(makePlan('flood', [shelter('fema-1')]), data).join(' ')).toMatch(/unknown shelter site/);
+  });
+
+  it('a bus pickup at an existing stop costs less and works like a new one there', () => {
+    const atStop = { type: 'bus_pickup' as const, stopId: 'goraleigh-9' };
+    const newOne = { type: 'bus_pickup' as const, cell: 0 };
+    expect(planCost([{ id: 'x', ...atStop }])).toBe(BUS_STOP_ACTIVATE_COST);
+    expect(planProblems(makePlan('flood', [shelter('a'), atStop]), data)).toEqual([]);
+    close(score(makePlan('flood', [shelter('a'), atStop]), data).protectedWeighted,
+      score(makePlan('flood', [shelter('a'), newOne]), data).protectedWeighted);
+    expect(planProblems(makePlan('flood', [{ ...atStop, cell: 1 }]), data).join(' ')).toMatch(/is in cell 0/);
+    expect(planProblems(makePlan('flood', [{ type: 'bus_pickup', stopId: 'nope' }]), data).join(' ')).toMatch(/unknown bus stop/);
+  });
+
+  it('new bus pickups only go where no-car residents are at risk nearby', () => {
+    const far = engineIndex(data).busOk.findIndex((ok) => ok === 0);
+    if (far >= 0) {
+      expect(planProblems(makePlan('flood', [{ type: 'bus_pickup', cell: far }]), data).join(' '))
+        .toMatch(/no one without a car is at flood risk/);
+    }
+    expect(engineIndex(data).busOk[0]).toBe(1);
+  });
+
+  it('the optimizer can activate existing stops', () => {
+    const plan = optimize('flood', data).plan;
+    expect(planProblems(plan, data)).toEqual([]);
+  });
+});
+

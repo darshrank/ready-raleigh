@@ -9,8 +9,8 @@ import { EXTENDED_BUDGET_FACTOR } from './planner';
 export interface TransitStops {
   built: string;
   sources: TransitSource[];
-  /** [lon, lat, name, index into sources]. */
-  stops: [number, number, string, number][];
+  /** [lon, lat, name, index into sources, stable id like "goraleigh-2320943"]. */
+  stops: [number, number, string, number, string][];
 }
 
 export interface GameData {

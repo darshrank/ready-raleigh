@@ -8,7 +8,7 @@ import { loadGameData } from './data';
 import { MemoryStore } from './db/store';
 import { RoomError, again, getOrCreateRoom, join, lock, pick, presence, rooms, start, tick } from './rooms';
 
-const okScorer = (score: number) => () => ({ score, bestPossible: 90, atRiskWeighted: 1, protectedWeighted: 1, protectedPeople: score * 10, strandedPeople: 5, vulnerable: { protectedPct: 0, everyonePct: 0 }, byHood: [], topMisses: [] });
+const okScorer = (score: number) => () => ({ score, bestPossible: 90, atRiskWeighted: 1, protectedWeighted: 1, protectedPeople: score * 10, strandedPeople: 5, vulnerable: { protectedPct: 0, everyonePct: 0 }, byHood: [], topMisses: [], baseline: { protectedPeople: 0, protectedWeighted: 0 } });
 
 describe('room state machine', () => {
   const fresh = (code = 'ABCD') => {

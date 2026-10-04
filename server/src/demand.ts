@@ -42,16 +42,18 @@ export function busDemand(opts: {
   const cellOfH3 = new Map(data.cells.map((c, i) => [c.h3, i]));
 
   // Group picks by area: distinct players, pick counts per cell.
-  const byArea = new Map<string, { players: Set<string>; picks: Map<number, number> }>();
-  for (const { cell, player } of pickups.picks) {
+  const byArea = new Map<string, { players: Set<string>; picks: Map<number, number>; stops: Map<string, Set<string>> }>();
+  for (const { cell, player, stopId } of pickups.picks) {
     const c = data.cells[cell];
     if (!c) continue; // picked on an older data build
     const area = cellToParent(c.h3, AREA_RES);
-    const a = byArea.get(area) ?? { players: new Set(), picks: new Map() };
+    const a = byArea.get(area) ?? { players: new Set(), picks: new Map(), stops: new Map() };
     a.players.add(player);
     a.picks.set(cell, (a.picks.get(cell) ?? 0) + 1);
+    if (stopId) a.stops.set(stopId, (a.stops.get(stopId) ?? new Set()).add(player));
     byArea.set(area, a);
   }
+  const stopById = new Map((transit?.stops ?? []).map(([, , name, src, id]) => [id, { name, agency: transit!.sources[src]?.agency ?? '' }]));
 
   const areas: DemandArea[] = [];
   let hiddenAreas = 0;
@@ -88,11 +90,16 @@ export function busDemand(opts: {
       if (!nearest || m < nearest.meters) nearest = { name, agency: transit!.sources[src]?.agency ?? '', meters: Math.round(m) };
     }
     const hood = [...hoods.entries()].sort((p, q) => q[1] - p[1])[0]?.[0] ?? data.cells[[...a.picks.keys()][0]!]!.hood;
+    const stopPlayers = new Set([...a.stops.values()].flatMap((s) => [...s]));
+    const [topId, topSet] = [...a.stops.entries()].sort((p, q) => q[1].size - p[1].size || p[0].localeCompare(q[0]))[0] ?? [];
+    const top = topId ? stopById.get(topId) : undefined;
     areas.push({
       rank: 0, area, hood, lon: round5(lon), lat: round5(lat),
       players: a.players.size, playerShare: pickups.players > 0 ? a.players.size / pickups.players : 0, picks: total,
       noCarHouseholds: noCar, noCarHouseholdsAtRisk: noCarRisk, peopleAtRisk: atRisk,
       nearestStop: nearest, stopsInWalk, gap: transit !== null && (nearest === null || nearest.meters > WALK_M),
+      stopRequests: stopPlayers.size,
+      requestedStop: topId && top ? { id: topId, name: top.name, agency: top.agency, players: topSet!.size } : null,
       reason: '',
     });
   }
@@ -133,6 +140,10 @@ function reasonFor(a: DemandArea, transit: TransitStops | null): string {
   if (!transit) return `${who} ${need}`;
   if (!a.nearestStop) return `${who} ${need} No existing bus stop found.`;
   const stop = `${a.nearestStop.agency} stop ${a.nearestStop.name}`;
+  if (a.requestedStop) {
+    return `${who} ${need} ${fmt(a.requestedStop.players)} of them chose the existing ${a.requestedStop.agency} stop ` +
+      `${a.requestedStop.name}: a candidate to designate as an evacuation pickup.`;
+  }
   return a.gap
     ? `${who} ${need} The nearest bus stop is ${distance(a.nearestStop.meters)} away (${stop}): a candidate for a new evacuation pickup.`
     : `${who} ${need} ${stop} is ${distance(a.nearestStop.meters)} away: a candidate to designate as an evacuation pickup.`;
@@ -156,14 +167,14 @@ function summaryOf(areas: DemandArea[], gaps: number, pickups: PickupPicks, minP
 export function demandCsv(r: BusDemandReport): string {
   const cols = ['rank', 'area_h3', 'neighborhood', 'lon', 'lat', 'players', 'player_share', 'picks', 'no_car_households',
     'no_car_households_at_risk', 'people_at_risk', 'nearest_stop', 'nearest_stop_agency', 'nearest_stop_m',
-    'stops_in_walk', 'gap', 'reason'];
+    'stops_in_walk', 'gap', 'stop_requests', 'requested_stop', 'requested_stop_players', 'reason'];
   const cell = (v: unknown) => {
     const s = v === null || v === undefined ? '' : typeof v === 'number' ? String(Math.round(v * 1000) / 1000) : String(v);
     return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
   };
   const rows = r.areas.map((a) => [a.rank, a.area, a.hood, a.lon, a.lat, a.players, a.playerShare, a.picks, a.noCarHouseholds,
     a.noCarHouseholdsAtRisk, a.peopleAtRisk, a.nearestStop?.name, a.nearestStop?.agency, a.nearestStop?.meters,
-    a.stopsInWalk, a.gap, a.reason].map(cell).join(','));
+    a.stopsInWalk, a.gap, a.stopRequests, a.requestedStop?.name, a.requestedStop?.players, a.reason].map(cell).join(','));
   return [cols.join(','), ...rows].join('\n') + '\n';
 }
 
@@ -179,7 +190,9 @@ export function demandGeoJson(r: BusDemandReport) {
       return {
         type: 'Feature' as const,
         id: area,
-        properties: { area_h3: area, ...props, nearestStop: undefined, nearest_stop: a.nearestStop?.name ?? null,
+        properties: { area_h3: area, ...props, nearestStop: undefined, requestedStop: undefined,
+          requested_stop: a.requestedStop?.name ?? null, requested_stop_players: a.requestedStop?.players ?? null,
+          nearest_stop: a.nearestStop?.name ?? null,
           nearest_stop_agency: a.nearestStop?.agency ?? null, nearest_stop_m: a.nearestStop?.meters ?? null },
         geometry: { type: 'Polygon' as const, coordinates: [ring] },
       };

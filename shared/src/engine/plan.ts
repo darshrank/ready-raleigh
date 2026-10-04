@@ -1,12 +1,12 @@
 // Plan cost and validation. Cost always comes from the placements, never from `plan.spent`.
-import { BUDGET, COSTS, MODE_INTERVENTIONS } from '../config';
+import { BUDGET, MODE_INTERVENTIONS, placementCost } from '../config';
 import type { DataBundle } from '../data';
 import type { Placement, Plan } from '../types';
 import { engineIndex } from './context';
 
 export function planCost(placements: Placement[]): number {
   let total = 0;
-  for (const p of placements) total += COSTS[p.type];
+  for (const p of placements) total += placementCost(p);
   return total;
 }
 
@@ -28,6 +28,7 @@ export function planProblems(plan: Plan, data: DataBundle, budget = BUDGET): str
   const allowed = MODE_INTERVENTIONS[plan.mode];
   const usedSites = new Set<string>();
   const usedRoads = new Set<string>();
+  const usedStops = new Set<string>();
   for (const p of plan.placements) {
     if (!allowed.includes(p.type)) {
       problems.push(`${p.id}: ${p.type} is not a ${plan.mode} intervention`);
@@ -41,8 +42,16 @@ export function planProblems(plan: Plan, data: DataBundle, budget = BUDGET): str
       if (p.roadId === undefined || !idx.roads.has(p.roadId)) problems.push(`${p.id}: unknown road ${p.roadId}`);
       else if (usedRoads.has(p.roadId)) problems.push(`${p.id}: road ${p.roadId} is already protected`);
       else usedRoads.add(p.roadId);
+    } else if (p.type === 'bus_pickup' && p.stopId !== undefined) {
+      const stop = idx.stops.get(p.stopId);
+      if (!stop) problems.push(`${p.id}: unknown bus stop ${p.stopId}`);
+      else if (p.cell !== undefined && p.cell !== stop.cell) problems.push(`${p.id}: bus stop ${p.stopId} is in cell ${stop.cell}, not ${p.cell}`);
+      else if (usedStops.has(p.stopId)) problems.push(`${p.id}: bus stop ${p.stopId} is already a pickup`);
+      else usedStops.add(p.stopId);
     } else if (p.cell === undefined || !Number.isInteger(p.cell) || p.cell < 0 || p.cell >= idx.n) {
       problems.push(`${p.id}: ${p.type} needs a valid cell, got ${p.cell}`);
+    } else if (p.type === 'bus_pickup' && !idx.busOk[p.cell]) {
+      problems.push(`${p.id}: no one without a car is at flood risk within walking distance of cell ${p.cell}`);
     }
   }
   return problems;

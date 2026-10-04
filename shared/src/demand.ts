@@ -29,6 +29,10 @@ export interface DemandArea {
   noCarHouseholdsAtRisk: number;
   peopleAtRisk: number;
   nearestStop: { name: string; agency: string; meters: number } | null;
+  /** Distinct players who chose an existing bus stop here as their pickup. */
+  stopRequests: number;
+  /** The existing stop most players chose here: a candidate to designate as an evacuation pickup. */
+  requestedStop: { id: string; name: string; agency: string; players: number } | null;
   stopsInWalk: number;
   /** No existing stop within WALK_M of the requested pickups. */
   gap: boolean;

@@ -73,7 +73,7 @@ def main() -> None:
             lon, lat = float(row["stop_lon"]), float(row["stop_lat"])
             if not (west <= lon <= east and south <= lat <= north):
                 continue
-            stops.append([round(lon, 5), round(lat, 5), row["stop_name"].strip(), k])
+            stops.append([round(lon, 5), round(lat, 5), row["stop_name"].strip(), k, f"{agency.lower()}-{row['stop_id']}"])
             kept += 1
         sources.append({
             "agency": agency,
@@ -88,7 +88,7 @@ def main() -> None:
         "built": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "bbox": [round(v, 5) for v in (west, south, east, north)],
         "sources": sources,
-        "stops": stops,
+        "stops": stops,  # [lon, lat, name, source index, id]
     }
     path = DATA / "transit_stops.json"
     path.write_text(json.dumps(out, separators=(",", ":")) + "\n", encoding="utf-8")

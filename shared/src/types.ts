@@ -29,6 +29,7 @@ export interface Site {          // shelter candidates
   coverFlood: number[];          // at-risk cells within drive limit at final step, nearest first
   driveDry: number[];            // integer milliseconds, aligned with coverDry
   driveFlood: number[];          // integer milliseconds, aligned with coverFlood
+  capacity?: number;             // seats; omitted = SHELTER_CAPACITY (existing shelters carry their own)
 }
 
 export interface FloodRoad {      // road protection candidates
@@ -40,6 +41,7 @@ export interface FloodRoad {      // road protection candidates
 export interface Placement {
   id: string; type: InterventionType;
   cell?: number; siteId?: string; roadId?: string;
+  stopId?: string;               // bus pickup at an existing bus stop (cheaper; cell is the stop's)
 }
 
 export interface Plan {
@@ -48,10 +50,11 @@ export interface Plan {
 }
 
 export interface ScoreResult {
-  score: number;                 // 0 to 100
+  score: number;                 // 0 to 100: share of the people existing shelters miss that the plan protects
   bestPossible: number;          // optimizer's score for the same mode/data/budget (heuristic)
-  atRiskWeighted: number; protectedWeighted: number;
+  atRiskWeighted: number; protectedWeighted: number;   // totals, existing shelters included
   protectedPeople: number; strandedPeople: number;
+  baseline: { protectedPeople: number; protectedWeighted: number }; // existing shelters alone
   vulnerable: { protectedPct: number; everyonePct: number };
   byHood: { hood: string; atRisk: number; protected: number }[];
   topMisses: { cell: number; hood: string; reason: string; weighted: number }[];

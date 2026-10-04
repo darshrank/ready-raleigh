@@ -46,6 +46,33 @@ export interface DataMeta {
   };
 }
 
+/** An existing bus stop (transit_stops.json, from the agencies' GTFS). */
+export interface BusStop {
+  id: string;
+  name: string;
+  agency: string;
+  lon: number;
+  lat: number;
+}
+
+/** existing_shelters.json (npm run shelters): registered shelters that protect people already. */
+export interface ExistingShelters {
+  built: string;
+  source: { name: string; url: string; retrieved: string };
+  shelters: (Site & { capacity: number; address?: string; operator?: string | null })[];
+}
+
+/** transit_stops.json as written by python -m pipeline.transit. */
+export interface TransitStopsFile {
+  built: string;
+  sources: { agency: string; url: string; feedStart: string | null; feedEnd: string | null; expired: boolean; stops: number }[];
+  /** [lon, lat, name, index into sources, id]. */
+  stops: [number, number, string, number, string][];
+}
+
+export const stopsFromTransit = (t: TransitStopsFile): BusStop[] =>
+  t.stops.map(([lon, lat, name, src, id]) => ({ id, name, agency: t.sources[src]?.agency ?? '', lon, lat }));
+
 /**
  * Everything the engine reads, loaded from one data folder. The engine needs cells, sites and
  * flood roads; the rest is optional so the browser can pass only what it fetched.
@@ -54,6 +81,10 @@ export interface DataBundle {
   cells: Cell[];
   sites: Site[];
   floodRoads: FloodRoad[];
+  /** Registered shelters already in place: counted as protection before any plan. */
+  existingShelters?: Site[];
+  /** Existing bus stops: a bus pickup there costs less (BUS_STOP_ACTIVATE_COST). */
+  stops?: BusStop[];
   graph?: RoadsGraph;
   hospitals?: Hospital[];
   meta?: DataMeta;

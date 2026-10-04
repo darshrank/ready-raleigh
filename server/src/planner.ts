@@ -59,6 +59,9 @@ export function placementRow(p: Placement, data: DataBundle): PlacementRow {
     return { type: p.type, target: `site:${p.siteId}`, cell: site?.cell ?? null };
   }
   if (p.roadId !== undefined) return { type: p.type, target: `road:${p.roadId}`, cell: null };
+  if (p.stopId !== undefined) {
+    return { type: p.type, target: `stop:${p.stopId}`, cell: engineIndex(data).stops.get(p.stopId)?.cell ?? p.cell ?? null };
+  }
   return { type: p.type, target: `cell:${p.cell}`, cell: p.cell ?? null };
 }
 
@@ -66,6 +69,7 @@ function placementOf(type: InterventionType, target: string): Placement {
   const [kind, id] = [target.slice(0, target.indexOf(':')), target.slice(target.indexOf(':') + 1)];
   if (kind === 'site') return { id: 'spot', type, siteId: id };
   if (kind === 'road') return { id: 'spot', type, roadId: id };
+  if (kind === 'stop') return { id: 'spot', type, stopId: id };
   return { id: 'spot', type, cell: Number(id) };
 }
 
@@ -188,6 +192,11 @@ function whereOf(p: Placement, data: DataBundle) {
     const [lon, lat] = r.coords[Math.floor(r.coords.length / 2)] ?? [0, 0];
     const hood = r.unlocks[0] !== undefined ? data.cells[r.unlocks[0]]?.hood ?? '' : '';
     return { name: r.name, hood, cell: null, lon, lat };
+  }
+  if (p.stopId !== undefined) {
+    const s = idx.stops.get(p.stopId);
+    if (!s) return null;
+    return { name: `${s.stop.agency} stop ${s.stop.name}`, hood: data.cells[s.cell]?.hood ?? '', cell: s.cell, lon: s.stop.lon, lat: s.stop.lat };
   }
   const c = p.cell !== undefined && Number.isInteger(p.cell) ? data.cells[p.cell] : undefined;
   if (!c) return null;

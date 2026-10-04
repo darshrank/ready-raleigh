@@ -9,6 +9,9 @@
 // still have to evacuate. Heat: cooling centers and water stations cover gridDisk 2 and 1 with the
 // credit in HEAT_COVER_CREDIT; trees cool the cell and ring 1, and a cell cooled below the
 // threshold is fully protected.
+//
+// Registered shelters that already exist (DataBundle.existingShelters) are in every flood state from
+// the start, with their own capacity: the baseline the player's plan builds on.
 import { FINAL_FLOOD_STEP, SHELTER_CAPACITY, HEAT_COVER_CREDIT, TREE_COOLING_C, WALK_RING } from '../config';
 import type { DataBundle } from '../data';
 import type { Mode, Placement, Plan, Site } from '../types';
@@ -78,9 +81,11 @@ export function placementEffect(p: Placement, idx: EngineIndex): Effect | null {
       const cells = road.unlocks.filter((i) => idx.mode.flood.atRisk[i] && !floodsByEnd(idx, i));
       return { kind: 'road', cells: Int32Array.from(cells) };
     }
-    case 'bus_pickup':
-      if (p.cell === undefined) return null;
-      return { kind: 'pickup', cells: idx.disk(p.cell, WALK_RING.bus_pickup ?? 0) };
+    case 'bus_pickup': {
+      const cell = busCell(p, idx);
+      if (cell === undefined) return null;
+      return { kind: 'pickup', cells: idx.disk(cell, WALK_RING.bus_pickup ?? 0) };
+    }
     case 'cooling_center':
     case 'water_station':
       return walkEffect(p, idx, PART_CAR, HEAT_COVER_CREDIT[p.type] ?? 1);
@@ -93,13 +98,19 @@ export function placementEffect(p: Placement, idx: EngineIndex): Effect | null {
   }
 }
 
+/** Where a bus pickup is: its existing stop's cell, else its own cell. */
+export function busCell(p: Placement, idx: EngineIndex): number | undefined {
+  return p.stopId !== undefined ? idx.stops.get(p.stopId)?.cell : p.cell;
+}
+
 function walkEffect(p: Placement, idx: EngineIndex, part: Part, credit: number): Effect | null {
   if (p.cell === undefined) return null;
   const cells = idx.disk(p.cell, WALK_RING[p.type] ?? 0);
   return { kind: 'cover', part, credit, cells };
 }
 
-type Route = ShelterRoute & { id: string };
+/** A placed shelter's route; si is the shelter's slot in CoverState.shelterSites. */
+type Route = ShelterRoute & { id: string; si: number };
 
 /** Running coverage for one plan: best credit per (part, cell) and total tree cooling per cell. */
 export interface CoverState {
@@ -114,29 +125,52 @@ export interface CoverState {
   reach: Uint8Array;
   /** 1 where a bus pickup is within walking distance, so no-car residents can board. */
   busReach: Uint8Array;
-  /** The shelter each (part, cell) is assigned to, [part * n + i]. */
-  shelterOf: (string | undefined)[];
-  /** Seats left per shelter once the drivers are in: what the buses can fill. */
-  carLeft: Map<string, number>;
+  /** The nearest shelter slot (index into shelterSites) each (part, cell) is seated at, -1 for none. [part * n + i] */
+  shelterOf: Int32Array;
+  /** Every seating: (part, cell) k got `share` of its weight at shelter slot si. A cell can split. */
+  seats: { k: number; si: number; share: number }[];
+  /** Seats left per shelter slot once the drivers are in: what the buses can fill. */
+  carLeft: Float64Array;
+  /** Protected weight of the bus pass as it stands (so a pickup's gain needs one pass, not two). */
+  busSeated: number;
   cover: Float64Array; // [part * n + i], 0..1
   coolingC: Float64Array;
 }
 
+/** A plan's starting point: nothing placed, with the existing shelters in flood mode. */
 export function emptyState(mode: Mode, idx: EngineIndex): CoverState {
-  return { mode, idx, directCover: new Float64Array(2 * idx.n), shelterSites: [], routes: [],
-    reach: new Uint8Array(idx.n), busReach: new Uint8Array(idx.n), shelterOf: [], carLeft: new Map(),
+  const state: CoverState = { mode, idx, directCover: new Float64Array(2 * idx.n), shelterSites: [], routes: [],
+    reach: new Uint8Array(idx.n), busReach: new Uint8Array(idx.n), shelterOf: new Int32Array(2 * idx.n).fill(-1), seats: [],
+    carLeft: new Float64Array(), busSeated: 0,
     cover: new Float64Array(2 * idx.n), coolingC: new Float64Array(idx.n) };
+  if (mode === 'flood') {
+    for (const site of idx.existing) {
+      if (siteUsable(site)) applyEffect(state, { kind: 'cover', part: PART_CAR, credit: 1, cells: new Int32Array(), siteId: site.id }, idx.n);
+    }
+  }
+  return state;
 }
 
 const byRoute = (a: Route, b: Route) => a.time - b.time || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) || a.cell - b.cell;
+
+/** Two route lists already in byRoute order, merged (cheaper than sorting again). */
+function mergeRoutes(a: Route[], b: Route[]): Route[] {
+  const out: Route[] = new Array(a.length + b.length);
+  let i = 0, j = 0, k = 0;
+  while (i < a.length && j < b.length) out[k++] = byRoute(a[i]!, b[j]!) <= 0 ? a[i++]! : b[j++]!;
+  while (i < a.length) out[k++] = a[i++]!;
+  while (j < b.length) out[k++] = b[j++]!;
+  return out;
+}
 
 export function applyEffect(state: CoverState, eff: Effect, n: number): void {
   if (eff.kind === 'cover' && eff.siteId !== undefined) {
     const id = eff.siteId;
     if (!state.shelterSites.includes(id)) {
-      const added = shelterRoutes(state.idx.sites.get(id)!, state.idx).map((r) => ({ ...r, id }));
+      const si = state.shelterSites.length;
+      const added = shelterRoutes(state.idx.shelterSites.get(id)!, state.idx).map((r) => ({ ...r, id, si }));
       state.shelterSites.push(id);
-      state.routes = [...state.routes, ...added].sort(byRoute);
+      state.routes = mergeRoutes(state.routes, added);
       for (const r of added) state.reach[r.cell] = 1;
     }
     allocateShelters(state);
@@ -168,47 +202,63 @@ export function applyEffect(state: CoverState, eff: Effect, n: number): void {
  */
 function allocateShelters(state: CoverState): void {
   state.cover.set(state.directCover);
-  state.shelterOf = [];
-  const remaining = new Map(state.shelterSites.map((id) => [id, SHELTER_CAPACITY ?? Infinity]));
+  state.shelterOf.fill(-1);
+  state.seats = [];
+  const remaining = Float64Array.from(state.shelterSites,
+    (id) => state.idx.shelterSites.get(id)?.capacity ?? SHELTER_CAPACITY ?? Infinity);
   fillSeats(state, PART_CAR, state.busReach, remaining, true);
-  state.carLeft = new Map(remaining);
-  fillSeats(state, PART_NO_CAR, state.busReach, remaining, true);
+  state.carLeft = remaining.slice();
+  state.busSeated = fillSeats(state, PART_NO_CAR, state.busReach, remaining, true);
 }
 
 /**
- * One seating pass for one part over the placed shelters' routes, nearest first. Returns the
- * protected weight it seats. With `write`, records each seat in state.cover and state.shelterOf.
+ * One seating pass for one part over the placed shelters' routes, nearest first, using up
+ * `remaining` (seats per shelter slot). A cell that fills a shelter sends the rest of its people on
+ * to its next nearest shelter with seats. Returns the protected weight it seats. With `write`,
+ * records the seats in state.cover, state.shelterOf (nearest) and state.seats.
  */
-function fillSeats(state: CoverState, part: Part, busReach: Uint8Array, remaining: Map<string, number>, write: boolean): number {
+function fillSeats(state: CoverState, part: Part, busReach: Uint8Array, remaining: Float64Array, write: boolean): number {
   const { idx } = state;
   const { n } = idx;
   const partW = idx.mode.flood.partW;
-  const seated = new Uint8Array(n);
+  // Share of each cell's part still without a seat.
+  const left = new Float64Array(n).fill(1);
+  let open = 0;
+  for (const seats of remaining) if (seats > 1e-9) open++;
   let total = 0;
-  for (const { cell: i, id } of state.routes) {
+  for (const { cell: i, si } of state.routes) {
+    if (open === 0) break; // every shelter is full
     const k = part * n + i;
     if (part === PART_NO_CAR && !busReach[i]) continue;
-    if (seated[i] || state.directCover[k]! > 0) continue;
-    const room = remaining.get(id)!;
+    if (left[i]! <= 1e-12 || state.directCover[k]! > 0) continue;
+    const room = remaining[si]!;
     const w = partW[k]!;
     if (room <= 1e-9 || w <= 0) continue;
     // Same people-to-weight conversion as score(), so 10,000 seats means 10,000 people.
     const people = idx.weight[i]! > 0 ? idx.pop[i]! * w / idx.weight[i]! : 0;
-    const share = people > 0 ? Math.min(1, room / people) : 1;
-    seated[i] = 1;
+    const share = people > 0 ? Math.min(left[i]!, room / people) : left[i]!;
+    left[i]! -= share;
     total += w * share;
-    remaining.set(id, Math.max(0, room - people * share));
+    remaining[si] = Math.max(0, room - people * share);
+    if (remaining[si]! <= 1e-9) open--;
     if (write) {
-      state.cover[k] = share;
-      state.shelterOf[k] = id;
+      state.cover[k]! += share;
+      if (state.shelterOf[k] === -1) state.shelterOf[k] = si;
+      state.seats.push({ k, si, share });
     }
   }
   return total;
 }
 
+/** The id of the shelter (part, cell) k is seated at, if any. */
+export function shelterIdOf(state: CoverState, k: number): string | undefined {
+  const si = state.shelterOf[k]!;
+  return si >= 0 ? state.shelterSites[si] : undefined;
+}
+
 function copyState(state: CoverState): CoverState {
   return { ...state, cover: state.cover.slice(), directCover: state.directCover.slice(),
-    coolingC: state.coolingC.slice(), shelterSites: [...state.shelterSites], shelterOf: [...state.shelterOf],
+    coolingC: state.coolingC.slice(), shelterSites: [...state.shelterSites], shelterOf: state.shelterOf.slice(), seats: [...state.seats], carLeft: state.carLeft.slice(),
     reach: state.reach.slice(), busReach: state.busReach.slice() };
 }
 
@@ -233,12 +283,11 @@ export function marginalGain(idx: EngineIndex, state: CoverState, eff: Effect): 
       // A pickup only matters where a placed shelter can be reached and riders have no bus yet.
       if (!eff.cells.some((i) => state.reach[i] === 1 && state.busReach[i] === 0 &&
         m.partW[PART_NO_CAR * n + i]! > 0 && state.directCover[PART_NO_CAR * n + i] === 0)) return 0;
-      if (![...state.carLeft.values()].some((seats) => seats > 1e-9)) return 0;
+      if (!state.carLeft.some((seats) => seats > 1e-9)) return 0;
       // Drivers are seated first, so a pickup only changes the bus pass: rerun just that.
       const merged = state.busReach.slice();
       for (const i of eff.cells) merged[i] = 1;
-      return fillSeats(state, PART_NO_CAR, merged, new Map(state.carLeft), false) -
-        fillSeats(state, PART_NO_CAR, state.busReach, new Map(state.carLeft), false);
+      return fillSeats(state, PART_NO_CAR, merged, state.carLeft.slice(), false) - state.busSeated;
     }
     // Everything else moves shelter seats around, so compare the whole allocation.
     const next = copyState(state);
@@ -267,6 +316,22 @@ export function marginalGain(idx: EngineIndex, state: CoverState, eff: Effect): 
   return gain;
 }
 
+/**
+ * An upper bound on a pickup's gain: the no-car weight it newly lets board where a shelter can be
+ * reached. Its real gain is at most this (riders it adds may also push out farther riders).
+ */
+export function pickupGainBound(idx: EngineIndex, state: CoverState, eff: Effect): number {
+  if (eff.kind !== 'pickup' || !state.carLeft.some((seats) => seats > 1e-9)) return 0;
+  const { n } = idx;
+  const w = idx.mode.flood.partW;
+  let bound = 0;
+  for (const i of eff.cells) {
+    const k = PART_NO_CAR * n + i;
+    if (state.reach[i] && !state.busReach[i] && state.directCover[k] === 0) bound += w[k]! * (1 - state.cover[k]!);
+  }
+  return bound;
+}
+
 /** Coverage state after every placement in the plan (no validation; see score()). */
 export function planState(plan: Pick<Plan, 'mode' | 'placements'>, idx: EngineIndex): CoverState {
   const state = emptyState(plan.mode, idx);
@@ -280,7 +345,8 @@ export function planState(plan: Pick<Plan, 'mode' | 'placements'>, idx: EngineIn
 /**
  * At-risk cells this placement serves on its own (any credit, any part), for the planning tray's
  * instant coverage. A bus pickup returns the cells whose no-car residents it can pick up, though
- * they only count once a shelter is in reach. A flooded shelter returns [].
+ * they only count once a shelter is in reach. A flooded shelter returns []. Cells the existing
+ * shelters already protect count only where this placement adds to them.
  */
 export function placementCoverage(p: Placement, mode: Mode, data: DataBundle): number[] {
   const idx = engineIndex(data);
@@ -289,15 +355,18 @@ export function placementCoverage(p: Placement, mode: Mode, data: DataBundle): n
     const m = idx.mode.flood;
     return eff ? Array.from(eff.cells).filter((i) => m.atRisk[i] && m.partW[PART_NO_CAR * idx.n + i]! > 0) : [];
   }
+  const base = emptyState(mode, idx);
   const state = planState({ mode, placements: [p] }, idx);
   const out: number[] = [];
-  for (let i = 0; i < idx.n; i++) if (protectedWeight(idx, state, i) > 0) out.push(i);
+  for (let i = 0; i < idx.n; i++) if (protectedWeight(idx, state, i) > protectedWeight(idx, base, i) + 1e-9) out.push(i);
   return out;
 }
 
 export interface ProtectionSource {
   /** The shelter (or protected road) that keeps these people safe. */
   placement: Placement;
+  /** The shelter is an existing registered one, not in the plan (placement id "existing:<site>"). */
+  existing?: true;
   /** Flood, no-car part: the bus pickup these residents board on the way to the shelter. */
   via?: Placement;
   part: 'car' | 'noCar';
@@ -334,23 +403,26 @@ export function protectorOf(plan: Plan, data: DataBundle): Map<number, Protectio
   const effects = placements.map((p) => ({ p, eff: placementEffect(p, idx) }));
   const findBy = (kind: 'road' | 'pickup', i: number) =>
     effects.find(({ eff }) => eff?.kind === kind && eff.cells.includes(i))?.p;
-  for (let i = 0; i < idx.n; i++) {
-    for (const part of [PART_CAR, PART_NO_CAR] as const) {
-      const k = part * idx.n + i;
-      const share = state.cover[k]!;
-      const weighted = idx.mode.flood.partW[k]! * share;
-      if (weighted <= 0) continue;
-      const name = part === PART_CAR ? 'car' : 'noCar';
-      if (state.directCover[k]! > 0) {
-        const road = findBy('road', i);
-        if (road) put(i, { placement: road, part: name, share, weighted });
-        continue;
-      }
-      const shelter = placements.find((p) => p.siteId !== undefined && p.siteId === state.shelterOf[k]);
-      if (!shelter) continue;
-      const via = part === PART_NO_CAR ? findBy('pickup', i) : undefined;
-      put(i, { placement: shelter, ...(via ? { via } : {}), part: name, share, weighted });
-    }
+  const { n } = idx;
+  // Protected roads: the whole part, no seat.
+  for (let k = 0; k < 2 * n; k++) {
+    if (state.directCover[k]! <= 0) continue;
+    const i = k % n, weighted = idx.mode.flood.partW[k]! * state.directCover[k]!;
+    const road = findBy('road', i);
+    if (road) put(i, { placement: road, part: k < n ? 'car' : 'noCar', share: state.directCover[k]!, weighted });
+  }
+  // Shelter seats, nearest first; a cell that filled one shelter can have a second.
+  for (const { k, si, share } of state.seats) {
+    const i = k % n, part = k < n ? PART_CAR : PART_NO_CAR;
+    const siteId = state.shelterSites[si]!;
+    const planned = placements.find((p) => p.siteId === siteId);
+    const via = part === PART_NO_CAR ? findBy('pickup', i) : undefined;
+    put(i, {
+      placement: planned ?? { id: `existing:${siteId}`, type: 'shelter', siteId },
+      ...(planned ? {} : { existing: true as const }),
+      ...(via ? { via } : {}), part: part === PART_CAR ? 'car' : 'noCar', share,
+      weighted: idx.mode.flood.partW[k]! * share,
+    });
   }
   return result;
 }

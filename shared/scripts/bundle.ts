@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { DataBundle, DataMeta, Hospital, RoadsGraph } from '../src/data';
+import { type DataBundle, type DataMeta, type ExistingShelters, type Hospital, type RoadsGraph, type TransitStopsFile, stopsFromTransit } from '../src/data';
 import type { Cell, FloodRoad, Site } from '../src/types';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -33,5 +33,10 @@ export function loadBundle(dir: string): DataBundle {
     graph: maybe<RoadsGraph>('roads_graph.json'),
     hospitals: maybe<Hospital[]>('hospitals.json'),
     meta: maybe<DataMeta>('meta.json'),
+    existingShelters: maybe<ExistingShelters>('existing_shelters.json')?.shelters,
+    stops: (() => {
+      const t = maybe<TransitStopsFile>('transit_stops.json');
+      return t ? stopsFromTransit(t) : undefined;
+    })(),
   };
 }

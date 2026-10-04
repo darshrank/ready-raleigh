@@ -12,7 +12,8 @@
     "typecheck": "npm run typecheck -w shared -w app -w server",
     "test": "vitest run",
     "optimize": "npm run optimize -w shared",
-    "fixtures": "npm run fixtures -w shared"
+    "fixtures": "npm run fixtures -w shared",
+    "shelters": "npm run shelters -w shared"
   },
   "engines": {
     "node": ">=20.19"

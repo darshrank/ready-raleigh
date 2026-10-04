@@ -3,11 +3,11 @@
 // Flood uses eager greedy because capacity reassignment invalidates lazy marginal-gain bounds.
 // Heat retains CELF lazy greedy (a heuristic for tree synergies). Both compare gain-per-dollar,
 // pure-gain greedy and the best single placement; this is a baseline, not a proven global optimum.
-import { BUDGET, COSTS, MODE_INTERVENTIONS } from '../config';
+import { BUDGET, MODE_INTERVENTIONS, placementCost } from '../config';
 import type { DataBundle } from '../data';
 import type { Mode, Placement, Plan } from '../types';
 import { type EngineIndex, PART_CAR, PART_NO_CAR, engineIndex } from './context';
-import { type Effect, applyEffect, emptyState, marginalGain, placementEffect } from './coverage';
+import { type Effect, applyEffect, emptyState, marginalGain, pickupGainBound, placementEffect } from './coverage';
 
 export interface Candidate {
   placement: Omit<Placement, 'id'>;
@@ -17,7 +17,8 @@ export interface Candidate {
 
 /**
  * Every placement that can protect someone in this mode: usable sites, roads, and useful cells.
- * A bus pickup helps no one on its own (it needs a shelter), so it counts if it reaches anyone.
+ * A bus pickup helps no one on its own (it needs a shelter), so it counts if it reaches anyone:
+ * at an existing stop (one per cell, the cheaper option) or as a new pickup on a bus cell.
  */
 export function candidates(mode: Mode, data: DataBundle): Candidate[] {
   const idx = engineIndex(data);
@@ -27,12 +28,21 @@ export function candidates(mode: Mode, data: DataBundle): Candidate[] {
   const push = (placement: Omit<Placement, 'id'>) => {
     const eff = placementEffect({ id: '', ...placement }, idx);
     const useful = eff?.kind === 'pickup' ? eff.cells.some((i) => noCarW[i]! > 0) : eff && marginalGain(idx, empty, eff) > 0;
-    if (eff && useful) out.push({ placement, cost: COSTS[placement.type], eff });
+    if (eff && useful) out.push({ placement, cost: placementCost(placement), eff });
   };
   for (const type of MODE_INTERVENTIONS[mode]) {
     if (type === 'shelter') for (const s of data.sites) push({ type, siteId: s.id });
     else if (type === 'road_protection') for (const r of data.floodRoads) push({ type, roadId: r.id });
-    else for (const cell of usefulCells(mode, idx)) push({ type, cell });
+    else if (type === 'bus_pickup') {
+      const stopCells = new Set<number>();
+      for (const [stopId, { cell }] of [...idx.stops].sort((a, b) => a[0].localeCompare(b[0]))) {
+        if (!idx.busOk[cell] || stopCells.has(cell)) continue;
+        stopCells.add(cell);
+        push({ type, cell, stopId });
+      }
+      // A new pickup where a stop already is costs more for the same riders: leave it out.
+      for (let cell = 0; cell < idx.n; cell++) if (idx.busOk[cell] && !stopCells.has(cell)) push({ type, cell });
+    } else for (const cell of usefulCells(mode, idx)) push({ type, cell });
   }
   return out;
 }
@@ -79,13 +89,28 @@ export function optimize(mode: Mode, data: DataBundle, budget = BUDGET): Optimiz
       const used = new Set<number>();
       while (true) {
         let best = -1, bestKey = 0, bestGain = 0;
+        const consider = (k: number, g: number) => {
+          const key = byRatio ? g / cands[k]!.cost : g;
+          if (key > bestKey || (key === bestKey && key > 0 && k < best)) { best = k; bestKey = key; bestGain = g; }
+        };
+        // Shelters and roads exactly. Pickups by an upper bound first: most cannot beat the best.
+        const pickups: { k: number; bound: number }[] = [];
         cands.forEach((c, k) => {
           if (used.has(k) || c.cost > budget - spent) return;
-          const g = marginalGain(idx, state, c.eff);
+          if (c.eff.kind === 'pickup') {
+            const b = pickupGainBound(idx, state, c.eff);
+            if (b > 0) pickups.push({ k, bound: byRatio ? b / c.cost : b });
+            return;
+          }
           evaluations++;
-          const key = byRatio ? g / c.cost : g;
-          if (key > bestKey) { best = k; bestKey = key; bestGain = g; }
+          consider(k, marginalGain(idx, state, c.eff));
         });
+        pickups.sort((a, b) => b.bound - a.bound || a.k - b.k);
+        for (const { k, bound } of pickups) {
+          if (bound < bestKey) break;
+          evaluations++;
+          consider(k, marginalGain(idx, state, cands[k]!.eff));
+        }
         if (best < 0) break;
         const c = cands[best]!;
         applyEffect(state, c.eff, idx.n);

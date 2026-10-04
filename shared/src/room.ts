@@ -16,6 +16,11 @@ export const LOCK_GRACE_MS = 5_000;
 
 export type RoomPhase = 'lobby' | 'planning' | 'results';
 
+/** The city packs a game can be played in (app/src/cities.ts has their names and art). */
+export const CITY_IDS = ['raleigh', 'miami', 'san-francisco', 'new-york'] as const;
+export type CityId = (typeof CITY_IDS)[number];
+export const isCityId = (v: unknown): v is CityId => typeof v === 'string' && (CITY_IDS as readonly string[]).includes(v);
+
 export interface RoomPlayer {
   seat: number;
   name: string;
@@ -42,6 +47,8 @@ export interface RoomResult {
 export interface RoomState {
   code: string;
   phase: RoomPhase;
+  /** The city of this election; the host picks it in the lobby. */
+  city: CityId;
   round: number;
   /** Planning ends (ms since epoch, server clock). */
   endsAt: number | null;
@@ -67,6 +74,8 @@ export type ClientMsg =
   | { t: 'resume'; playerId: string }
   | { t: 'pick'; candidate: CandidateId }
   | { t: 'start' }
+  /** Host, in the lobby: the city of the next election. */
+  | { t: 'city'; city: CityId }
   | { t: 'lock'; placements: Placement[] }
   | { t: 'again' };
 

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { type DataBundle, floodRiskShare, weightedPeople } from '@shared';
 import type { TransitStops } from '../data';
-import type { Crowd, PickCount, PickupPicks, PlayRecord, PlayStore } from './store';
+import { type Crowd, type PickCount, type PickupPicks, type PlayRecord, type PlayStore, cityOfPlay } from './store';
 
 /**
  * Pool options from a connection URL. sslmode is turned into an explicit `ssl` option: node-postgres
@@ -33,19 +33,19 @@ export class TigerStore implements PlayStore {
       await client.query('BEGIN');
       await client.query(
         `INSERT INTO plays (id, created_at, mode, room_code, player_id, player_name, score, best_possible,
-           protected_people, stranded_people, protected_weighted, at_risk_weighted, spent, plan, result, candidate)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+           protected_people, stranded_people, protected_weighted, at_risk_weighted, spent, plan, result, candidate, city)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
         [id, createdAt, plan.mode, plan.roomCode, plan.playerId, plan.playerName, score.score,
           score.bestPossible, score.protectedPeople, score.strandedPeople, score.protectedWeighted,
-          score.atRiskWeighted, plan.spent, plan, score, candidate],
+          score.atRiskWeighted, plan.spent, plan, score, candidate, cityOfPlay(plan)],
       );
       if (placements.length > 0) {
         await client.query(
-          `INSERT INTO placements (created_at, play_id, mode, room_code, type, target, cell)
-           SELECT $1, $2, $3, $4, t.type, t.target, t.cell
+          `INSERT INTO placements (created_at, play_id, mode, room_code, type, target, cell, city)
+           SELECT $1, $2, $3, $4, t.type, t.target, t.cell, $8
            FROM unnest($5::text[], $6::text[], $7::int[]) AS t(type, target, cell)`,
           [createdAt, id, plan.mode, plan.roomCode, placements.map((p) => p.type),
-            placements.map((p) => p.target), placements.map((p) => p.cell)],
+            placements.map((p) => p.target), placements.map((p) => p.cell), cityOfPlay(plan)],
         );
       }
       await client.query('COMMIT');
@@ -57,26 +57,25 @@ export class TigerStore implements PlayStore {
     }
   }
 
-  async crowd(mode: string): Promise<Crowd> {
+  async crowd(mode: string, city: string = 'raleigh'): Promise<Crowd> {
     const [plays, picks] = await Promise.all([
-      this.pool.query<{ plays: number }>(
-        'SELECT coalesce(sum(plays), 0)::int AS plays FROM leaderboard_hourly WHERE mode = $1', [mode]),
+      this.pool.query<{ plays: number }>('SELECT count(*)::int AS plays FROM plays WHERE mode = $1 AND city = $2', [mode, city]),
       this.pool.query<PickCount>(
-        `SELECT type, target, cell, sum(picks)::int AS picks FROM placements_hourly
-         WHERE mode = $1 GROUP BY type, target, cell`, [mode]),
+        `SELECT type, target, cell, sum(picks)::int AS picks FROM crowd_hourly
+         WHERE mode = $1 AND city = $2 GROUP BY type, target, cell`, [mode, city]),
     ]);
     return { plays: plays.rows[0]?.plays ?? 0, picks: picks.rows };
   }
 
-  async pickups(mode: string, since: Date): Promise<PickupPicks> {
+  async pickups(mode: string, since: Date, city: string = 'raleigh'): Promise<PickupPicks> {
     const [counts, picks] = await Promise.all([
       this.pool.query<{ plays: number; players: number }>(
         `SELECT count(*)::int AS plays, count(DISTINCT player_id)::int AS players
-         FROM plays WHERE mode = $1 AND created_at >= $2`, [mode, since]),
+         FROM plays WHERE mode = $1 AND city = $3 AND created_at >= $2`, [mode, since, city]),
       this.pool.query<{ cell: number; player: string; target: string }>(
         `SELECT p.cell, pl.player_id AS player, p.target
          FROM placements p JOIN plays pl ON pl.id = p.play_id AND pl.created_at = p.created_at
-         WHERE p.type = 'bus_pickup' AND p.mode = $1 AND p.cell IS NOT NULL AND p.created_at >= $2`, [mode, since]),
+         WHERE p.type = 'bus_pickup' AND p.mode = $1 AND pl.city = $3 AND p.cell IS NOT NULL AND p.created_at >= $2`, [mode, since, city]),
     ]);
     const rows = picks.rows.map(({ cell, player, target }) => ({ cell, player, ...(target.startsWith('stop:') ? { stopId: target.slice(5) } : {}) }));
     return { plays: counts.rows[0]?.plays ?? 0, players: counts.rows[0]?.players ?? 0, picks: rows };

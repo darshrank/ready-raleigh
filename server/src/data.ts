@@ -1,7 +1,7 @@
 // The game data the server scores plays against: the same folder the app loads (shared/scripts/bundle).
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { BUDGET, type DataBundle, type Mode, type OptimalPlan, type Plan, type TransitSource, optimize } from '@shared';
+import { BUDGET, type CityId, type DataBundle, type Mode, type OptimalPlan, type Plan, type TransitSource, optimize } from '@shared';
 import { dataDir, loadBundle } from '../../shared/scripts/bundle';
 import { EXTENDED_BUDGET_FACTOR } from './planner';
 
@@ -46,3 +46,28 @@ export function loadGameData(dir = dataDir()): GameData {
     extended: (mode) => optimize(mode, bundle, BUDGET * EXTENDED_BUDGET_FACTOR).plan,
   };
 }
+
+/** Folder of a city pack: Raleigh is the data folder itself, the others live under cities/<id>. */
+export const cityDir = (city: CityId, base = dataDir()) => (city === 'raleigh' ? base : join(base, 'cities', city));
+
+/**
+ * Game data per city, loaded on first use and kept. A city whose folder is missing (the fixtures
+ * have no city packs) gives null, so its plays keep the client's score and its reports are off.
+ */
+export function cityLoader(raleigh: GameData | null, base = dataDir()) {
+  const loaded = new Map<CityId, GameData | null>([['raleigh', raleigh]]);
+  return (city: CityId = 'raleigh'): GameData | null => {
+    if (!loaded.has(city)) {
+      const dir = cityDir(city, base);
+      let game: GameData | null = null;
+      try {
+        if (existsSync(join(dir, 'cells.json'))) game = loadGameData(dir);
+      } catch {
+        game = null;
+      }
+      loaded.set(city, game);
+    }
+    return loaded.get(city) ?? null;
+  };
+}
+

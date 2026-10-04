@@ -1,7 +1,8 @@
 // The four city packs on the globe and in city select. Only cities with `ready` load a game;
 // the others show on the globe and say they are next.
 
-export type CityId = 'raleigh' | 'miami' | 'new-york' | 'san-francisco';
+import type { CityId } from '@shared/room';
+export type { CityId };
 
 /** Skyline silhouette pieces on a 0-100 wide, 0-40 tall canvas. */
 export type SkylineShape =

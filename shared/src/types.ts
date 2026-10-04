@@ -47,6 +47,7 @@ export interface Placement {
 export interface Plan {
   roomCode: string; playerId: string; playerName: string;
   mode: Mode; placements: Placement[]; spent: number;
+  city?: string;                 // city pack the plan is for (app/public/data/cities/<id>); omitted = 'raleigh'
 }
 
 export interface ScoreResult {

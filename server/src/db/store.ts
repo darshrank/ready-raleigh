@@ -1,6 +1,9 @@
 // Where plays are kept. Tiger Data (Postgres + TimescaleDB) when DATABASE_URL is set, else memory.
 // Both stores have the same interface; failSoft() wraps Tiger so a database outage never breaks a game.
-import type { InterventionType, Mode, Plan, ScoreResult } from '@shared';
+import type { CityId, InterventionType, Mode, Plan, ScoreResult } from '@shared';
+
+/** A play's city; plays saved before cities existed are Raleigh. */
+export const cityOfPlay = (plan: Plan): string => plan.city ?? 'raleigh';
 
 export interface PlacementRow {
   type: InterventionType;
@@ -41,10 +44,10 @@ export interface PickupPicks {
 export interface PlayStore {
   readonly kind: 'tiger' | 'memory';
   savePlay(play: PlayRecord): Promise<void>;
-  /** How many plays there are in this mode and how often each spot was picked. */
-  crowd(mode: Mode): Promise<Crowd>;
-  /** Bus pickups placed in this mode since `since`. */
-  pickups(mode: Mode, since: Date): Promise<PickupPicks>;
+  /** How many plays there are in this mode and city and how often each spot was picked. */
+  crowd(mode: Mode, city?: CityId): Promise<Crowd>;
+  /** Bus pickups placed in this mode and city since `since`. */
+  pickups(mode: Mode, since: Date, city?: CityId): Promise<PickupPicks>;
   /** Plays in this mode with a piece on any of `targets`, newest first (civic signals, P16). */
   pickers(mode: Mode, targets: string[], limit: number): Promise<Picker[]>;
   /** The best score in this mode so far, or null before the first play. */
@@ -65,11 +68,11 @@ export class MemoryStore implements PlayStore {
     this.plays.push(play);
   }
 
-  async crowd(mode: Mode): Promise<Crowd> {
+  async crowd(mode: Mode, city: CityId = 'raleigh'): Promise<Crowd> {
     const picks = new Map<string, PickCount>();
     let plays = 0;
     for (const play of this.plays) {
-      if (play.plan.mode !== mode) continue;
+      if (play.plan.mode !== mode || cityOfPlay(play.plan) !== city) continue;
       plays++;
       for (const p of play.placements) {
         const key = `${p.type}|${p.target}`;
@@ -81,8 +84,8 @@ export class MemoryStore implements PlayStore {
     return { plays, picks: [...picks.values()] };
   }
 
-  async pickups(mode: Mode, since: Date): Promise<PickupPicks> {
-    const plays = this.plays.filter((p) => p.plan.mode === mode && p.createdAt >= since);
+  async pickups(mode: Mode, since: Date, city: CityId = 'raleigh'): Promise<PickupPicks> {
+    const plays = this.plays.filter((p) => p.plan.mode === mode && cityOfPlay(p.plan) === city && p.createdAt >= since);
     return {
       plays: plays.length,
       players: new Set(plays.map((p) => p.plan.playerId)).size,
@@ -129,19 +132,19 @@ export function failSoft(primary: PlayStore, log: Log): PlayStore {
         await backup.savePlay(play);
       }
     },
-    async crowd(mode) {
-      const local = await backup.crowd(mode);
+    async crowd(mode, city) {
+      const local = await backup.crowd(mode, city);
       try {
-        return mergeCrowds(await primary.crowd(mode), local);
+        return mergeCrowds(await primary.crowd(mode, city), local);
       } catch (err) {
         log.warn({ err }, 'crowd read failed; answering from memory');
         return local;
       }
     },
-    async pickups(mode, since) {
-      const local = await backup.pickups(mode, since);
+    async pickups(mode, since, city) {
+      const local = await backup.pickups(mode, since, city);
       try {
-        const remote = await primary.pickups(mode, since);
+        const remote = await primary.pickups(mode, since, city);
         // Players in both could be counted twice; the memory side only holds plays from an outage.
         return { plays: remote.plays + local.plays, players: remote.players + local.players, picks: [...remote.picks, ...local.picks] };
       } catch (err) {

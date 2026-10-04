@@ -3,6 +3,7 @@
 import type { NewsFacts, NewsScript } from '@shared/news';
 import type { Placement } from '@shared/types';
 import { soloPlan } from './plan/usePlanScore';
+import { currentCityId } from './story';
 
 const PLAYER_KEY = 'ready-raleigh-player';
 
@@ -26,7 +27,7 @@ export function playerId(): string {
 /** Stores a finished solo game (the server scores it again). Never throws: null when not stored. */
 export async function saveSoloPlay(placements: Placement[]): Promise<string | null> {
   try {
-    const plan = { ...soloPlan(placements), playerId: playerId() };
+    const plan = { ...soloPlan(placements), playerId: playerId(), city: currentCityId() };
     const res = await fetch('/api/plays', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

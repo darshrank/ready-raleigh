@@ -32,6 +32,21 @@ describe('POST /api/plays', () => {
     expect(saved.placements).toEqual([{ type: 'road_protection', target: 'road:road-pullen', cell: null }]);
   });
 
+  it('scores each plan with the data of its own city', async () => {
+    const asked: (string | undefined)[] = [];
+    const cityApp = buildServer({ store: new MemoryStore(), data: (city) => { asked.push(city); return game; } });
+    const placements = [{ id: 'a', type: 'road_protection', roadId: 'road-pullen' }];
+    await cityApp.inject({ method: 'POST', url: '/api/plays', payload: { plan: { ...plan('Mia', placements), city: 'miami' } } });
+    await cityApp.inject({ method: 'POST', url: '/api/plays', payload: { plan: { ...plan('Ral', placements), city: 'atlantis' } } });
+    await cityApp.inject({ method: 'POST', url: '/api/plays', payload: { plan: plan('Old', placements) } });
+    expect(asked).toEqual(['miami', 'raleigh', 'raleigh']);
+    // Crowd data stays per city.
+    const res = (await cityApp.inject({ method: 'GET', url: '/api/planner?mode=flood&city=miami' })).json();
+    expect(res.city).toBe('miami');
+    expect(res.plays).toBe(1);
+    await cityApp.close();
+  });
+
   it('rejects plans that break the rules', async () => {
     const tooMuch = Array.from({ length: 4 }, (_, k) => ({ id: `s${k}`, type: 'shelter', siteId: game.bundle.sites[k]!.id }));
     const res = await post({ plan: plan('Bo', tooMuch) });

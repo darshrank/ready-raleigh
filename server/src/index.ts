@@ -1,7 +1,7 @@
 import pg from 'pg';
 import { score } from '@shared';
 import { buildServer } from './app';
-import { type GameData, loadGameData } from './data';
+import { type GameData, cityLoader, loadGameData } from './data';
 import { MemoryStore, type PlayStore, failSoft } from './db/store';
 import { TigerStore, poolConfig, prepareTiger } from './db/tiger';
 import { startLiveFeeds, studyArea } from './live/job';
@@ -55,7 +55,7 @@ const civic = civicRecord({
 // Cards are minted into the soulbound collection (npm run sol:collection -w server creates it).
 const collection = process.env.SOLANA_CARD_COLLECTION?.trim();
 const minter = chain && authority.key && collection ? coreMinter(umiFor(authority.key, chain.rpcUrl), collection) : null;
-const app = buildServer({ store: store.kind === 'tiger' ? failSoft(store, log) : store, data: () => game, live, civic, minter });
+const app = buildServer({ store: store.kind === 'tiger' ? failSoft(store, log) : store, data: cityLoader(game), live, civic, minter });
 app.log.info(chain ? `Solana devnet record on, authority ${chain.address} (${civicStore.kind})` : `Solana record off: ${authority.reason}`);
 app.log.info(minter ? `cards mint into collection ${collection}` : 'cards are kept unminted until SOLANA_CARD_COLLECTION is set (npm run sol:collection -w server)');
 if (chain) chain.balanceSol().then((sol) => app.log.info(`Solana authority balance: ${sol} SOL (devnet)`), () => {});

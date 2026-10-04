@@ -6,7 +6,7 @@ import { FIXTURES_DIR } from '../../shared/scripts/bundle';
 import { buildServer } from './app';
 import { loadGameData } from './data';
 import { MemoryStore } from './db/store';
-import { RoomError, again, getOrCreateRoom, join, lock, pick, presence, rooms, start, tick } from './rooms';
+import { RoomError, again, getOrCreateRoom, join, lock, pick, presence, publicState, rooms, setCity, start, tick } from './rooms';
 
 const okScorer = (score: number) => () => ({ score, bestPossible: 90, atRiskWeighted: 1, protectedWeighted: 1, protectedPeople: score * 10, strandedPeople: 5, vulnerable: { protectedPct: 0, everyonePct: 0 }, byHood: [], topMisses: [], baseline: { protectedPeople: 0, protectedWeighted: 0 } });
 
@@ -36,6 +36,29 @@ describe('room state machine', () => {
     expect(room.endsAt).toBe(1000 + PLANNING_SECONDS * 1000);
     expect(() => join(room, 'Cy', CANDIDATES[3])).toThrow(/under way/);
     expect(() => pick(room, a, CANDIDATES[5])).toThrow(RoomError);
+  });
+
+  it('the host picks the city in the lobby; plans are scored for that city', () => {
+    const room = fresh();
+    const a = join(room, 'Ana', CANDIDATES[0]);
+    const b = join(room, 'Ben', CANDIDATES[1]);
+    expect(room.city).toBe('raleigh');
+    expect(() => setCity(room, b, 'miami')).toThrow(/Only the host/);
+    expect(() => setCity(room, a, 'atlantis')).toThrow(/not on the map/);
+    setCity(room, a, 'miami');
+    expect(publicState(room, a, 0, null).city).toBe('miami');
+    start(room, a, 1000);
+    expect(() => setCity(room, a, 'new-york')).toThrow(/before the election/);
+    const cities: (string | undefined)[] = [];
+    const scorer = (plan: { city?: string }) => { cities.push(plan.city); return okScorer(50)(); };
+    lock(room, a, [], scorer, 2000);
+    lock(room, b, [], scorer, 2001);
+    expect(cities).toEqual(['miami', 'miami']);
+    // The next election keeps the city until the host changes it.
+    again(room, a);
+    expect(room.city).toBe('miami');
+    setCity(room, a, 'raleigh');
+    expect(room.city).toBe('raleigh');
   });
 
   it('ranks platforms by the server score; ties go to the earlier lock', () => {

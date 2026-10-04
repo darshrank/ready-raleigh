@@ -8,6 +8,8 @@
     "server"
   ],
   "scripts": {
+    "build": "npm run build -w app",
+    "start": "npm start -w server",
     "dev": "concurrently -k -n app,server -c blue,magenta \"npm run dev -w app\" \"npm run dev -w server\"",
     "typecheck": "npm run typecheck -w shared -w app -w server",
     "test": "vitest run",

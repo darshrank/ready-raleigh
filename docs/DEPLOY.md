@@ -1,11 +1,21 @@
-# Deploy (P14): Railway + a GoDaddy Registry domain
+# Deploy (P14): Render (or Railway) + a GoDaddy Registry domain
 
 One service runs everything: the server serves the built app (`server/src/web.ts`), `/api` and the
 room WebSocket `/ws`, so the game, rooms and wallet card art share one origin. The `Dockerfile`
 builds the app and starts the server; `railway.json` tells Railway to use it and to check
 `/api/health`.
 
-## 1. Railway service (once)
+## 1a. Render service (free; what we use)
+1. render.com > New > Blueprint > `darshrank/ready-raleigh`. `render.yaml` makes one free Docker
+   web service with `/api/health` as the health check, and asks for each key (copy from `.env`).
+   By hand instead: New > Web Service, Language **Docker** (not Node), instance Free, health check
+   `/api/health`, Environment > Add from .env (leave out `PORT`).
+   If it was made with the Node runtime: build `npm ci && npm run build`, start `npm start` also works.
+2. The free instance sleeps after 15 min idle (first visit then takes about a minute). Before a demo
+   open the site once, or ping `/api/health` every 10 min (cron-job.org).
+3. Settings > Custom Domains: add the domain, then the CNAME Render shows at the registrar.
+
+## 1b. Railway service (trial ended; kept for reference)
 1. Sign in at railway.com with GitHub. New Project > Deploy from GitHub repo > `darshrank/ready-raleigh`.
    Railway finds `railway.json` and builds the Dockerfile. Every push to `main` redeploys.
 2. Service > Variables > Raw Editor: paste the lines of your local `.env` (keys stay out of git).

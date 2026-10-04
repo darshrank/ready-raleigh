@@ -1,0 +1,37 @@
+# Render Blueprint (New > Blueprint): one free Docker web service; the server serves the app too.
+# Keys are never in git: Render asks for each `sync: false` value when the Blueprint is created.
+services:
+  - type: web
+    name: mayday-mayor
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        sync: false
+      - key: GEMINI_IMAGE_MODEL
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_MODEL
+        sync: false
+      - key: ELEVENLABS_VOICE_AMERICA
+        sync: false
+      - key: ELEVENLABS_VOICE_BHARAT
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SOLANA_RPC_URL
+        sync: false
+      - key: SOLANA_PAYER_SECRET_KEY
+        sync: false
+      - key: SOLANA_CARD_COLLECTION
+        sync: false
+      - key: NWS_USER_AGENT
+        sync: false
+      - key: PUBLIC_URL
+        sync: false

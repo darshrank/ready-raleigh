@@ -18,6 +18,22 @@ const NAMES = [
   'storm-label',
   'storm-water',
   'storm-glow',
+  // The world: realistic city and storm water (3D buildings, shadows, windows, murky water).
+  'water-day',
+  'water-day-deep',
+  'water-night',
+  'water-night-deep',
+  'foam',
+  'sky-day',
+  'sky-night',
+  'wall-day',
+  'wall-night',
+  'glass-day',
+  'glass-night',
+  'window-lit',
+  'shadow',
+  'wet-stain-day',
+  'wet-stain-night',
 ] as const;
 export type TokenName = (typeof NAMES)[number];
 
@@ -51,6 +67,9 @@ export function tokens(): Tokens {
 
 /** CSS rgba() of a token color at alpha `a`, for MapLibre paint values. */
 export const rgba = ([r, g, b]: RGB, a: number) => `rgba(${r},${g},${b},${+a.toFixed(3)})`;
+
+/** A token color as 0..1 floats, for shader uniforms. */
+export const unit = ([r, g, b]: RGB): [number, number, number] => [r / 255, g / 255, b / 255];
 
 /** Flat screen tint of `b` over `a` (t = 0 is a, t = 1 is b), like a print shop's percent tint. */
 export const tint = (a: RGB, b: RGB, t: number): RGB => [

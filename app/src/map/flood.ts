@@ -16,6 +16,9 @@ import type { Feature, FeatureCollection, LineString, MultiPolygon, Point, Polyg
 import { currentStory, dataBase } from '../story';
 import { rgba, tint, type RGB, type Tokens } from '../tokens';
 import type { Mood } from './basemap';
+import { FX_TIMING } from '../dev/timing';
+import { frame as worldFrame, REALISM } from '../world/state';
+import { World } from '../world/world';
 
 export const STEPS = [1, 2, 3] as const;
 const FLOOD = 'flood';
@@ -602,7 +605,13 @@ export class FloodView {
   private lastPaint = 0;
   private clipTimer = 0;
   private sent = new Map<string, string | number>();
+  /** The day/night mix (0 day, 1 storm night), fading with setLook. */
+  private night = 0;
+  private nightFrom = 0;
+  private nightTo = 0;
   readonly ready: Promise<void>;
+  /** The realistic 3D city (app/src/world/); null with ?realism=off. */
+  readonly world: World | null;
 
   constructor(
     private map: MapLibreMap,
@@ -610,6 +619,9 @@ export class FloodView {
     private reduce: boolean,
   ) {
     views.set(map, this);
+    this.world = REALISM ? new World(t) : null;
+    // Dev only: scripts and the console can inspect the world (lights, layers).
+    if (import.meta.env.DEV) (window as unknown as { __world?: World | null }).__world = this.world;
     this.current = this.from = this.to = look('day', 'preview', t);
     if (!map.hasImage(BARRIER)) map.addImage(BARRIER, barrierImage(t), { pixelRatio: 2 });
     this.ready = fetch(`${dataBase()}/flood_steps.geojson`)
@@ -634,6 +646,7 @@ export class FloodView {
     clearTimeout(this.clipTimer);
     this.map.off('pitch', this.onPitch);
     this.map.off('sourcedata', this.onSourceData);
+    this.world?.destroy();
     views.delete(this.map);
   }
 
@@ -641,6 +654,8 @@ export class FloodView {
   setLook(mood: Mood, level: WaterLevel, ms: number) {
     this.from = this.current;
     this.to = look(mood, level, this.t);
+    this.nightFrom = this.night;
+    this.nightTo = mood === 'storm' ? 1 : 0;
     this.fadeStart = performance.now();
     this.fadeMs = this.reduce ? 0 : ms;
   }
@@ -685,7 +700,9 @@ export class FloodView {
     if (on === this.threeD) return;
     this.threeD = on;
     const vis = on ? 'visible' : 'none';
-    this.map.setLayoutProperty('buildings-3d', 'visibility', vis);
+    // The realistic city draws its own 3D buildings (world/buildings.ts); MapLibre's stay off.
+    this.map.setLayoutProperty('buildings-3d', 'visibility', on && !this.world ? 'visible' : 'none');
+    this.world?.setThreeD(on);
     this.map.setLayoutProperty('buildings', 'visibility', on ? 'none' : 'visible');
     for (const k of STEPS) this.map.setLayoutProperty(`water-3d-${k}`, 'visibility', vis);
     this.lastPaint = 0;
@@ -748,16 +765,20 @@ export class FloodView {
     const a = performance.now();
     this.paintFrame(now);
     // Dev: the water's per-frame cost, for the trace scripts.
-    if (import.meta.env.DEV) performance.measure('flood-frame', { start: a, end: performance.now() });
+    if (import.meta.env.DEV && FX_TIMING) performance.measure('flood-frame', { start: a, end: performance.now() });
   };
 
   private paintFrame(now: number) {
     if (this.reveal) this.writeReveal(this.reveal(now));
 
     const fading = this.fadeMs > 0 && now - this.fadeStart < this.fadeMs;
-    this.current = fading
-      ? mixLook(this.from, this.to, smooth((now - this.fadeStart) / this.fadeMs))
-      : this.to;
+    const f = fading ? smooth((now - this.fadeStart) / this.fadeMs) : 1;
+    this.current = fading ? mixLook(this.from, this.to, f) : this.to;
+    this.night = this.nightFrom + (this.nightTo - this.nightFrom) * f;
+    // The world's uniforms for this frame; a changed light needs a repaint to show.
+    worldFrame.now = now;
+    worldFrame.night = this.night;
+    if (this.world?.lights.set(this.night)) this.map.triggerRepaint();
 
     // Paint at 60 Hz while something moves (the storm), 20 Hz for the idle shimmer.
     const busy = fading || !!this.reveal || this.submergedStep > 0;

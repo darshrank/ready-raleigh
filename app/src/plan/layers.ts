@@ -6,7 +6,7 @@ import type { FloodRoad, Placement } from '@shared/types';
 import type { MapData } from '../data';
 import { withAlpha } from '../map/layers';
 import { tokens } from '../tokens';
-import { pieceAtlas, type FloodPiece, type IconKey } from './pieces';
+import { ATLAS_CELL, DISC_BOX, pieceAtlas, type FloodPiece, type IconKey } from './pieces';
 import { anchorOf, cellCenter } from './targets';
 import { targetOf, type Target } from './store';
 
@@ -195,7 +195,8 @@ export function piecesLayer(data: MapData, placements: Placement[], selectedId: 
     iconMapping: mapping,
     getIcon: (d) => d.icon,
     getPosition: (d) => d.at,
-    getSize: PIECE_SIZE,
+    // The atlas cell is larger than the disc box (the outline), so the disc keeps PIECE_SIZE.
+    getSize: (PIECE_SIZE * ATLAS_CELL) / DISC_BOX,
     sizeUnits: 'pixels',
     parameters: { depthCompare: 'always' },
     transitions: {
@@ -215,7 +216,7 @@ export function ghostLayer(data: MapData, piece: Placement | null, selected: boo
     iconMapping: mapping,
     getIcon: (d) => d.icon,
     getPosition: (d) => d.at,
-    getSize: PIECE_SIZE,
+    getSize: (PIECE_SIZE * ATLAS_CELL) / DISC_BOX,
     sizeUnits: 'pixels',
     opacity: 0.6,
     parameters: { depthCompare: 'always' },

@@ -4,7 +4,7 @@
 // steps: [{wait:ms}] [{click:[x,y]}] [{tap:[x,y]}] [{drag:[x1,y1,x2,y2]}] [{touchDrag:[x1,y1,x2,y2]}]
 //        [{key:"ArrowLeft"}] [{eval:"expr"}] [{shot:"out.png"}] [{probe:ms}] (main-thread latency log)
 //        [{waitFor:"expr", timeout:ms}] [{throttle:4}] (CPU slowdown, 1 = off)
-//        [{trace:ms, file:"trace.json"}] (Chrome performance trace; the summary from trace-stats.mjs is printed)
+//        [{trace:ms, file:"trace.json", cpu:true}] (Chrome performance trace; the summary from trace-stats.mjs is printed)
 // Coordinates may be strings: "G(lon,lat)" is a map point, "B(text)" the first visible button with that text.
 // Chrome path is macOS; set CHROME to override. GPU=1 renders on the GPU (Metal) instead of
 // swiftshader: use it for frame rates and for the storm, which swiftshader runs at about 2 fps.
@@ -41,7 +41,7 @@ ws.addEventListener('message', (ev) => {
   if (m.method === 'Tracing.tracingComplete' && traceDone) traceDone();
   if (m.id && pending.has(m.id)) { pending.get(m.id)(m.result); pending.delete(m.id); }
   if (m.method === 'Runtime.consoleAPICalled' && ['error', 'warning', 'log'].includes(m.params.type))
-    console.log('console.' + m.params.type + ':', m.params.args.map((a) => a.value ?? a.description).join(' ').slice(0, 300));
+    console.log('console.' + m.params.type + ':', m.params.args.map((a) => a.value ?? a.description).join(' ').slice(0, 3000));
   if (m.method === 'Runtime.exceptionThrown') console.log('exception:', m.params.exceptionDetails.exception?.description?.slice(0, 600));
 });
 const send = (method, params = {}) => new Promise((r) => { pending.set(++id, r); ws.send(JSON.stringify({ id, method, params })); });
@@ -109,7 +109,7 @@ for (const raw of steps) {
     traceEvents = [];
     const done = new Promise((r) => (traceDone = r));
     await send('Tracing.start', {
-      categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'disabled-by-default-devtools.timeline.frame', 'blink.user_timing', 'gpu', 'viz', 'benchmark', '__metadata'].join(','),
+      categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'disabled-by-default-devtools.timeline.frame', 'blink.user_timing', 'gpu', 'viz', 'benchmark', '__metadata', ...(s.cpu ? ['disabled-by-default-v8.cpu_profiler'] : [])].join(','),
       transferMode: 'ReportEvents',
     });
     await sleep(s.trace);

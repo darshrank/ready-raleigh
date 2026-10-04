@@ -6,6 +6,8 @@
 // the totals and the frames that had any, with times relative to the storm start when one runs.
 import { Attribute, AttributeManager } from '@deck.gl/core';
 import { GeoJSONSource, type Map as MapLibreMap } from 'maplibre-gl';
+// performance.measure() timings are opt-in (?fxtime): they cost real time.
+import { FX_TIMING as TIMING } from './timing';
 
 type Counts = Record<string, number>;
 interface Frame {
@@ -31,6 +33,16 @@ function stormClock(now: number): number {
 
 function patchDeck() {
   const update = AttributeManager.prototype.update;
+  if (!TIMING) {
+    AttributeManager.prototype.update = function (this: AttributeManager & { id: string }, ...args: Parameters<typeof update>) {
+      layerId = this.id;
+      try {
+        return update.apply(this, args);
+      } finally {
+        layerId = '';
+      }
+    };
+  } else
   AttributeManager.prototype.update = function (this: AttributeManager & { id: string }, ...args: Parameters<typeof update>) {
     layerId = this.id;
     const a = performance.now();
@@ -40,7 +52,7 @@ function patchDeck() {
       layerId = '';
       // Per-layer attribute update time (CPU, including the GPU buffer writes it issues).
       const ms = performance.now() - a;
-      if (ms > 0.02) performance.measure(`attrs ${this.id.replace(/-(hexagon-cell|polygons-fill).*$/, '')}`, { start: a, end: a + ms });
+      if (TIMING && ms > 0.02) performance.measure(`attrs ${this.id.replace(/-(hexagon-cell|polygons-fill).*$/, '')}`, { start: a, end: a + ms });
     }
   };
   // Binary values (setBinaryValue -> setData) and accessor updates (updateBuffer) both upload.
@@ -72,6 +84,7 @@ function patchMap(map: MapLibreMap) {
     };
   }
   // MapLibre's render, for the trace (performance.measure 'map-render').
+  if (!TIMING) return;
   const r = m as unknown as { _render: (t?: number) => unknown };
   const render = r._render.bind(map);
   r._render = (t?: number) => {
@@ -95,6 +108,8 @@ export function installFx(map: MapLibreMap) {
   };
   const tick = (now: number) => {
     frameCount++;
+    // The trace has already recorded them; an unbounded timeline buffer makes measure() slow.
+    if (TIMING) performance.clearMeasures();
     if (Object.keys(current).length) frames.push({ t: Math.round(stormClock(now)), c: current });
     current = {};
     requestAnimationFrame(tick);

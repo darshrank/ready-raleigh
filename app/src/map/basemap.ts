@@ -7,10 +7,12 @@
 // relayout). The water (map/flood.ts) is part of the same style, between the streets and the labels.
 import type { ExpressionSpecification, LayerSpecification, Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
 import { rgba, tint, type Tokens } from '../tokens';
+import { TILES } from '../world/tiles';
 import { floodFlatLayers, floodSources, flood3dLayers, closuresLayer } from './flood';
 import { aerialLayer, detailLabelLayers, detailSources, siteBuilding3dLayer, siteBuildingLayers } from './detail';
 
-export const TILES = 'https://tiles.openfreemap.org/planet';
+// The tiles' URL lives with the 3D city's tile workers (world/tiles.ts); the globe reads it here.
+export { TILES };
 export const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
 export const ATTRIBUTION =
   '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> ' +
@@ -76,6 +78,9 @@ export interface Palette {
   aerial: { opacity: number; saturation: number; contrast: number; brightnessMin: number; brightnessMax: number };
 }
 
+/** A shelter site's 3D building by day: an ink tint, paler if the site floods. */
+export const siteTints = (rgb: Tokens['rgb']) => ({ dry: tint(rgb.bond, rgb.ink, 0.55), floods: tint(rgb.bond, rgb.ink, 0.2) });
+
 /**
  * The palette for `mood`. With `satellite`, the imagery is the land: the printed fills (green,
  * building footprints) go clear and the streets are faint lines over the photo, so the water,
@@ -139,8 +144,8 @@ function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
     waterway: rgba(rgb.flood, 0.7),
     building: rgba(rgb.ink, 0.08),
     building3d: hex.bond,
-    site3d: rgba(tint(rgb.bond, rgb.ink, 0.55), 1),
-    site3dFloods: rgba(tint(rgb.bond, rgb.ink, 0.2), 1),
+    site3d: rgba(siteTints(rgb).dry, 1),
+    site3dFloods: rgba(siteTints(rgb).floods, 1),
     rail: rgba(rgb.ink, 0.6),
     casing: hex.ink,
     casingOpacity: [0.3, 0.55, 0.75],

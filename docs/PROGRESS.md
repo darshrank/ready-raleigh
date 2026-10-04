@@ -36,6 +36,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   buildings + tokens, R4 water surface, R5 3D water + stains, R3 windows, R7 tiers + reduced
   motion + docs, R2 shadows, R6 flow, rain, ending. `?realism=off` keeps the old path until R7.
   - [x] R0 baseline traces
+  - [x] R1 deck.gl 3D city, world tokens, piece outlines
 
 ## Phase 4: bonus challenges
 - [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
@@ -258,6 +259,49 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Next: tune BUS_SEAT_SHARE after more playtests; consider fading green dots that existing
   shelters already cover.
 
+### 2026-10-03 23:41 EDT Claude (Opus 5.5) lane C, realism R1 (3D city in deck.gl, world tokens, piece outlines)
+- Done: 15 world tokens in styles.css + tokens.ts (`unit()` gives shader floats). `app/src/world/`:
+  state.ts (`frame` uniforms, REALISM / `?realism=off`, WORLD_BEFORE = 'road-closed'), lights.ts
+  (LightingEffect: warm low sun, cool moon, mutated in place by FloodView's mood fade),
+  solids.ts (roofs + wall quads, normals, wall coords, seeds; fp64-split lng/lat; tile clipping),
+  tile.worker.ts + tiles.ts (2-3 workers fetch + parse + build; one tile handed over per frame),
+  buildings.ts (`CityLayer`: Tileset2D, z14 only, extent = sites + 2 km, cache 32, one Model,
+  first tile via luma, the rest raw VAO + drawElements; per-fragment Phong; buildings sink into
+  the ground toward 1800 screen px from the center; `BuildingLayer` for fixed sets), world.ts
+  (owns the layers; MapView merges them under the route's layers and passes the lights).
+  FloodView creates the World, hides MapLibre `buildings-3d` when tilted under realism, writes
+  `frame.night`. detail.ts publishes site footprints + heights (`onSiteSolids`) and leaves
+  MapLibre `site-buildings-3d` off under realism (F1 kept: site tints by day, night walls in the
+  storm). Pieces: 2 px ink outline in the map atlas (plan/pieces.ts ATLAS_CELL).
+- Contrast: HUD plates and piece faces are opaque bond/ink (13.4:1; signal on ink 9.0:1). The
+  piece edge over its background: ink vs day walls 9.6:1, bond vs night walls 11.5:1; over a
+  mid-grey aerial pixel the ink outline is 3.3:1 (meets 3:1 for graphics, not 4.5:1; no ink in
+  the palette reaches 4.5:1 on mid-grey).
+- Frame times (A/B medians, alternating runs, `app/scripts/storm-ab.mjs`, from storm time 1 s):
+  | Run | realism=off avg / p95 / max | realism avg / p95 / max |
+  |---|---|---|
+  | 1440 x 900, 3 runs | 10.3 / 18.6 / 51 | 10.2 / 20.1 / 60 |
+  | 1440 x 900, 3 runs (earlier, quieter machine) | 8.3 / 14.4 / 65 | 9.3 / 17.0 / 50 |
+  | 390 x 844, CPU 4x, 2 runs | 31.3 / 47.3 / 93 (31.9 fps) | 29.4 / 44.0 / 67 (32.0 fps) |
+  The machine's background load (Spotlight, other apps; load average 4-20) moves the baseline by
+  2 ms avg and 4 ms p95 between rounds, so compare within a row. R1 adds about 0-1 ms avg and
+  1.5-2.6 ms p95 at 1440, nothing measurable on the throttled phone.
+- What did not work (kept out): deck.gl MVTLayer/SolidPolygonLayer (main-thread attribute builds,
+  108-142 ms frames per new tile); TileLayer with one sublayer per tile (per-layer uniform work,
+  ~7 ms a frame on the throttled phone); a hidden TileLayer (still loads tiles); z13+z14 tiles.
+- Tooling: `storm-ab.mjs` (alternating A/B medians), `trace-cpu.mjs` (top functions of a
+  `{trace, cpu:true}` run, main thread only), drive.mjs logs 3000 chars of console. Dev timing
+  measures are opt-in (`?fxtime`); dev flags `?nocity` and `?nolight` for comparisons.
+- Next exact step: R4. Uncommitted drafts are in the tree: world/floodData.ts + flood.worker.ts
+  (water geometry, arrival + extent textures), world/water.ts (WaterLayer), world/glsl.ts,
+  world/submerged.ts (submerged streets as deck PathLayers with a flowing-dash extension). Wire
+  them into FloodView (worker at load, hide MapLibre water layers under realism, frame uniforms
+  from RevealFn; director passes the storm clock as element 3 and step starts).
+- Gotchas: an orphaned headless Chrome from an earlier session (5:42 PM, 6:44 PM) ran at 340% CPU
+  and skewed the first traces; I stopped both (PPID 1, headless, swiftshader). Editing a module
+  the page imports triggers Vite HMR and disturbs a running trace; don't edit app/src during an
+  A/B. zsh does not split `$var`; quote args or use separate commands.
+
 ### 2026-10-03 22:40 EDT Claude (Opus 5.5) lanes A+B+C+D, existing shelters, stop pickups, less clutter
 - Done: existing_shelters.json (FEMA NSS, npm run shelters), transit_stops.json now has stop ids.
   Engine: existing shelters as baseline, score = share of the gap, split seating, stop pickups
@@ -274,6 +318,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas: re-run npm run shelters after the pipeline rebuilds roads_graph.json or cells.json
   (catchments use cell indices). score() needs existing_shelters.json in the data folder to match
   the app; fixtures have none (baseline 0).
+
 
 ### 2026-10-03 21:21 EDT Claude (Opus 5.5) lane C, realism R0 (baseline storm traces)
 - Branch `sakhi/realism` from sakhi/semantic-zoom rebased on group/main 1eba02e. Never pushed.

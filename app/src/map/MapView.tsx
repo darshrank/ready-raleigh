@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { Map as MapLibreMap } from 'maplibre-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
-import type { LayersList, PickingInfo } from '@deck.gl/core';
+import type { Layer, LayersList, PickingInfo } from '@deck.gl/core';
 import { useMapUi } from '../store';
 import { currentStory } from '../story';
+import { FX_TIMING } from '../dev/timing';
 import { tokens } from '../tokens';
 import { basemapStyle } from './basemap';
 import { installDetail } from './detail';
@@ -78,6 +79,10 @@ export function MapView({
   flyRef.current = flyToFrame;
   const padRef = useRef(framePad);
   padRef.current = framePad;
+  // deck.gl draws the world (3D city, water; map/flood.ts) under the route's layers.
+  const worldLayers = useRef<Layer[]>([]);
+  const routeLayers = useRef<LayersList>([]);
+  const pushLayers = () => overlayRef.current?.setProps({ layers: [...worldLayers.current, ...routeLayers.current] });
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -121,6 +126,15 @@ export function MapView({
     const detail = installDetail(map, (card) => useMapUi.getState().setSiteCard(card));
     map.once('load', () => {
       flood = new FloodView(map, tokens(), reducedMotion());
+      const world = flood.world;
+      if (world) {
+        // Dev: ?nolight leaves the lights out (frame-time comparisons).
+        if (!(import.meta.env.DEV && /[?&]nolight\b/.test(location.search))) overlay.setProps({ effects: [world.lights.effect] });
+        world.onLayers((ls) => {
+          worldLayers.current = ls;
+          pushLayers();
+        });
+      }
     });
     if (!keyboard) map.keyboard.disable();
     // Dev only: lets screenshot scripts and the console inspect the map.
@@ -145,7 +159,9 @@ export function MapView({
   }, []);
 
   useEffect(() => {
-    if (!frameLayers) overlayRef.current?.setProps({ layers });
+    if (frameLayers) return;
+    routeLayers.current = layers;
+    pushLayers();
   }, [layers, frameLayers]);
 
   useEffect(() => {
@@ -155,9 +171,12 @@ export function MapView({
     const tick = (now: number) => {
       const a = performance.now();
       const next = frameLayers(now);
-      if (next) overlay.setProps({ layers: next });
+      if (next) {
+        routeLayers.current = next;
+        overlay.setProps({ layers: [...worldLayers.current, ...next] });
+      }
       // Dev: the storm's per-frame layer rebuild (residents), for the trace scripts.
-      if (import.meta.env.DEV) performance.measure('storm-layers', { start: a, end: performance.now() });
+      if (import.meta.env.DEV && FX_TIMING) performance.measure('storm-layers', { start: a, end: performance.now() });
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

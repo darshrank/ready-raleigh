@@ -19,6 +19,7 @@ import { loadMapData } from '../data';
 import { dataBase } from '../story';
 import type { Palette } from './basemap';
 import { TILT_3D } from './flood';
+import { REALISM } from '../world/state';
 
 const REGULAR = ['Noto Sans Regular'];
 
@@ -545,6 +546,7 @@ const SITE_3D_ZOOM = 14;
 interface Footprint {
   /** The feature's id in the site-buildings source. */
   fid: number;
+  floods: boolean;
   polys: number[][][][];
   bbox: [number, number, number, number];
   /** The tile building's render_height, once found. */
@@ -646,6 +648,28 @@ async function getJson<T>(file: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** A shelter site's building for the deck.gl city (world/sites.ts): pushed-out footprint and height. */
+export interface SiteSolid {
+  polygon: number[][][];
+  /** Top of the site building: the tile building's height under it (8 m until found) + 0.8 m. */
+  height: number;
+  floods: boolean;
+}
+let solids: SiteSolid[] = [];
+const solidListeners = new Set<(s: SiteSolid[]) => void>();
+function publishSolids(footprints: Footprint[]) {
+  solids = footprints.flatMap((f) =>
+    f.polys.map((polygon) => ({ polygon, height: (f.height ?? 8) + SITE_3D_ABOVE_M, floods: f.floods })),
+  );
+  for (const cb of solidListeners) cb(solids);
+}
+/** The site buildings as their heights are found (called now, then on each change). */
+export function onSiteSolids(cb: (s: SiteSolid[]) => void): () => void {
+  solidListeners.add(cb);
+  cb(solids);
+  return () => solidListeners.delete(cb);
+}
+
 /**
  * Adds the detail icons to `map` (now, and again if the style ever asks for one it lacks) and loads
  * the detail data files into their sources. A missing file only leaves its layer empty. Returns a
@@ -669,7 +693,13 @@ export function installDetail(map: MapLibreMap, onSite: (card: SiteCardInfo | nu
         });
       });
       fill(map, SITE_BUILDINGS, fc);
-      footprints = fc.features.map((f) => ({ fid: f.id as number, polys: f.geometry.coordinates, bbox: bboxOf(f.geometry.coordinates) }));
+      footprints = fc.features.map((f) => ({
+        fid: f.id as number,
+        floods: !!f.properties?.floods,
+        polys: f.geometry.coordinates,
+        bbox: bboxOf(f.geometry.coordinates),
+      }));
+      publishSolids(footprints);
       markSoon(0);
     },
     (e: unknown) => console.warn('Site buildings did not load:', e),
@@ -711,7 +741,8 @@ export function installDetail(map: MapLibreMap, onSite: (card: SiteCardInfo | nu
   let markTimer = 0;
   const mark = () => {
     const on = map.getPitch() > TILT_3D;
-    if (map.getLayer(SITE_BUILDINGS_3D)) map.setLayoutProperty(SITE_BUILDINGS_3D, 'visibility', on ? 'visible' : 'none');
+    // With the realistic city (world/), deck.gl draws the site buildings (onSiteSolids).
+    if (map.getLayer(SITE_BUILDINGS_3D)) map.setLayoutProperty(SITE_BUILDINGS_3D, 'visibility', on && !REALISM ? 'visible' : 'none');
     if (!on || map.getZoom() < SITE_3D_ZOOM) return;
     const view = map.getBounds();
     const todo = footprints.filter((s) => s.height === undefined && view.intersects([[s.bbox[0], s.bbox[1]], [s.bbox[2], s.bbox[3]]]));
@@ -723,12 +754,16 @@ export function installDetail(map: MapLibreMap, onSite: (card: SiteCardInfo | nu
       const height = Number(f.properties?.render_height ?? 0);
       for (const poly of polys) if (poly[0] && poly[0].length >= 4) parts.push({ bbox: bboxOf([poly as number[][][]]), ring: poly[0], height });
     }
+    let found = false;
     for (const s of todo) {
       const hit = probes(s.polys).map((p) => parts.find((q) => inBbox(q.bbox, p) && inRing(q.ring, p))).find(Boolean);
       if (!hit) continue;
       s.height = hit.height;
+      found = true;
+      if (REALISM) continue;
       map.setFeatureState({ source: SITE_BUILDINGS, id: s.fid }, { height: hit.height });
     }
+    if (found) publishSolids(footprints);
   };
   const markSoon = (ms: number) => {
     clearTimeout(markTimer);

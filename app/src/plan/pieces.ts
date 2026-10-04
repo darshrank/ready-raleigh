@@ -70,22 +70,32 @@ export function discSvg(piece: FloodPiece, colors: { ink: string; face: string }
 
 export type IconKey = `${FloodPiece}` | `${FloodPiece}:sel`;
 
+/**
+ * On the map a disc also gets a 2 px --ink outline around its face and shadow, so it reads over
+ * aerial photos and lit 3D buildings. In SVG units (the disc draws at half size): 4.
+ */
+const OUTLINE = 4;
+/** One atlas cell: the disc box with room for the outline. */
+export const ATLAS_CELL = DISC_BOX + 2 * OUTLINE;
+
 /** Atlas for deck.gl: each piece with a bond face, then each with a signal face (selected). */
 export function pieceAtlas(hex: { ink: string; bond: string; signal: string }) {
   const mapping = {} as Record<IconKey, { x: number; y: number; width: number; height: number; anchorX: number; anchorY: number }>;
   let svg = '';
   FLOOD_PIECES.forEach((piece, k) => {
     for (const [row, face, suffix] of [[0, hex.bond, ''], [1, hex.signal, ':sel']] as const) {
-      const x = k * DISC_BOX;
-      const y = row * DISC_BOX;
-      svg += `<g transform="translate(${x} ${y})">${discSvg(piece, { ink: hex.ink, face })}</g>`;
+      const x = k * ATLAS_CELL;
+      const y = row * ATLAS_CELL;
+      const outline = `<circle cx="36" cy="36" r="${32.5 + OUTLINE}" fill="${hex.ink}"/><circle cx="42" cy="42" r="${30 + OUTLINE}" fill="${hex.ink}"/>`;
+      svg += `<g transform="translate(${x + OUTLINE} ${y + OUTLINE})">${outline}${discSvg(piece, { ink: hex.ink, face })}</g>`;
       // Anchor on the face's center, not the box's: the shadow hangs off the bottom right.
-      mapping[`${piece}${suffix}` as IconKey] = { x, y, width: DISC_BOX, height: DISC_BOX, anchorX: 36, anchorY: 36 };
+      const c = 36 + OUTLINE;
+      mapping[`${piece}${suffix}` as IconKey] = { x, y, width: ATLAS_CELL, height: ATLAS_CELL, anchorX: c, anchorY: c };
     }
   });
-  const width = FLOOD_PIECES.length * DISC_BOX;
+  const width = FLOOD_PIECES.length * ATLAS_CELL;
   const atlas =
     'data:image/svg+xml;charset=utf-8,' +
-    encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${2 * DISC_BOX}">${svg}</svg>`);
+    encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${2 * ATLAS_CELL}">${svg}</svg>`);
   return { atlas, mapping };
 }

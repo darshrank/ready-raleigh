@@ -25,6 +25,19 @@
   --storm-water: #2a9deb;
   --storm-glow: #7ccbff;
 
+  /* The world (DESIGN.md "Color direction"): a realistic city and storm water under the
+     printed instruments. The 3D buildings, their shadows and windows, and the storm water read
+     only these. Planning keeps the --flood preview. */
+  --foam: #e9e4d2;
+  --sky-day: #c9d8e6;
+  --sky-night: #2d416b;
+  --wall-day: #d9d4c9;
+  --wall-night: #2a3550;
+  --glass-day: #5d6f80;
+  --glass-night: #1a2236;
+  --window-lit: #ffd28a;
+  --shadow: #1b2333; /* drawn at about 25% */
+
   /* Noto Sans Devanagari sets Bharat News' Hindi; Latin names inside it keep the first face. */
   --font-display: "Big Shoulders Display", "Noto Sans Devanagari", "Arial Narrow", sans-serif;
   --font-body: "Public Sans", "Noto Sans Devanagari", system-ui, sans-serif;

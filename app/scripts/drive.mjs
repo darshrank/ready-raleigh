@@ -3,7 +3,8 @@
 // usage: node app/scripts/drive.mjs <url> <width> <height> <steps.json | inline JSON>
 // steps: [{wait:ms}] [{click:[x,y]}] [{tap:[x,y]}] [{drag:[x1,y1,x2,y2]}] [{touchDrag:[x1,y1,x2,y2]}]
 //        [{key:"ArrowLeft"}] [{eval:"expr"}] [{shot:"out.png"}] [{probe:ms}] (main-thread latency log)
-//        [{waitFor:"expr", timeout:ms}]
+//        [{waitFor:"expr", timeout:ms}] [{throttle:4}] (CPU slowdown, 1 = off)
+//        [{trace:ms, file:"trace.json", cpu:true}] (Chrome performance trace; the summary from trace-stats.mjs is printed)
 // Coordinates may be strings: "G(lon,lat)" is a map point, "B(text)" the first visible button with that text.
 // Chrome path is macOS; set CHROME to override. GPU=1 renders on the GPU (Metal) instead of
 // swiftshader: use it for frame rates and for the storm, which swiftshader runs at about 2 fps.
@@ -33,11 +34,14 @@ for (let k = 0; k < 50 && !target; k++) {
 const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise((r) => ws.addEventListener('open', r));
 let id = 0; const pending = new Map();
+let traceEvents = null; let traceDone = null;
 ws.addEventListener('message', (ev) => {
   const m = JSON.parse(ev.data);
+  if (m.method === 'Tracing.dataCollected' && traceEvents) traceEvents.push(...m.params.value);
+  if (m.method === 'Tracing.tracingComplete' && traceDone) traceDone();
   if (m.id && pending.has(m.id)) { pending.get(m.id)(m.result); pending.delete(m.id); }
   if (m.method === 'Runtime.consoleAPICalled' && ['error', 'warning', 'log'].includes(m.params.type))
-    console.log('console.' + m.params.type + ':', m.params.args.map((a) => a.value ?? a.description).join(' ').slice(0, 300));
+    console.log('console.' + m.params.type + ':', m.params.args.map((a) => a.value ?? a.description).join(' ').slice(0, 3000));
   if (m.method === 'Runtime.exceptionThrown') console.log('exception:', m.params.exceptionDetails.exception?.description?.slice(0, 600));
 });
 const send = (method, params = {}) => new Promise((r) => { pending.set(++id, r); ws.send(JSON.stringify({ id, method, params })); });
@@ -99,6 +103,23 @@ for (const raw of steps) {
     await send('Input.dispatchKeyEvent', { type: text ? 'keyDown' : 'rawKeyDown', key, code: key, text, windowsVirtualKeyCode: vk });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code: key, windowsVirtualKeyCode: vk });
     await sleep(200);
+  }
+  if (s.throttle) { await send('Emulation.setCPUThrottlingRate', { rate: s.throttle }); console.log(`cpu throttle ${s.throttle}x`); }
+  if (s.trace) {
+    traceEvents = [];
+    const done = new Promise((r) => (traceDone = r));
+    await send('Tracing.start', {
+      categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'disabled-by-default-devtools.timeline.frame', 'blink.user_timing', 'gpu', 'viz', 'benchmark', '__metadata', ...(s.cpu ? ['disabled-by-default-v8.cpu_profiler'] : [])].join(','),
+      transferMode: 'ReportEvents',
+    });
+    await sleep(s.trace);
+    await send('Tracing.end');
+    await done;
+    const { summarize } = await import('./trace-stats.mjs');
+    if (s.file) writeFileSync(s.file, JSON.stringify({ traceEvents }));
+    console.log('trace:', JSON.stringify(summarize(traceEvents, s.from ?? 0)));
+    if (!s.from) console.log('trace from 1 s:', JSON.stringify(summarize(traceEvents, 1000)));
+    traceEvents = null;
   }
   if (s.eval) console.log('eval:', JSON.stringify(await evalv(s.eval)));
   if (s.shot) { const { data } = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(s.shot, Buffer.from(data, 'base64')); console.log('saved', s.shot); }

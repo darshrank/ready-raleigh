@@ -6,7 +6,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 import { FINAL_FLOOD_STEP } from '@shared/config';
 import type { FloodView } from '../map/flood';
 import { cameraForPoints, type Camera, type Pad } from '../map/frame';
-import { BACK_MS, FLY_MS, GROW_MS, HOLD_MS, STORM_MS, TILT_MS, stepStart, type Storm, type StormEvent } from './sim';
+import { BACK_MS, CLEAR_MS, FLY_MS, GROW_MS, HOLD_MS, STORM_MS, TILT_MS, stepStart, type Storm, type StormEvent } from './sim';
 
 /** The storm camera's pitch (DESIGN.md "Map"). */
 export const STORM_PITCH = 55;
@@ -62,7 +62,11 @@ export function directStorm(map: MapLibreMap, flood: FloodView | null, storm: St
   const skipped = now >= STORM_MS;
 
   // The water grows step by step, and the streets under it show once it is there.
-  flood?.setReveal((n) => [1, 2, 3].map((k) => (o.reduce ? Number(n - stormAt >= stepStart(k)) : clamp01((n - stormAt - stepStart(k)) / GROW_MS))));
+  // Each step's growth, then the storm clock (the realistic water rises and drains by it).
+  flood?.setReveal(
+    (n) => [...[1, 2, 3].map((k) => (o.reduce ? Number(n - stormAt >= stepStart(k)) : clamp01((n - stormAt - stepStart(k)) / GROW_MS))), n - stormAt],
+    [1, 2, 3].map(stepStart),
+  );
   for (let k = 1; k <= FINAL_FLOOD_STEP; k++) at(stepStart(k) + GROW_MS * 0.4, () => flood?.showSubmerged(k));
 
   // The helicopter: tilt over the city, then each event in turn.
@@ -89,6 +93,7 @@ export function directStorm(map: MapLibreMap, flood: FloodView | null, storm: St
   at(STORM_MS, () => {
     o.onEvent(null);
     flood?.showSubmerged(FINAL_FLOOD_STEP);
+    flood?.drain(true, skipped ? 300 : CLEAR_MS);
     if (!userTookOver) over(city, skipped ? 600 : 2200, 0);
   });
 
@@ -103,4 +108,5 @@ export function directStorm(map: MapLibreMap, flood: FloodView | null, storm: St
 export function resetWater(flood: FloodView | null) {
   flood?.setReveal(null);
   flood?.showSubmerged(0);
+  flood?.drain(false, 0);
 }

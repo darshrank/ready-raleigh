@@ -6,7 +6,7 @@ import type { FloodRoad, Placement } from '@shared/types';
 import type { MapData } from '../data';
 import { withAlpha } from '../map/layers';
 import { tokens } from '../tokens';
-import { pieceAtlas, type FloodPiece, type IconKey } from './pieces';
+import { ATLAS_CELL, DISC_BOX, pieceAtlas, type FloodPiece, type IconKey } from './pieces';
 import { anchorOf, cellCenter } from './targets';
 import { targetOf, type Target } from './store';
 
@@ -40,12 +40,16 @@ export function protectedRoadsLayers(roads: FloodRoad[]) {
   ];
 }
 
+/** From this zoom covered dots get a thin ink rim, so they read over streets and the aerial photo. */
+export const COVERAGE_RIM_ZOOM = 15;
+
 /**
  * Coverage as a --safe halftone over the at-risk cells: the dot grows with the protected share of
  * the cell. Data is the fixed list of at-risk cells, so each dot keeps its index and its radius and
- * color can transition: the dots print themselves when a piece lands.
+ * color can transition: the dots print themselves when a piece lands. Coverage never fades with the
+ * zoom (the hex fills do); `rim` adds the ink edge up close.
  */
-export function coverageLayer(data: MapData, atRisk: number[], share: Float32Array) {
+export function coverageLayer(data: MapData, atRisk: number[], share: Float32Array, rim = false) {
   const { rgb } = tokens();
   return new ScatterplotLayer<number>({
     id: 'coverage',
@@ -53,11 +57,15 @@ export function coverageLayer(data: MapData, atRisk: number[], share: Float32Arr
     getPosition: (i) => cellCenter(data, i),
     getRadius: (_, { index }) => 32 + 33 * (share[index] ?? 0),
     getFillColor: (_, { index }) => withAlpha(rgb.safe, (share[index] ?? 0) > 0 ? 0.9 : 0),
+    stroked: rim,
+    getLineColor: (_, { index }) => withAlpha(rgb.ink, (share[index] ?? 0) > 0 ? 0.85 : 0),
+    lineWidthUnits: 'pixels',
+    getLineWidth: 1,
     radiusUnits: 'meters',
     // Same floor as the flood dots: at the city-wide view cells sit ~4 px apart and stay dots.
     radiusMinPixels: 1.2,
     radiusMaxPixels: 9,
-    updateTriggers: { getRadius: share, getFillColor: share },
+    updateTriggers: { getRadius: share, getFillColor: share, getLineColor: share },
     transitions: { getRadius: ms(300), getFillColor: ms(300) },
   });
 }
@@ -187,7 +195,8 @@ export function piecesLayer(data: MapData, placements: Placement[], selectedId: 
     iconMapping: mapping,
     getIcon: (d) => d.icon,
     getPosition: (d) => d.at,
-    getSize: PIECE_SIZE,
+    // The atlas cell is larger than the disc box (the outline), so the disc keeps PIECE_SIZE.
+    getSize: (PIECE_SIZE * ATLAS_CELL) / DISC_BOX,
     sizeUnits: 'pixels',
     parameters: { depthCompare: 'always' },
     transitions: {
@@ -207,7 +216,7 @@ export function ghostLayer(data: MapData, piece: Placement | null, selected: boo
     iconMapping: mapping,
     getIcon: (d) => d.icon,
     getPosition: (d) => d.at,
-    getSize: PIECE_SIZE,
+    getSize: (PIECE_SIZE * ATLAS_CELL) / DISC_BOX,
     sizeUnits: 'pixels',
     opacity: 0.6,
     parameters: { depthCompare: 'always' },

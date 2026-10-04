@@ -16,6 +16,13 @@ import type { Feature, FeatureCollection, LineString, MultiPolygon, Point, Polyg
 import { currentStory, dataBase } from '../story';
 import { rgba, tint, type RGB, type Tokens } from '../tokens';
 import type { Mood } from './basemap';
+import { FX_TIMING } from '../dev/timing';
+import { flashAt, frame as worldFrame, REALISM } from '../world/state';
+import type { FloodData } from '../world/floodData';
+import type { LightsData } from '../world/cityLightsData';
+import type { FloodWorkerRequest } from '../world/flood.worker';
+import { TIER } from '../world/quality';
+import { World } from '../world/world';
 
 export const STEPS = [1, 2, 3] as const;
 const FLOOD = 'flood';
@@ -26,7 +33,7 @@ const BARRIER = 'road-closed';
 /** Water depth in meters per step in 3D: the floodway is deepest. */
 const DEPTH_M: Record<number, number> = { 1: 6, 2: 3, 3: 1.5 };
 /** The camera counts as tilted (3D buildings and water) above this pitch. */
-const TILT_3D = 20;
+export const TILT_3D = 20;
 
 /** A step grows in over GROW_MS: each part fades in over PART_MS, after a delay up to the rest. */
 export const GROW_MS = 1500;
@@ -577,8 +584,20 @@ const SHIMMER_MS = 3200;
 /** One dash phase every this many ms: a slow flow. */
 const FLOW_MS = 260;
 
-/** Growth of each step, 0..1, at a given time (performance.now()). */
+/**
+ * Growth of each step, 0..1, at a given time (performance.now()). An optional fourth value is the
+ * storm clock (ms since the storm started); the realistic water uses it to rise and drain.
+ */
 export type RevealFn = (now: number) => readonly number[];
+
+/** MapLibre's water layers, which the realistic water (world/water.ts) replaces. */
+const MAPLIBRE_WATER = [
+  ...STEPS.flatMap((k) => [`water-${k}`, `water-glow-${k}`, `water-edge-${k}`, `water-3d-${k}`]),
+  'submerged',
+  ...Array.from({ length: 4 }, (_, j) => `submerged-flow-${j}`),
+];
+/** The realistic water drains over at most this long when the storm clears. */
+const DRAIN_MS = 1500;
 
 const views = new WeakMap<MapLibreMap, FloodView>();
 /** The water on a map, once its style has loaded (MapView creates it). */
@@ -602,7 +621,29 @@ export class FloodView {
   private lastPaint = 0;
   private clipTimer = 0;
   private sent = new Map<string, string | number>();
+  /** The day/night mix (0 day, 1 storm night), fading with setLook. */
+  private night = 0;
+  private nightFrom = 0;
+  private nightTo = 0;
+  /** Realistic water: preview (0) to full (1), and the drain once the storm clears (0..1). */
+  private level = 0;
+  private levelFrom = 0;
+  private levelTo = 0;
+  private ending = 0;
+  private stepStarts: readonly number[] = [0, 0, 0];
+  private runs: FeatureCollection = emptyFc();
   readonly ready: Promise<void>;
+  /** The realistic 3D city (app/src/world/); null with ?realism=off. */
+  readonly world: World | null;
+  /**
+   * The realistic water (world/water.ts) draws this city's hazard: floods only. An earthquake or a
+   * heat wave keeps the MapLibre layers in their ground colors (look()), over the same 3D city.
+   */
+  private readonly realWater: boolean;
+  private drainFrom = 0;
+  private drainTo = 0;
+  private drainStart = 0;
+  private drainMs = 0;
 
   constructor(
     private map: MapLibreMap,
@@ -610,8 +651,14 @@ export class FloodView {
     private reduce: boolean,
   ) {
     views.set(map, this);
+    this.world = REALISM ? new World(t) : null;
+    this.realWater = !!this.world && currentStory().hazard === 'flood';
+    // Dev only: scripts and the console can inspect the world (lights, layers).
+    if (import.meta.env.DEV) (window as unknown as { __world?: World | null }).__world = this.world;
     this.current = this.from = this.to = look('day', 'preview', t);
     if (!map.hasImage(BARRIER)) map.addImage(BARRIER, barrierImage(t), { pixelRatio: 2 });
+    if (this.realWater) for (const id of MAPLIBRE_WATER) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+    if (this.world) this.loadWorld();
     this.ready = fetch(`${dataBase()}/flood_steps.geojson`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`flood_steps.geojson: ${r.status}`))))
       .then((raw: FeatureCollection<Polygon | MultiPolygon, { step: number }>) => {
@@ -634,21 +681,42 @@ export class FloodView {
     clearTimeout(this.clipTimer);
     this.map.off('pitch', this.onPitch);
     this.map.off('sourcedata', this.onSourceData);
+    this.world?.destroy();
     views.delete(this.map);
   }
 
   /** Day or night water, faint (planning) or full, fading over `ms`. */
+  /**
+   * The storm is over (`on`): the realistic 3D water drains and the foam fades over `ms`, while the
+   * water stays at its final extent. Off for another round. The storm's end calls it (director.ts),
+   * not the light: in Light mode the city's clock brings the day back while the storm still runs.
+   */
+  drain(on: boolean, ms: number) {
+    this.drainFrom = this.ending;
+    this.drainTo = on ? 1 : 0;
+    this.drainStart = performance.now();
+    this.drainMs = this.reduce ? 0 : Math.min(ms, DRAIN_MS);
+  }
+
   setLook(mood: Mood, level: WaterLevel, ms: number) {
     this.from = this.current;
     this.to = look(mood, level, this.t);
+    this.nightFrom = this.night;
+    this.nightTo = mood === 'storm' ? 1 : 0;
+    this.levelFrom = this.level;
+    this.levelTo = level === 'full' ? 1 : 0;
     this.fadeStart = performance.now();
     this.fadeMs = this.reduce ? 0 : ms;
   }
 
-  /** Drive each step's growth from a clock; null shows every step in full. */
-  setReveal(fn: RevealFn | null) {
+  /**
+   * Drive each step's growth from a clock; null shows every step in full. `stepStartsMs` (when
+   * each step begins on the storm clock) lets the realistic water rise after it arrives.
+   */
+  setReveal(fn: RevealFn | null, stepStartsMs?: readonly number[]) {
     this.reveal = fn;
-    if (!fn) this.writeReveal([1, 1, 1]);
+    if (stepStartsMs) this.stepStarts = stepStartsMs;
+    if (!fn && !this.realWater) this.writeReveal([1, 1, 1]);
   }
 
   /** Show the streets under water up to step `k` (0 hides them), clipped from the loaded tiles. */
@@ -661,7 +729,9 @@ export class FloodView {
       this.map.setFilter(id, filter);
     this.map.setFilter('road-closed', ['==', ['get', 'k'], k]);
     if (k > 0 && was === 0) this.clipSoon(0);
+    if (this.realWater) this.world?.setSubmerged(k ? this.runs : emptyFc(), k);
     if (k === 0) {
+      this.runs = emptyFc();
       (this.map.getSource(SUBMERGED) as GeoJSONSource | undefined)?.setData(emptyFc());
       (this.map.getSource(CLOSURES) as GeoJSONSource | undefined)?.setData(emptyFc());
     }
@@ -685,11 +755,34 @@ export class FloodView {
     if (on === this.threeD) return;
     this.threeD = on;
     const vis = on ? 'visible' : 'none';
-    this.map.setLayoutProperty('buildings-3d', 'visibility', vis);
+    // The realistic city draws its own 3D buildings (world/buildings.ts); MapLibre's stay off.
+    this.map.setLayoutProperty('buildings-3d', 'visibility', on && !this.world ? 'visible' : 'none');
+    this.world?.setThreeD(on);
     this.map.setLayoutProperty('buildings', 'visibility', on ? 'none' : 'visible');
-    for (const k of STEPS) this.map.setLayoutProperty(`water-3d-${k}`, 'visibility', vis);
+    if (!this.realWater) for (const k of STEPS) this.map.setLayoutProperty(`water-3d-${k}`, 'visibility', vis);
     this.lastPaint = 0;
   };
+
+  /**
+   * The hazard's arrival textures (and, for floods, the water's geometry) and the city's lights,
+   * built in a worker (world/flood.worker.ts). Every city: the lights' blackout follows its steps.
+   */
+  private loadWorld() {
+    const worker = new Worker(new URL('../world/flood.worker.ts', import.meta.url), { type: 'module' });
+    worker.onmessage = (e: MessageEvent<{ data?: FloodData; lights?: LightsData | null; ms?: number; lightsMs?: number; error?: string }>) => {
+      worker.terminate();
+      if (e.data.error || !e.data.data) {
+        console.warn('Flood water did not load:', e.data.error);
+        return;
+      }
+      if (!this.raf) return; // destroyed while loading
+      if (import.meta.env.DEV) Object.assign(window, { __floodWorkerMs: e.data.ms, __lightsMs: e.data.lightsMs, __lightsCount: e.data.lights?.count ?? 0 });
+      if (this.realWater) this.world?.setWater(e.data.data);
+      if (e.data.lights) this.world?.setLights(e.data.lights, e.data.data, currentStory().hazard);
+    };
+    const request: FloodWorkerRequest = { base: new URL(dataBase(), location.href).href, lights: TIER.lights };
+    worker.postMessage(request);
+  }
 
   /** Re-clip when new street tiles arrive while the submerged streets are showing. */
   private onSourceData = (e: MapSourceDataEvent) => {
@@ -712,9 +805,39 @@ export class FloodView {
           runs.features.length,
           closures.features.length,
         ]);
-      (this.map.getSource(SUBMERGED) as GeoJSONSource | undefined)?.setData(runs);
+      this.runs = runs;
+      if (this.realWater) this.world?.setSubmerged(runs, this.submergedStep);
+      else (this.map.getSource(SUBMERGED) as GeoJSONSource | undefined)?.setData(runs);
       (this.map.getSource(CLOSURES) as GeoJSONSource | undefined)?.setData(closures);
     }, ms);
+  }
+
+  /**
+   * The realistic world's uniforms for this frame (world/state.ts `frame`): nothing else changes
+   * per frame. Repaints at the display rate while the storm runs or the mood fades, else 20 Hz
+   * for the water's slow motion.
+   */
+  private worldFrame(now: number, f: number, shown: readonly number[] | undefined) {
+    const w = worldFrame;
+    w.now = now;
+    w.night = this.night;
+    this.level = this.levelFrom + (this.levelTo - this.levelFrom) * f;
+    const fd = this.drainMs > 0 ? clamp01((now - this.drainStart) / this.drainMs) : 1;
+    this.ending = this.drainFrom + (this.drainTo - this.drainFrom) * smooth(fd);
+    w.level = this.level;
+    w.ending = this.ending;
+    w.stepP = [clamp01(shown?.[0] ?? 1), clamp01(shown?.[1] ?? 1), clamp01(shown?.[2] ?? 1)];
+    w.clock = shown && shown.length > 3 ? shown[3]! : -1;
+    w.stepStart = [this.stepStarts[0] ?? 0, this.stepStarts[1] ?? 0, this.stepStarts[2] ?? 0];
+    w.flash = this.reduce ? 0 : flashAt(now);
+    w.tilt = this.threeD ? 1 : 0;
+    w.reduce = this.reduce;
+    this.world?.lights.set(this.night);
+    const busy = (this.fadeMs > 0 && now - this.fadeStart < this.fadeMs) || !!this.reveal;
+    if (busy || now - this.lastPaint >= 50) {
+      this.lastPaint = now;
+      this.map.triggerRepaint();
+    }
   }
 
   private paint(layer: string, prop: string, value: string | number) {
@@ -745,12 +868,24 @@ export class FloodView {
 
   private frame = (now: number) => {
     this.raf = requestAnimationFrame(this.frame);
-    if (this.reveal) this.writeReveal(this.reveal(now));
+    const a = performance.now();
+    this.paintFrame(now);
+    // Dev: the water's per-frame cost, for the trace scripts.
+    if (import.meta.env.DEV && FX_TIMING) performance.measure('flood-frame', { start: a, end: performance.now() });
+  };
+
+  private paintFrame(now: number) {
+    const shown = this.reveal?.(now);
+    if (shown && !this.realWater) this.writeReveal(shown);
 
     const fading = this.fadeMs > 0 && now - this.fadeStart < this.fadeMs;
-    this.current = fading
-      ? mixLook(this.from, this.to, smooth((now - this.fadeStart) / this.fadeMs))
-      : this.to;
+    const f = fading ? smooth((now - this.fadeStart) / this.fadeMs) : 1;
+    this.current = fading ? mixLook(this.from, this.to, f) : this.to;
+    this.night = this.nightFrom + (this.nightTo - this.nightFrom) * f;
+    if (this.world) {
+      this.worldFrame(now, f, shown);
+      if (this.realWater) return;
+    }
 
     // Paint at 60 Hz while something moves (the storm), 20 Hz for the idle shimmer.
     const busy = fading || !!this.reveal || this.submergedStep > 0;
@@ -784,5 +919,5 @@ export class FloodView {
         this.paint(`submerged-flow-${j}`, 'line-opacity', Math.round(o * 50) / 50);
       }
     }
-  };
+  }
 }

@@ -6,10 +6,13 @@
 // city to night by re-applying the same layers with the night palette (paint updates only, no
 // relayout). The water (map/flood.ts) is part of the same style, between the streets and the labels.
 import type { ExpressionSpecification, LayerSpecification, Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
-import { rgba, type Tokens } from '../tokens';
+import { rgba, tint, type Tokens } from '../tokens';
+import { TILES } from '../world/tiles';
 import { floodFlatLayers, floodSources, flood3dLayers, closuresLayer } from './flood';
+import { aerialLayer, detailLabelLayers, detailSources, setAerial, siteBuilding3dLayer, siteBuildingLayers } from './detail';
 
-export const TILES = 'https://tiles.openfreemap.org/planet';
+// The tiles' URL lives with the 3D city's tile workers (world/tiles.ts); the globe reads it here.
+export { TILES };
 export const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
 export const ATTRIBUTION =
   '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> ' +
@@ -37,7 +40,7 @@ const MAJOR = ['primary', 'secondary', 'tertiary', 'trunk'];
 export type Mood = 'day' | 'storm';
 
 /** Every color the basemap uses, per mood. */
-interface Palette {
+export interface Palette {
   land: string;
   green: string;
   wood: number;
@@ -46,6 +49,9 @@ interface Palette {
   waterway: string;
   building: string;
   building3d: string;
+  /** 3D: a shelter site's building (map/detail.ts), dry or flooding. */
+  site3d: string;
+  site3dFloods: string;
   rail: string;
   casing: string;
   /** Casing opacity for minor, major and motorway streets (0 at night: streets are faint lines). */
@@ -57,7 +63,23 @@ interface Palette {
   halo: string;
   /** The satellite imagery: full daylight, or dimmed and greyed for the night. */
   imagery: { brightness: number; saturation: number };
+  /** Places (map/detail.ts): the badge and the name. */
+  placeIcon: string;
+  placeLabel: string;
+  /** House numbers. */
+  address: string;
+  /** GoRaleigh bus stop badges. */
+  busIcon: string;
+  /** Shelter sites as buildings (z15+): fill, fill under the pointer, outline. */
+  siteFill: string;
+  siteHover: string;
+  siteLine: string;
+  /** Aerial imagery from z16 (map/detail.ts): full opacity at z17 and the photo's tone. */
+  aerial: { opacity: number; saturation: number; contrast: number; brightnessMin: number; brightnessMax: number };
 }
+
+/** A shelter site's 3D building by day: an ink tint, paler if the site floods. */
+export const siteTints = (rgb: Tokens['rgb']) => ({ dry: tint(rgb.bond, rgb.ink, 0.55), floods: tint(rgb.bond, rgb.ink, 0.2) });
 
 /**
  * The palette for `mood`. With `satellite`, the imagery is the land: the printed fills (green,
@@ -92,6 +114,9 @@ function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
       waterway: rgba(rgb['storm-water'], 0.75),
       building: rgba(rgb['storm-street'], 0.85),
       building3d: hex['storm-building'],
+      // The storm hides shelter sites (DESIGN.md "Map"): their buildings look like any other.
+      site3d: hex['storm-building'],
+      site3dFloods: hex['storm-building'],
       rail: rgba(rgb['storm-street'], 1),
       casing: hex['storm-land'],
       casingOpacity: [0, 0, 0],
@@ -101,6 +126,14 @@ function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
       label: hex['storm-label'],
       halo: hex['storm-land'],
       imagery: { brightness: 0.42, saturation: -0.4 },
+      placeIcon: rgba(rgb['storm-label'], 0.85),
+      placeLabel: rgba(rgb['storm-label'], 0.9),
+      address: rgba(rgb['storm-label'], 0.6),
+      busIcon: rgba(rgb['storm-label'], 0.85),
+      siteFill: rgba(rgb['storm-label'], 0.14),
+      siteHover: rgba(rgb['storm-label'], 0.3),
+      siteLine: rgba(rgb['storm-label'], 0.55),
+      aerial: { opacity: 0.8, saturation: -0.6, contrast: -0.1, brightnessMin: 0, brightnessMax: 0.38 },
     };
   return {
     land: hex.chalk,
@@ -111,6 +144,8 @@ function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
     waterway: rgba(rgb.flood, 0.7),
     building: rgba(rgb.ink, 0.08),
     building3d: hex.bond,
+    site3d: rgba(siteTints(rgb).dry, 1),
+    site3dFloods: rgba(siteTints(rgb).floods, 1),
     rail: rgba(rgb.ink, 0.6),
     casing: hex.ink,
     casingOpacity: [0.3, 0.55, 0.75],
@@ -120,6 +155,14 @@ function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
     label: hex.ink,
     halo: hex.chalk,
     imagery: { brightness: 1, saturation: 0 },
+    placeIcon: rgba(rgb.ink, 0.85),
+    placeLabel: rgba(rgb.ink, 0.85),
+    address: rgba(rgb.ink, 0.55),
+    busIcon: rgba(rgb.ink, 0.85),
+    siteFill: rgba(rgb.ink, 0.3),
+    siteHover: rgba(rgb.signal, 0.75),
+    siteLine: hex.ink,
+    aerial: { opacity: 0.85, saturation: -0.35, contrast: -0.12, brightnessMin: 0.12, brightnessMax: 1 },
   };
 }
 
@@ -200,6 +243,7 @@ function groundLayers(P: Palette): LayerSpecification[] {
       layout: { visibility: 'none' },
       paint: { 'raster-brightness-max': P.imagery.brightness, 'raster-saturation': P.imagery.saturation, 'raster-fade-duration': 150 },
     },
+    aerialLayer(P),
     {
       id: 'buildings',
       type: 'fill',
@@ -208,6 +252,7 @@ function groundLayers(P: Palette): LayerSpecification[] {
       minzoom: 13,
       paint: { 'fill-color': P.building },
     },
+    ...siteBuildingLayers(P),
     {
       id: 'rail',
       type: 'line',
@@ -268,6 +313,8 @@ function labelLayers(P: Palette): LayerSpecification[] {
       },
       paint: label,
     },
+    // Detail by zoom, below the street and place names so those win any collision.
+    ...detailLabelLayers(P),
     {
       id: 'street-names-minor',
       type: 'symbol',
@@ -317,7 +364,7 @@ function labelLayers(P: Palette): LayerSpecification[] {
 
 /** The layers a palette paints, in draw order (without the water, which has its own colors). */
 function paletteLayers(P: Palette): LayerSpecification[] {
-  return [...groundLayers(P), buildings3dLayer(P), ...labelLayers(P)];
+  return [...groundLayers(P), buildings3dLayer(P), siteBuilding3dLayer(P), ...labelLayers(P)];
 }
 
 /**
@@ -334,11 +381,13 @@ export function basemapStyle(t: Tokens): StyleSpecification {
       omt: { type: 'vector', url: TILES, attribution: ATTRIBUTION },
       satellite: { type: 'raster', tiles: [SATELLITE_TILES], tileSize: 256, maxzoom: 19, attribution: SATELLITE_ATTRIBUTION },
       ...floodSources(),
+      ...detailSources(),
     },
     layers: [
       ...groundLayers(P),
       ...floodFlatLayers(t),
       buildings3dLayer(P),
+      siteBuilding3dLayer(P),
       ...flood3dLayers(t),
       closuresLayer(),
       ...labelLayers(P),
@@ -352,11 +401,13 @@ export function basemapStyle(t: Tokens): StyleSpecification {
  */
 export function applyPalette(map: MapLibreMap, mood: Mood, t: Tokens, ms: number, satellite = false) {
   map.setLayoutProperty('satellite', 'visibility', satellite ? 'visible' : 'none');
+  setAerial(map, satellite);
   for (const layer of paletteLayers(palette(mood, t, satellite))) {
     if (!('paint' in layer) || !layer.paint) continue;
     for (const [prop, value] of Object.entries(layer.paint)) {
-      // Only colors, opacities and the imagery's light change; widths and heights stay.
-      if (!/color|opacity|brightness|saturation/.test(prop)) continue;
+      // Only colors, opacities and the imagery's tone (satellite, aerial photo) change; widths and
+      // heights stay.
+      if (!/color|opacity|brightness|saturation|contrast/.test(prop)) continue;
       map.setPaintProperty(layer.id, `${prop}-transition`, { duration: ms, delay: 0 });
       map.setPaintProperty(layer.id, prop, value);
     }

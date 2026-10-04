@@ -1,12 +1,17 @@
 import { useEffect, useRef } from 'react';
 import { Map as MapLibreMap } from 'maplibre-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
-import type { LayersList, PickingInfo } from '@deck.gl/core';
+import type { Layer, LayersList, PickingInfo } from '@deck.gl/core';
 import { useMapUi } from '../store';
 import { currentStory } from '../story';
+import { FX_TIMING } from '../dev/timing';
 import { tokens } from '../tokens';
 import { basemapStyle } from './basemap';
+import { installDetail } from './detail';
+import { SiteCard } from '../ui/SiteCard';
 import { FloodView } from './flood';
+import { TIER } from '../world/quality';
+import { REALISM } from '../world/state';
 import { cameraForPoints, framePadding, framePoints, type Pad } from './frame';
 
 /** DESIGN.md: top-down by default; the Tilt toggle tilts to 45 degrees. */
@@ -76,6 +81,10 @@ export function MapView({
   flyRef.current = flyToFrame;
   const padRef = useRef(framePad);
   padRef.current = framePad;
+  // deck.gl draws the world (3D city, water; map/flood.ts) under the route's layers.
+  const worldLayers = useRef<Layer[]>([]);
+  const routeLayers = useRef<LayersList>([]);
+  const pushLayers = () => overlayRef.current?.setProps({ layers: [...worldLayers.current, ...routeLayers.current] });
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -86,12 +95,23 @@ export function MapView({
       zoom: 11,
       pitch: useMapUi.getState().tilt ? TILT_PITCH : 0,
       attributionControl: { compact: true },
+      // The realistic world's quality tier caps the pixel ratio on small devices (world/quality.ts).
+      ...(REALISM ? { pixelRatio: Math.min(window.devicePixelRatio, TIER.maxPixelRatio) } : {}),
     });
-    // Fold the attribution to its (i) button. MapLibre unfolds it when the source's attribution
-    // first arrives, which can be after 'load'; by 'idle' it has.
-    map.once('idle', () => {
-      map.getContainer().querySelector('.maplibregl-compact-show')?.classList.remove('maplibregl-compact-show');
+    // Fold the attribution to its (i) button. MapLibre unfolds it once, when the first source
+    // attribution arrives. Waiting for 'idle' was not enough: the water shimmer keeps the map busy,
+    // so on a phone the open box covered "Start the storm". Fold that one automatic opening as it
+    // happens; the player's own click on (i) still opens it.
+    const attrib = map.getContainer().querySelector('.maplibregl-ctrl-attrib');
+    const fold = new MutationObserver(() => {
+      if (!attrib?.classList.contains('maplibregl-compact-show')) return;
+      attrib.classList.remove('maplibregl-compact-show');
+      fold.disconnect();
     });
+    if (attrib) {
+      fold.observe(attrib, { attributes: true, attributeFilter: ['class'] });
+      attrib.addEventListener('click', () => fold.disconnect(), { capture: true, once: true });
+    }
     map.on('zoomend', () => useMapUi.getState().setZoom(map.getZoom()));
     map.on('movestart', (e) => {
       if ('originalEvent' in e && e.originalEvent) userMoved.current = true;
@@ -106,17 +126,34 @@ export function MapView({
     map.addControl(overlay);
     // The water (DESIGN.md "Water") lives in the style; its animator starts once the style is in.
     let flood: FloodView | null = null;
+    // Icons for the detail that appears as the player zooms in (map/detail.ts).
+    const detail = installDetail(map, (card) => useMapUi.getState().setSiteCard(card));
     map.once('load', () => {
       flood = new FloodView(map, tokens(), reducedMotion());
+      const world = flood.world;
+      if (world) {
+        // Dev: ?nolight leaves the lights out (frame-time comparisons).
+        if (!(import.meta.env.DEV && /[?&]nolight\b/.test(location.search))) overlay.setProps({ effects: [world.lights.effect] });
+        world.onLayers((ls) => {
+          worldLayers.current = ls;
+          pushLayers();
+        });
+      }
     });
     if (!keyboard) map.keyboard.disable();
     // Dev only: lets screenshot scripts and the console inspect the map.
-    if (import.meta.env.DEV) (window as unknown as { __map?: MapLibreMap }).__map = map;
+    if (import.meta.env.DEV) {
+      (window as unknown as { __map?: MapLibreMap }).__map = map;
+      // Per-frame change counters and render timings for the trace scripts (app/src/dev/fx.ts).
+      void import('../dev/fx').then((m) => mapRef.current === map && m.installFx(map));
+    }
     mapRef.current = map;
     overlayRef.current = overlay;
     const cleanup = onReadyRef.current?.(map, overlay);
     return () => {
       cleanup?.();
+      fold.disconnect();
+      detail();
       flood?.destroy();
       mapRef.current = null;
       overlayRef.current = null;
@@ -126,7 +163,9 @@ export function MapView({
   }, []);
 
   useEffect(() => {
-    if (!frameLayers) overlayRef.current?.setProps({ layers });
+    if (frameLayers) return;
+    routeLayers.current = layers;
+    pushLayers();
   }, [layers, frameLayers]);
 
   useEffect(() => {
@@ -134,8 +173,14 @@ export function MapView({
     if (!overlay || !frameLayers) return;
     let raf = 0;
     const tick = (now: number) => {
+      const a = performance.now();
       const next = frameLayers(now);
-      if (next) overlay.setProps({ layers: next });
+      if (next) {
+        routeLayers.current = next;
+        overlay.setProps({ layers: [...worldLayers.current, ...next] });
+      }
+      // Dev: the storm's per-frame layer rebuild (residents), for the trace scripts.
+      if (import.meta.env.DEV && FX_TIMING) performance.measure('storm-layers', { start: a, end: performance.now() });
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -184,6 +229,7 @@ export function MapView({
   return (
     <div className="absolute inset-0">
       <div ref={containerRef} className="h-full w-full" role="region" aria-label={label} />
+      <SiteCard />
       {tiltControl && (
         <button
           type="button"

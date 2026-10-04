@@ -28,6 +28,32 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 ## Phase 3: planner
 - [~] P11 Tiger Data storage and planner dashboard (D + C). Lane D done (Claude, D); /planner page (C) next
 
+## Semantic zoom (branch sakhi/semantic-zoom)
+- [x] SZ Detail by zoom on the planning map (Claude, C + A): S1 places, S2 addresses, S3 GoRaleigh stops, S4 NC OneMap aerial, S5 site buildings, S6 hex fade
+
+## Realism (branch sakhi/realism)
+- [~] RL Game-quality 3D city and living flood water (Claude, C). Order: R0 baseline, R1 deck.gl
+  buildings + tokens, R4 water surface, R5 3D water + stains, R3 windows, R7 tiers + reduced
+  motion + docs, R2 shadows, R6 flow, rain, ending. `?realism=off` keeps the old path until R7.
+  R5 is the wet stains only; flooded windows going dark moved to R3 (they live in the windows shader).
+  - [x] R0 baseline traces
+  - [x] R1 deck.gl 3D city, world tokens, piece outlines
+  - [x] R4 water surface (deck.gl WaterLayer, arrival textures, uniforms only)
+  - [x] R5 wet stains (3D water rise landed in R4)
+  - [x] rebase checkpoint after R5: onto main 6434b22, conflicts combined; four-city adaptation
+  - [x] R3 windows (+ flooded windows go dark)
+  - [x] R7 tiers, reduced motion, docs (kill switch stays until the final check at the end)
+  - [x] R2 ground shadows (cheap projected pass)
+  - [x] R6 ending (settling waves on the drain) and rain ripples; creek flow streaks not done
+  - [x] final rebase checkpoint (main 4cdffd8), full matrix, screenshot set
+  - [ ] quiet-machine A/B (waiting for the user), then remove `?realism=off`
+- [~] RO The storm overview (z11-13, 55 deg) made dramatic (Claude, C), all four cities:
+  - [x] O1 city lights (building + street points, one additive layer, built in the flood worker)
+  - [x] O2 blackout wave per hazard (flood: water + 400 m wave; quake: snapped lines; heat: rolling)
+  - [x] O3 flood readable from the overview (deep channel, see-through edges, 1.5 px edge line)
+  - [x] murky water and wet stains removed (user request): clean flood blues, no stains
+  - [ ] O4 windows unchanged (from z15.5); four-city screenshots at 0/33/66/100%, one 1440 trace
+
 ## Phase 4: bonus challenges
 - [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
 - [x] P13 ElevenLabs broadcast and narration (D): POST /api/tts, narrated briefing, news anchor (V2)
@@ -231,6 +257,311 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
     'Test Mayor'); then DELETE FROM plays WHERE player_name = 'Test Mayor';
 - Next exact step: a weekly board (filter on created_at) if the all-time one fills up.
 
+### 2026-10-04 03:20 EDT Claude (Opus 5.5) lane C, storm overview O3 + no murky water or stains
+- Done (one commit, both touch water.ts): water.ts overview look at z11-13 (storm only, fading to
+  the street-level look by z14.5): the extent texture's distance to the edge of every begun step
+  makes the channel deep and dark (--flood-deep x 0.7) and the edges lighter and see-through
+  (alpha 0.42 -> 0.94 over 90 m); a bright 1.5 px line (`fwidth` meters per pixel) on that edge and
+  on the advancing front (`v / fwidth(v)`), --foam by day, --storm-glow at night.
+- User request: no murky water and no wet stains. Water colors are now --flood / --flood-deep by
+  day and --storm-water / --flood-deep at night (submerged streets --flood-deep); stain_apply,
+  stain_peak and the stain colors are gone (stains.ts keeps only `stain_dark`, flooded windows
+  going out); tokens --water-day/-night(-deep) and --wet-stain-day/-night deleted; DESIGN and
+  DECISIONS updated.
+- Checks: typecheck only (user: no screenshots or other checks); the user runs it in the browser.
+- Next exact step: the user's look at the overview water; then the four-city screenshot set
+  (0/33/66/100%, Dark map, camera held at the director's overview) into docs/screenshots, one 1440
+  trace (`node app/scripts/storm-trace.mjs 1440 900`), vitest, and O4 (windows unchanged from z15.5).
+
+### 2026-10-04 03:05 EDT Claude (Opus 5.5) lane C, storm overview O2 (blackout per hazard)
+- Done: `cityLightsData.ts` gives every light a reference: its nearest zone cell on the flood
+  worker's grid within 400 m (its own cell inside a zone; coarse 8x8-cell blocks skip most of the
+  search) as a texture coordinate + distance, -1 if none. `floodData.ts` returns the step raster
+  (`band`). `cityLights.ts` `lights_power()` reads the arrival + extent textures at that cell
+  (shared with the water via `floodTextures`) and decides on the storm clock:
+  - flood: out 0-1.5 s after the water arrives (600 ms flicker); within 400 m 2.5-5 s later + 0-1.2 s;
+  - quake: inside at the step's start + 0-250 ms (220 ms flicker); nearby +0.4-1.8 s;
+  - heat: only zone lights; step-1 zones roll (blocks of ~400 m, 3.6 s cycle, a third off) until
+    the grid fails at step 2, then each zone goes dark for good as it spreads (step 3 at step 3);
+  - reduced motion: off when the step's growth is 1 (per step, at once), no flicker, no rolling.
+- Checks: typecheck; vitest 119/119 (+ nearest-zone test); overview shots at 0/33/66/100% in all
+  four cities (Dark map): Raleigh's creeks open dark corridors by 66% that widen by 100%; Miami
+  goes dark behind the surge; San Francisco's quake zones and New York's heat zones go dark per
+  step; REDUCE=1 San Francisco: zones dark per step.
+- Next exact step: O3 flood readable from the overview (water.ts: deep channel, see-through
+  edges from the extent texture, 1.5 px edge line, z11-13 only, the current look from ~z14.5).
+
+### 2026-10-04 02:50 EDT Claude (Opus 5.5) lane C, storm overview O1 (city lights)
+- Sync first: `git fetch group`, main fast-forwarded 4cdffd8 -> 678870a (Darsh: rooms play Raleigh
+  and Miami only, "Coming soon" for the others; no negative residents when moving a piece).
+  sakhi/realism rebased onto it; only DECISIONS.md conflicted (both kept). Backup at
+  `backup/realism-pre-rebase-3` (local).
+- Done: `world/cityLightsData.ts` (pure: building lights scattered in each H3 cell by residents,
+  street lights every 60 m along the drive graph, fastest roads first, street share <= 45%;
+  seeded) + tests; `world/cityLights.ts` (`CityLightsLayer`: one point-list Model, additive
+  blend, no depth, 1.5-3 CSS px, --window-lit streets and a whiter tint for buildings, mostly dim
+  with a few bright ones, faint flicker on a third, none under reduced motion; brightness =
+  night x level with a storm clock, so zero by day, in planning (also in Dark mode) and with no
+  storm; fades out from z14.5 to z15.5 where the windows take over). The flood worker now runs in
+  every city (the arrival textures for all four; the water and stains stay flood-only) and builds
+  the lights after the flood data (a failure there never blocks the water). `TIER.lights`: 60k,
+  30k on low. World draws the lights last (over the roofs).
+- Counts: Raleigh, Miami, San Francisco 60k (27k street); New York 60k (20.7k street, every road).
+  Worker: lights 40-150 ms after the flood data (Raleigh flood 0.7-0.9 s, New York 65 ms).
+- Checks: typecheck; vitest 118/118; Raleigh and New York storm overview in Dark at 1440 (lights
+  on), Raleigh planning in Dark (no lights), `?realism=off` storm (no world, no worker).
+- Found, not changed (upstream camera): the director's opening tilt to the overview (at 250 ms)
+  does not happen; the camera stays flat at the planning frame until the first helicopter flight
+  (~3.7 s) and reaches the overview (Raleigh z11.2, New York z12.8, pitch 55) only after it.
+  The screenshot script holds the director's own overview camera from 0.3 s.
+- Next exact step: O2 blackout (flood / quake / heat characters, reduced motion per step).
+
+### 2026-10-04 02:09 EDT Claude (Opus 5.5) lane C, realism final rebase checkpoint and full matrix
+- Rebased sakhi/realism onto main 4cdffd8 (group/main moved: Main menu button, Gemini news desk,
+  Solana records and cards, cities in rooms, civic signals). Only docs conflicted (DECISIONS, R1;
+  rerere replayed the earlier resolutions); Solo.tsx merged cleanly. Every replayed commit
+  typechecks (`git rebase -x`). Backup at `backup/realism-pre-rebase-2` (local). `npm install`
+  for upstream's Solana/Metaplex server deps (lockfile unchanged).
+- Rooms now carry a city (host picks it); they write `?city=` before the game renders and the game
+  remounts per round, so the realism city logic (flood-only water, Raleigh-only files, NC aerial)
+  follows the room's city unchanged. Checked with a Miami room (world water present).
+- Full matrix: typecheck; vitest 112/112 (17 files); pipeline unittest 33 OK. Every city /solo
+  planning -> storm -> results, realism on and off, 1440 and 390 (16 runs); globe landing into each
+  city; hosted rooms in Raleigh and Miami through election, storm and results; news desk in every
+  storm (template lines: GEMINI_API_KEY is empty here); no console errors. The first run after a
+  dev-server start can hit Vite's dependency re-optimization reload; rerun it (done for Raleigh).
+- Screenshots: docs/screenshots/realism/ (city day and night, Crabtree storm and aftermath, the
+  other three cities' storms at 1440, Raleigh storm and results at 390).
+- Not done: creek flow streaks (optional per the user). The quiet-machine A/B (5 alternating runs
+  per mode, median, 1440 and 390) waits for the user to stop other servers; then remove the
+  `?realism=off` kill switch and its MapLibre-only paths if it passes.
+- Next exact step: ask the user, run `node app/scripts/storm-ab.mjs 1440 900 1 5 realism=off ""` and
+  `node app/scripts/storm-ab.mjs 390 844 4 5 realism=off ""`, record medians here.
+
+### 2026-10-04 01:54 EDT Claude (Opus 5.5) lane C, realism R6 (ending, rain ripples)
+- Done: water.ts: the waves settle as the storm clears (amplitude and speed down with `ending`,
+  on top of R4's drain and foam fade); rain ripples (RIPPLES_GLSL: a drop per 5 m cell, ring to
+  2 m over 0.9 s, normal tilt + faint --foam highlight; storm clock, street zoom, not at the
+  ending, not under reduced motion, not on the low tier: `TIER.ripples`). One check frame at
+  Crabtree (night, z17.6): faint rings across the water.
+- Not done: creek flow streaks (user: only if everything else is done; the final checkpoint and
+  the full matrix come first).
+- Checks: typecheck; vitest 85/85; Raleigh /solo storm -> results at 1440 (default and
+  `?quality=low`), no console errors. One 1440 trace (realism, load ~4): 5.5 avg / 8.1 p95 /
+  21 max ms, 59.8 fps.
+- Next exact step: the final rebase checkpoint (Step 0 rules: `git fetch group`; if group/main
+  moved, fast-forward main and rebase, combining conflicts by the same rules; stop and ask only
+  for a product decision). Then the full matrix: every city, realism on and off, 1440 and 390,
+  hosted room, news desk, Python tests, the screenshot set; ask the user before the quiet-machine
+  A/B (5 alternating runs per mode, median). Remove `?realism=off` only after that passes.
+
+### 2026-10-04 01:49 EDT Claude (Opus 5.5) lane C, realism R2 (cheap ground shadows)
+- Done: buildings.ts draws a shadow pass before the buildings: the same triangles projected along
+  the sun to the ground (vertex shader, `building.shadow` uniform), --shadow at 25% (fainter at
+  night), premultiplied; depth "less" + depth snapped up to 1/16384 so overlapping shadows never
+  double. `sunVector()` moved to lights.ts (water and shadows share it). Tier: off on low.
+- What went wrong on the way: model.setParameters per pass replaced deck.gl's blending (shadows
+  came out as opaque color over the page) and rebuilt the pipeline; now only gl.depthFunc is
+  switched and restored. Then the shadows were blue: the building passes blend premultiplied
+  (the water does not; both measured by pixel, see DECISIONS).
+- Checks: typecheck; vitest 85/85; Raleigh /solo storm -> results at 1440, no console errors;
+  pixel check downtown: a shaded ground pixel goes from (119,127,139) with shadows off to
+  (96,104,118). One 1440 trace (realism, load ~4): 5.6 avg / 8.0 p95 / 28 max ms, 59.8 fps.
+- Next exact step: R6: the ending (the water lowers and the foam fades as the storm clears: the
+  drain exists, check it reads; consider lowering the flat surface's alpha too) and rain ripples
+  on the water (rings from a hashed grid of drops on the storm clock, in water.ts, uniforms only,
+  off under reduced motion and on the low tier). Creek flow streaks only if everything else is done. Then the
+  final rebase checkpoint and the full matrix (ask the user before the quiet-machine A/B).
+- Gotchas: the building passes blend premultiplied, the water straight; check a new translucent
+  pass by pixel. Never call model.setParameters per frame.
+
+### 2026-10-04 01:42 EDT Claude (Opus 5.5) lane C, realism R7 (quality tiers, reduced motion, docs)
+- Done: `world/quality.ts` (TIER: high / medium / low, auto from device or `?quality=`); water.ts
+  builds 3/2/1 noise octaves and drops foam on low; windows.ts fades the grid sooner on medium and
+  keeps only its average on low; buildings.ts sinks the city at TIER.farPx; MapView caps the map's
+  pixel ratio (3/2/1.25) under realism. Reduced motion was already wired through `frame.reduce`
+  (no creep, waves, foam, rise, drain, flicker, water lightning, street dashes): checked with
+  REDUCE=1. DESIGN.md: "The world" section (tokens, city, water, stains, windows, tiers, reduced
+  motion, kill switch), notes in "Water (flood)" and "Performance floor".
+- Kill switch: kept. The final check (quiet-machine A/B + full matrix with realism on and off)
+  moved to the end (user), so `?realism=off` is removed only after it passes.
+- Checks: typecheck; vitest 85/85; Raleigh /solo storm -> results at 1440 for the default tier,
+  `?quality=medium`, `?quality=low` and REDUCE=1: no console errors (framer-motion's reduced-motion
+  note only). One 1440 trace (realism, high, load ~6): 5.8 avg / 9.4 p95 / 37 max ms, 59.7 fps.
+- Next exact step: R2 ground shadows, cheap only (user: skip deck.gl's built-in shadows). Plan:
+  a flat --shadow footprint offset away from the sun (SUN_FROM), drawn by the building layers'
+  roofs again at z=0 with a sun-projected offset in the vertex shader, or a 2D shadow pass from
+  the roof polygons; then R6 (ending, rain ripples; creek streaks only if time allows), the final
+  rebase checkpoint, then the full matrix (ask the user before the A/B).
+- Gotchas: tier shader variants only compile on their tier; smoke-run `?quality=medium` and `low`
+  after shader edits.
+
+### 2026-10-04 01:37 EDT Claude (Opus 5.5) lane C, realism R3 (windows, flooded windows go dark)
+- Done: `world/windows.ts` (shader module: pane grid from wall meters, ~3 m columns fitted to the
+  wall, 3.2 m floors, fwidth anti-aliasing, fades to the average tone and glow at 0.7-1.6 m per
+  pixel; --glass-day by day, --glass-night and 36% --window-lit at night, the glow added after
+  lighting). `stain_dark` in world/stains.ts: once the water reaches a building its lights flicker
+  and go out up to 4 s later (hash of the seed), storm clock only. buildings.ts wires both
+  (BuildingPaint gains `windows`). Checked by eye at Raleigh downtown (day/night, near/far) and at
+  Crabtree in Dark mode: the flooded mall's windows are lit before the storm and dark after; the
+  dry apartments above stay lit.
+- Checks (user's per-step routine from here: typecheck, TS tests, one Raleigh smoke run, one 1440
+  trace): typecheck; vitest 85/85; Raleigh /solo storm -> results at 1440 (and the four cities,
+  390 for Raleigh/Miami, a hosted room, before the routine changed): no console errors.
+  One 1440 trace (storm time 1 s on): realism 5.4 avg / 8.0 p95 / 20 max ms, 59.9 fps (a
+  realism=off run at the same time: 6.6 / 9.4 / 30). The machine was quiet (load ~3).
+- Next exact step: R7: quality tiers (low/medium/high by device), prefers-reduced-motion for the
+  world layers (no creep, waves, foam, rise, flicker: `frame.reduce` already freezes the water;
+  check windows/stains), DESIGN.md world section, then remove the `?realism=off` kill switch only
+  after R7 passes. The official A/B waits for the end (user: quiet machine, ask first).
+- Gotchas: the quake and heat cities have no flood data, so `stain_dark` never fires there (New
+  York's blackout stays upstream's DOM flicker).
+
+### 2026-10-04 01:12 EDT Claude (Opus 5.5) lane C, realism rebase onto the four-city main + four-city adaptation
+- Rebased sakhi/realism (semantic zoom S1-F3, realism R0-R5, 17 commits) onto main 6434b22
+  (group/main unchanged at the second fetch). rerere on; backup of the old branch at
+  `backup/realism-pre-rebase` (local only). Every replayed commit typechecks (`git rebase -x`).
+  Rules used: upstream wins on game behavior (cities, globe, news desk, Gemini, buses), this branch
+  on rendering (semantic zoom, deck.gl world, tokens, `?realism=off`), both kept where both changed.
+- Conflicts and how they were combined:
+  - basemap.ts: satellite toggle (imagery palette field, `palette`/`basePalette`, satellite source
+    and layer) + places palette, detail sources, NC aerial layer above the satellite layer;
+    `applyPalette` repaints color/opacity/brightness/saturation/contrast; `TILES` re-exported from
+    world/tiles.ts for the globe; `siteTints` kept.
+  - useFloodMap.ts: dry candidate sites only while a shelter is armed (upstream) + squares hide at
+    z15 for sites drawn as their building (S5); existing shelters + hexFade imports.
+  - usePlanning.ts, Hud.tsx: upstream's city-aware text functions with "marked building".
+  - styles.css: world tokens + upstream's Devanagari font stacks.
+  - MapView.tsx, Solo.tsx: both imports. flood.ts: per-city `dataBase()` + realism setup.
+  - Weather.tsx: upstream's thunder/buzz/quake/heat + the lightning `strikes` for the water.
+  - detail.ts (S3-F1): upstream removed `DATA_BASE`; now `dataBase()` from story.ts.
+  - docs: entries in time order (PROGRESS newest first, upstream's own order untouched).
+- Follow-up commits: (1) the 3D water drains at the storm's end (`FloodView.drain`, director),
+  not on "day + full water" (upstream's clock brings dawn mid-storm); (2) four cities: realistic
+  water + stains only for flood hazards, from each city's data; quake/heat keep MapLibre ground
+  looks over the 3D city; Raleigh-only files (bus_stops, care_homes, site_buildings) and their
+  credits only in Raleigh; NC OneMap aerial only in North Carolina and off under Satellite;
+  (3) site buildings (2D/3D) follow the armed shelter (dry only), GoRaleigh atlas stops hide while
+  a bus is armed (`useMapUi.siteTargets/stopTargets`).
+- Checked: typecheck; vitest 85/85 (12 files, incl. Gemini harness 8); pipeline unittest 33 OK.
+  All four cities /solo planning, storm, results, realism on and off, 1440 and 390; globe landing
+  into each city; hosted room lobby -> election -> storm -> results; news desk in every storm; no
+  console errors. `npm run ai:smoke -w server`: GEMINI_API_KEY empty, prints the template note.
+  `npm install` was needed for upstream's @google/genai (lockfile unchanged).
+- Frame times (Raleigh, A/B medians, from storm time 1 s):
+  | Run | realism=off avg / p95 / max | realism avg / p95 / max |
+  |---|---|---|
+  | 1440 x 900, 3 runs | 8.5 / 13.2 / 36 (59.3 fps) | 7.4 / 15.6 / 49 (59.0 fps) |
+  | 390 x 844, CPU 4x, 2 runs | 19.9 / 27.4 / 49 (48.2 fps) | 17.6 / 24.4 / 47 (52.3 fps) |
+  Not comparable with the pre-rebase rows (upstream changed the storm and phone framing); compare
+  within a row. A first 390 A/B hung in its first trace (headless Chrome never ended the trace);
+  killed, the rerun was clean. 1440 p95 stays unconfirmed until the quiet-machine R7 check.
+- Next exact step: R3 windows (+ flooded windows go dark per building).
+- Gotchas: zsh treats `$c:a...` as a path modifier; write `"${c}:app/..."`. The first page load
+  after `npm install` re-optimizes Vite deps and reloads the page mid-script; rerun. Upstream's
+  results text can print "-0" ("Your plan reached -0 of ..."), not from this branch.
+
+### 2026-10-04 00:30 EDT Claude (Opus 5.5) lane C, realism rebase checkpoint after R5 (stopped: code conflicts)
+- `git fetch group`: group/main moved 1eba02e -> 6434b22 (9 commits: bus demand report, existing
+  shelters/stops baseline, four cities + globe landing + news desk merge, Gemini harness, news
+  anchor fix). Local `main` fast-forwarded to 6434b22. sakhi/realism is unchanged at its R5 commit:
+  no rebase was started (previewed with `git merge-tree --write-tree main sakhi/realism`).
+- Code conflicts (hunks / lines in conflict): basemap.ts 7 / 110, useFloodMap.ts 2 / 34,
+  styles.css 1 / 27, Hud.tsx 2 / 22, Weather.tsx 2 / 21, usePlanning.ts 1 / 11, flood.ts 1 / 9,
+  MapView.tsx 1 / 5, Solo.tsx 1 / 5; plus docs (DECISIONS, PROGRESS). Per the Step 0 rules the
+  rebase stops here for the user. The 16 branch commits (semantic zoom S1-F3, R0, R1, R4, R5)
+  are not upstream.
+- Python: `pipeline/.venv/bin/python -m unittest discover -s pipeline/tests`: 33 tests OK
+  (pytest is not installed in the venv or in requirements.txt; the README's command is unittest).
+- Next exact step: the user decides how to resolve the conflicts (or to continue R3 on the current
+  base and rebase later); then R3 windows + flooded windows going dark.
+
+### 2026-10-04 00:28 EDT Claude (Opus 5.5) lane C, realism R5 (wet stains on walls)
+- Scope (user decision): R5 = wet stains on walls below the water line that stay after the water
+  drops. The flooded-window blackout moved to R3 (it lives in the windows shader). The 3D water
+  rise already landed in R4.
+- Done: `world/stains.ts` (shader module `stain`: samples the flood worker's extent texture for
+  where each step's water reaches and the arrival texture for when; peak height = DEPTH_M[k] x
+  rise x a taper near the step's edge, max over the 3 steps; walls below it get --wet-stain-day /
+  --wet-stain-night, darkest at the foot, a ragged wicking edge ~0.2 m above the water line in
+  wall meters, and a darker tide line; gated by `frame.level` so planning shows none). The rise is
+  monotonic (the ending only drains the surface), so stains keep the peak through the results.
+  `world/water.ts`: the rise formula is shared GLSL (`RISE_GLSL`, `flood_rise`) used by the water
+  and the stains; the flood textures are cached per device (a WeakMap; the module-level cache
+  would hand a second map, e.g. /solo left and re-entered, textures from a dead GL context);
+  `dryTexture()` (1x1 dry land) is bound until the worker is done, since luma.gl throws on a
+  missing binding. `world/buildings.ts`: `flood` prop on both building layers, stain module,
+  bindings set once when the flood data changes. `world/world.ts`: setWater passes the data to
+  the city and the site layers (clone, not per frame).
+- Frame times (A/B medians, `app/scripts/storm-ab.mjs`, from storm time 1 s, load average ~4):
+  | Run | realism=off avg / p95 / max | realism avg / p95 / max |
+  |---|---|---|
+  | 1440 x 900, 3 runs | 8.4 / 13.9 / 56 (59.2 fps) | 7.5 / 15.1 / 41 (58.7 fps) |
+  | 390 x 844, CPU 4x, 2 runs | 29.1 / 41.6 / 70 (34.1 fps) | 25.4 / 34.7 / 66 (38.4 fps) |
+  1440 p95 is unconfirmed until the R7 check on a quiet machine (user decision: 5 alternating
+  runs per mode, median, ask the user first; they stop Codex and other servers).
+- Checked: close shots at Crabtree Valley (results: lower walls stained after the drain; planning:
+  clean walls; storm: the 3D water covers the lower walls), /solo storm + Skip at 1440 and 390,
+  `?realism=off` storm + results, /play/:code?host lobby -> election -> storm -> Skip -> results;
+  no console errors. typecheck, vitest 60/60. No Python changes.
+- Next exact step: the rebase checkpoint (Step 0 rules): `git fetch group`; if group/main moved,
+  fast-forward main and rebase sakhi/realism on it (docs conflicts in time order, PROGRESS newest
+  first; any code conflict: abort and show the user). Run pytest from the pipeline's own venv
+  (pipeline/README.md; create it per the README if missing). Then R3 windows, including flooded
+  windows going dark per building (arrival + hash(seed) x 4 s, from the stain module's textures).
+- Gotchas: GLSL `smoothstep(e0, e1, x)` with e0 > e1 is undefined (on Metal it gave no stain at
+  all); write `1.0 - smoothstep(e1, e0, x)`. Take `fwidth` in uniform control flow (main) and pass
+  it in. MapLibre caps pitch at 60, so walls are seen at a glancing angle and the day stain reads
+  as a darker band low on the walls. drive.mjs: a `waitFor`/`eval` that returns a non-serializable
+  object (e.g. `window.__world`) crashes the script; use `!!`. Stubbing `__map.flyTo/easeTo/jumpTo`
+  from a script pins the camera mostly, but the director still moves it sometimes.
+
+### 2026-10-04 00:05 EDT Claude (Opus 5.5) lane C, realism R4 (living storm water in deck.gl)
+- Done: `world/floodData.ts` + `world/flood.worker.ts` (water geometry + arrival and extent
+  textures, built once in a worker, ~0.5 s), `world/glsl.ts` (hash, value noise with gradient),
+  `world/water.ts` (`WaterLayer`: creep from the creeks, foam band behind the edge, 3 octaves
+  of noise in meters faded by zoom, sky fresnel, sun highlight by day, lightning by night, deep
+  tokens for step 1 / regular for step 3 / blend for step 2, preview blue in planning, 3D rise by
+  DEPTH_M 6/3/1.5 m when tilted, drained by `ending`), `world/submerged.ts` (submerged streets
+  as deck PathLayers with a flowing dash on a time uniform). FloodView: creates the water from the
+  worker, hides the MapLibre water layers under realism, skips its per-frame feature-state and
+  paint writes, and writes `frame` (level, stepP, clock, stepStart, ending, flash, tilt) per
+  frame. director.ts passes the storm clock (RevealFn element 3) and step starts; Weather.tsx
+  publishes lightning strikes. MapLibre path untouched under `?realism=off`.
+- Frame times (A/B medians, `app/scripts/storm-ab.mjs`, from storm time 1 s, same round):
+  | Run | realism=off avg / p95 / max | realism avg / p95 / max |
+  |---|---|---|
+  | 1440 x 900, 3 runs | 10.5 / 20.6 / 80 (57.5 fps) | 10.0 / 17.4 / 83 (58.1 fps) |
+  | 1440 x 900, 3 runs (earlier round) | 8.3 / 13.9 / 74 (59.2 fps) | 10.4 / 19.5 / 128 (56.8 fps) |
+  | 390 x 844, CPU 4x, 2 runs | 30.4 / 42.4 / 84 (30.6 fps) | 25.2 / 35.0 / 60 (38.3 fps) |
+  Dropping the MapLibre per-frame water writes pays for the shader on the phone. At 1440 the
+  p95 is still over 16.7 ms in both modes in a loaded machine; the residents (left as they are,
+  per the user) cost 0.3 ms JS + 0.5-1.5 ms uploads at 1440 and 1.3 ms JS on the phone (R0).
+- Checked: /solo storm + Skip to results, /play/:code?host lobby -> election -> storm -> Skip ->
+  results, with and without `?realism=off`; no console errors. typecheck, vitest 60/60. No
+  Python changes (pytest not installed in this shell's python3; earlier 33/33 in Step 0).
+- Next exact step: R5. The rise is already in water.ts (vertex shader, `water_rise`). Remaining:
+  building stains (BuildingLayer/CityLayer fragment samples the extent texture to find the first
+  step covering a wall, and the arrival texture for when; below the water height use
+  --wet-stain-day/night; the stain uses the peak level so it stays after the ending) and windows
+  going dark per building (arrival + hash(seed) x 4 s; lands with R3 windows if simpler, note it).
+  `floodTextures(device, d)` in water.ts is the shared texture cache to bind into the building
+  layers. Then the rebase checkpoint: `git fetch group`; if group/main moved, fast-forward main
+  and rebase (docs conflicts in time order, PROGRESS newest first; any code conflict: abort and
+  show the user).
+- Decisions a new session needs: step order R0, R1, R4, R5, R3, R7, R2, R6 (one commit + one
+  PROGRESS handoff each, with frame times). R6b dropped: residents, glow, rings and halos in
+  storm/layers.ts stay as they are; the zero-per-frame rule covers the world layers and FloodView
+  only; report the residents' cost separately and ask before touching them if they break the
+  budget. `?realism=off` keeps the MapLibre water and buildings-3d path until R7 passes. Every
+  commit leaves /solo, /host, /play/:code playable; revert a step that breaks the game. Rebase
+  checkpoints after R5 and at the end. No push, no merge commits. Pause/speed/scrub don't exist
+  (only Skip); everything follows the storm clock.
+- Open problems: 1440 p95 sits around 17-20 ms in both modes on this loaded M1 (load 4-20), so
+  the R7 budget check needs a quieter machine or more runs. Pre-existing long tasks when tiles
+  load: flood.ts clipSoon (~68 ms) and detail.ts mark (~42 ms). Camera drags from scripts don't
+  stop the helicopter director; screenshots use the director's views.
+
 ### 2026-10-04 Claude (Opus 5.5) merge of feat/new-features-adit (four cities) into main
 - Done: merged Adit's cities (Miami, San Francisco, New York), globe landing, narrated briefing,
   weak spot, storm timeline, news desk, map modes, themes with tonight's engine work. 10 files
@@ -249,6 +580,50 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Next: tune BUS_SEAT_SHARE after more playtests; consider fading green dots that existing
   shelters already cover.
 
+
+### 2026-10-03 23:41 EDT Claude (Opus 5.5) lane C, realism R1 (3D city in deck.gl, world tokens, piece outlines)
+- Done: 15 world tokens in styles.css + tokens.ts (`unit()` gives shader floats). `app/src/world/`:
+  state.ts (`frame` uniforms, REALISM / `?realism=off`, WORLD_BEFORE = 'road-closed'), lights.ts
+  (LightingEffect: warm low sun, cool moon, mutated in place by FloodView's mood fade),
+  solids.ts (roofs + wall quads, normals, wall coords, seeds; fp64-split lng/lat; tile clipping),
+  tile.worker.ts + tiles.ts (2-3 workers fetch + parse + build; one tile handed over per frame),
+  buildings.ts (`CityLayer`: Tileset2D, z14 only, extent = sites + 2 km, cache 32, one Model,
+  first tile via luma, the rest raw VAO + drawElements; per-fragment Phong; buildings sink into
+  the ground toward 1800 screen px from the center; `BuildingLayer` for fixed sets), world.ts
+  (owns the layers; MapView merges them under the route's layers and passes the lights).
+  FloodView creates the World, hides MapLibre `buildings-3d` when tilted under realism, writes
+  `frame.night`. detail.ts publishes site footprints + heights (`onSiteSolids`) and leaves
+  MapLibre `site-buildings-3d` off under realism (F1 kept: site tints by day, night walls in the
+  storm). Pieces: 2 px ink outline in the map atlas (plan/pieces.ts ATLAS_CELL).
+- Contrast: HUD plates and piece faces are opaque bond/ink (13.4:1; signal on ink 9.0:1). The
+  piece edge over its background: ink vs day walls 9.6:1, bond vs night walls 11.5:1; over a
+  mid-grey aerial pixel the ink outline is 3.3:1 (meets 3:1 for graphics, not 4.5:1; no ink in
+  the palette reaches 4.5:1 on mid-grey).
+- Frame times (A/B medians, alternating runs, `app/scripts/storm-ab.mjs`, from storm time 1 s):
+  | Run | realism=off avg / p95 / max | realism avg / p95 / max |
+  |---|---|---|
+  | 1440 x 900, 3 runs | 10.3 / 18.6 / 51 | 10.2 / 20.1 / 60 |
+  | 1440 x 900, 3 runs (earlier, quieter machine) | 8.3 / 14.4 / 65 | 9.3 / 17.0 / 50 |
+  | 390 x 844, CPU 4x, 2 runs | 31.3 / 47.3 / 93 (31.9 fps) | 29.4 / 44.0 / 67 (32.0 fps) |
+  The machine's background load (Spotlight, other apps; load average 4-20) moves the baseline by
+  2 ms avg and 4 ms p95 between rounds, so compare within a row. R1 adds about 0-1 ms avg and
+  1.5-2.6 ms p95 at 1440, nothing measurable on the throttled phone.
+- What did not work (kept out): deck.gl MVTLayer/SolidPolygonLayer (main-thread attribute builds,
+  108-142 ms frames per new tile); TileLayer with one sublayer per tile (per-layer uniform work,
+  ~7 ms a frame on the throttled phone); a hidden TileLayer (still loads tiles); z13+z14 tiles.
+- Tooling: `storm-ab.mjs` (alternating A/B medians), `trace-cpu.mjs` (top functions of a
+  `{trace, cpu:true}` run, main thread only), drive.mjs logs 3000 chars of console. Dev timing
+  measures are opt-in (`?fxtime`); dev flags `?nocity` and `?nolight` for comparisons.
+- Next exact step: R4. Uncommitted drafts are in the tree: world/floodData.ts + flood.worker.ts
+  (water geometry, arrival + extent textures), world/water.ts (WaterLayer), world/glsl.ts,
+  world/submerged.ts (submerged streets as deck PathLayers with a flowing-dash extension). Wire
+  them into FloodView (worker at load, hide MapLibre water layers under realism, frame uniforms
+  from RevealFn; director passes the storm clock as element 3 and step starts).
+- Gotchas: an orphaned headless Chrome from an earlier session (5:42 PM, 6:44 PM) ran at 340% CPU
+  and skewed the first traces; I stopped both (PPID 1, headless, swiftshader). Editing a module
+  the page imports triggers Vite HMR and disturbs a running trace; don't edit app/src during an
+  A/B. zsh does not split `$var`; quote args or use separate commands.
+
 ### 2026-10-03 22:40 EDT Claude (Opus 5.5) lanes A+B+C+D, existing shelters, stop pickups, less clutter
 - Done: existing_shelters.json (FEMA NSS, npm run shelters), transit_stops.json now has stop ids.
   Engine: existing shelters as baseline, score = share of the gap, split seating, stop pickups
@@ -266,6 +641,38 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   (catchments use cell indices). score() needs existing_shelters.json in the data folder to match
   the app; fixtures have none (baseline 0).
 
+
+### 2026-10-03 21:21 EDT Claude (Opus 5.5) lane C, realism R0 (baseline storm traces)
+- Branch `sakhi/realism` from sakhi/semantic-zoom rebased on group/main 1eba02e. Never pushed.
+  The plan (R0-R7, user order R0 R1 R4 R5 R3 R7 R2 R6, R6b dropped) is in the task brief.
+- Done: trace tooling. `app/scripts/drive.mjs` gains `{throttle:N}` (CDP CPU throttling) and
+  `{trace:ms, file}` (Chrome performance trace via CDP Tracing). `app/scripts/trace-stats.mjs`
+  summarizes a trace: per frame, `main` = the renderer main-thread task that ran the
+  animation-frame callbacks, `gpu` = GPU-process GPUTask time until the next frame, `frame` =
+  max(main, gpu); plus presented fps and dev `performance.measure` timings.
+  `app/scripts/storm-trace.mjs <w> <h> [throttle] [query] [file]` opens /solo?skip, places the
+  optimal plan, starts the storm (it tilts to 55 degrees and the helicopter flies) and traces 24 s.
+- Done: `app/src/dev/fx.ts` (dev only, loaded by MapView): per-frame counts of MapLibre
+  setData/setFeatureState/setPaintProperty/setLayoutProperty/setFilter and deck.gl attribute
+  uploads by layer (`window.__fx.summary(sinceStormMs)`), and timings `map-render`,
+  `storm-layers` (MapView's storm rebuild), `flood-frame` (FloodView), `attrs <layer>`.
+- Baseline (GPU=1 headless Chrome, Apple M1, from storm time 1 s to 24 s, ms):
+  | Run | frame avg | p95 | max | fps | map-render avg | residents JS + uploads |
+  |---|---|---|---|---|---|---|
+  | 1440x900 dpr 1 | 8.5 | 12.9 | 39.8 | 59.2 | 6.7 | 0.3 + ~0.5 |
+  | 390x844 dpr 2, CPU 4x | 27.5 | 39.2 | 67.2 | 37.0 | 20.7 | 1.3 + ~1.5 |
+  Runs vary by about 1 ms on the average (a second 1440 run gave 6.8 / 11.1). GPU time is small
+  (2.5 avg) at both sizes; the cost is CPU (MapLibre render + deck draw).
+- Per-frame writes today (390 run, after 1 s): setFeatureState on `flood` 15,888 in the storm,
+  setPaintProperty on water-1..3 and submerged-flow-0..3 every frame, and every storm resident
+  layer (storm-glow, -stranded, -residents, -halos, -trails) re-uploads all its attributes each
+  frame (a new data object per frame). The residents stay as they are (user decision).
+- Next exact step: R1. Add the 15 color tokens to styles.css and tokens.ts; app/src/world/
+  (clock.ts, buildings.ts with a TileLayer + MVTLoader binary wgs84 + BuildingLayer, lights);
+  FloodView swaps buildings-3d for the deck layers when tilted; `?realism=off` keeps the old path.
+- Gotchas: run the traces with `bash` or quote args; zsh does not split `$var` in a for loop (a
+  first attempt traced at a bogus size). Headless Chrome runs at 60 Hz with GPU=1.
+
 ### 2026-10-03 20:55 EDT Claude (Opus 5.5) lanes A+D+C, bus pickup demand report for planners
 - Done: pipeline/transit.py + app/public/data/transit_stops.json (GoRaleigh 2024 feed, flagged
   expired; GoTriangle current). server/src/demand.ts (report, CSV, GeoJSON), store.pickups() on
@@ -280,6 +687,92 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   "why here?" tap after placing a piece; show planners the crowd ranking from GET /api/planner too.
 - Gotchas: the report needs real plays from at least 5 different people per area; with few
   testers use ?minPlayers=3. A newer GoRaleigh GTFS URL can replace FEEDS[0] in pipeline/transit.py.
+
+
+### 2026-10-03 20:29 EDT Claude (Opus 5.5) lane C, semantic zoom screenshots and final check
+- Done: docs/screenshots/semantic-zoom/tilted-planning-{1440,390}-z{15,17}.jpg (3D on, pitch
+  45, Broughton High in the site color, unmatched site squares above the 3D buildings; aerial
+  at z17). JPEG, 326-480 KB each (1440 z15 at quality 62, z17 at 70, 390 at 80).
+- Final check: branch = group/main 1f8ec6a + 12 commits, 0 merge commits, nothing pushed.
+  typecheck; 57 TS tests; 33 Python tests (pipeline/.venv); python3 test_detail 9. Two-player
+  room check rerun (host /host/SZQB?host 1440, phone /play/SZQB 390): joined, both locked, storm
+  started on both 2 ms apart; phone detail at z15/z17, none at z12; no console errors.
+- Next exact step: team review of sakhi/semantic-zoom before any merge (none done here).
+- Gotchas: the P9 handoff entry (18:40) sits inside the `<!-- Newest first. Template:` comment in
+  this file, so it is hidden when rendered; left as upstream wrote it.
+
+### 2026-10-03 20:27 EDT Claude (Opus 5.5) lanes A+C, semantic zoom F3 (nursing homes and assisted living)
+- Finding: 182 z14 tiles over the study area hold one care home (`hospital/nursing_home`,
+  Hillcrest); OpenMapTiles drops `amenity=social_facility`, how OSM tags most of them.
+- Done: pipeline/care_homes.py (stdlib; Overpass cached in pipeline/cache/care_homes_overpass.json
+  + .query; `read_homes` keeps nursing_home / assisted_living, drops repeats of one place) wrote
+  app/public/data/care_homes.json: 18 places (13 assisted living, 5 nursing homes), 2,060 bytes;
+  meta.json `sources.careHomes`, `careHomes`. refresh_detail rebuilds it too (offline).
+  `overpass()` takes the script name for its cache messages. App: detail.ts source `care-homes`,
+  pictogram `place-care` (house with a heart), layer `care-homes` (z14 icon, z15 names, places'
+  palette colors), just below `places` in label priority. README, DESIGN row, DECISIONS line.
+- Verified: python3 test_detail 9 OK (care-home kinds, names, the doubly mapped Glenaire), venv
+  suite 33 OK (rebuild tests now also require sources.careHomes), typecheck, 57 TS tests. Shots:
+  z12 0 care homes; z14 2-3 near Crabtree (Hillcrest with its name at z15), day and storm.
+- Next exact step: commit the tilted-planning screenshots (z15, z17 x 1440, 390) under
+  docs/screenshots/semantic-zoom/ as JPEG < 500 KB each; rerun the two-player room check.
+- Gotchas: Overpass answered 504 twice in a row during this run; a later retry worked.
+
+### 2026-10-03 20:23 EDT Claude (Opus 5.5) lane A, semantic zoom F2 (rebuild keeps the detail sources)
+- Done: bus_stops.py and site_buildings.py refactored to `build(data_dir, cache_dir, refresh=False,
+  offline=False)` (main() wraps it); `MissingCache` for offline runs without a cache. New
+  pipeline/detail.py `refresh_detail()`; build_all.py `finish(p2_only, data_dir, cache_dir)` runs
+  build_flood (unless --p2-only) then refresh_detail, last. Overpass caches now keep their query
+  in `<cache>.query` (stale answers refused; old caches adopted once). meta.siteBuildings has
+  `osmFetched` instead of `built`. README section updated.
+- Tests: test_detail.py +3 (refresh restores sources.busStops / sources.siteBuildings and both
+  blocks; offline + no cache raises and never calls urlopen; changed sites.json refuses the
+  cache). New test_rebuild.py (venv): build_all.finish with a flood stage that rewrites meta.json
+  ends with both sources and blocks; --p2-only path too. With refresh_detail stubbed out both
+  rebuild tests fail ("meta.json lost sources.busStops"). Real offline refresh on
+  app/public/data: data files byte-identical, meta.json only `built` -> `osmFetched`.
+- Verified: python3 test_detail 8 OK; venv suite 32 OK; typecheck; 57 TS tests.
+- Next exact step: F3 care homes. pipeline/care_homes.py (Overpass: amenity=social_facility +
+  social_facility=nursing_home|assisted_living, amenity=nursing_home; study-area bbox
+  35.6978,-78.8311,35.9813,-78.4596) -> app/public/data/care_homes.json + meta; add it to
+  refresh_detail and its tests; app layer `care-homes` (z14 icon `place-care`, z15 names).
+
+### 2026-10-03 20:20 EDT Claude (Opus 5.5) lane C, attribution stays folded (found during the room check)
+- Done: MapView.tsx folds the compact attribution when MapLibre opens it on its own (a
+  MutationObserver on the control, disconnected after that fold or on the player's first click).
+  It used to wait for the first 'idle', which the water shimmer delays: on main it was open at
+  load, and with the semantic-zoom aerial it stayed open; at 390 px it covered "Start the storm".
+- Verified at 390: folded at load and at z17; one click on (i) opens it with "Bus stops: GoRaleigh
+  GTFS | Imagery: NC OneMap, NC Center for Geographic Information and Analysis | OpenFreeMap ©
+  OpenMapTiles Data from OpenStreetMap". typecheck.
+- Next exact step: F2. Refactor pipeline/bus_stops.py and site_buildings.py into
+  `build(data_dir, cache_dir, refresh=False, offline=False)`; add pipeline/detail.py
+  `refresh_detail()` (offline, from cache) called last by build_all.main; tests in
+  pipeline/tests/test_detail.py.
+
+### 2026-10-03 20:18 EDT Claude (Opus 5.5) lane C, semantic zoom F1 (3D shelters)
+- Context: branch rebased onto group/main 1f8ec6a (P9 rooms, P15 live). Rebase stops resolved per
+  the user's rules (DECISIONS both sides in time order; PROGRESS upstream checklist kept, my
+  section and entries placed by time; Solo.tsx room block kept, then the coverage rim lines).
+  Then: npm install, typecheck, 57 TS tests (8 files, incl. rooms + live), 27 Python tests in a
+  new claude/pipeline/.venv (python3.11, requirements.txt). Two-player room check (host
+  /host/SZQA?host at 1440, phone /play/SZQA at 390): join, lock, storm started on both 3 ms apart;
+  detail layers on the phone at z15/z17, none at z12; no console errors.
+- Done (F1): detail.ts `siteBuilding3dLayer(P)` (fill-extrusion on the site-buildings source,
+  visible when pitch > TILT_3D, exported from flood.ts) and, in installDetail, a debounced pass
+  after omt tiles load / moveend that reads the tile building's render_height under each site in
+  view (probe points inside the footprint) into feature-state `height`. Footprints are pushed out
+  0.8 m (`pushOut`). basemap.ts palette `site3d` (bond->ink 55%) / `site3dFloods` (20%); storm =
+  storm-building for both. Placed right after `buildings-3d` in the style.
+- Verified: typecheck, 57 TS tests. Tilted 1440 shots: z15 10 site extrusions, all with a tile
+  height; z17 Broughton in the site color, unmatched squares above the 3D buildings; flooded
+  Washington Elementary pale; storm: Broughton looks like any building. No console errors.
+- Next exact step: fold the attribution on MapLibre's own open (MapView.tsx; it is only folded on
+  `idle`, which the water shimmer delays: at 390 it covers "Start the storm"), then F2 (rebuild
+  safety: pipeline/detail.py refresh_detail from cache, called last by build_all, with tests),
+  then F3 (care homes from OSM via Overpass: the tiles hold 1 of 16).
+- Gotchas: tile building ids are height-group ids (one id, many buildings); never feature-state
+  them per building.
 
 ### 2026-10-03 19:45 EDT Claude (Opus 5.5) lanes B+C (+D planner text), flood evacuation chain
 - Done: shared/src/engine/coverage.ts reworked (see DECISIONS "Evacuation chain"): bus pickups feed
@@ -421,6 +914,134 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - Rooms, the planner and POST /api/plays still use Raleigh data.
   - The automated browser pane stops drawing frames after ~10 s, so flights and animations look
     frozen there; judge motion in a real browser.
+
+### 2026-10-03 19:14 EDT Claude (Opus 5.5) lane C, semantic zoom S6 (hex fade) and final check
+- Done (S6): layers.ts `hexFade(zoom)`; `cellsLayer(..., opacity)` (only the visible people fill
+  fades; the pick target stays) and `hoodLayer(..., opacity)`, fed by useFloodMap from the store's
+  zoom. plan/layers.ts `coverageLayer(..., rim)` adds a 1 px ink rim from `COVERAGE_RIM_ZOOM` (15);
+  Solo passes it. Coverage alpha is unchanged at every zoom.
+- Final check (all on branch sakhi/semantic-zoom, 6 commits, nothing pushed):
+  - Shots at z12 / z15 / z17, planning and storm, 1440x900 and 390x844 (GPU Chrome). New layers at
+    z12: 0 rendered features and 0 aerial tile requests in all four runs. z15: places 6-21, bus
+    stops 8-32, site buildings 1-7. z17: house numbers, aerial, Broughton High outlined.
+  - No console errors or warnings on /solo (day and storm), /host/ABCD and /play/ABCD. vite build ok.
+  - Pan at z17 (S4 run): 60 fps, p99 16.8 ms, 0 frames over 33 ms.
+  - New data: bus_stops.json 116,584 B, site_buildings.json 126,406 B (both < 5,000,000).
+    Credits: map attribution shows "Bus stops: GoRaleigh GTFS" and "Imagery: NC OneMap, NC Center
+    for Geographic Information and Analysis" when those layers are in view (OSM via the tiles);
+    meta.json `sources.busStops`, `sources.siteBuildings`, `busStops`, `siteBuildings`.
+  - typecheck, 43 vitest tests, 5 python tests (python3 -m unittest pipeline.tests.test_detail).
+- Half done: nothing.
+- Next exact step: merge sakhi/semantic-zoom into main when the team agrees (no conflicts expected
+  outside app/src/map, app/src/ui/Hud.tsx, store.ts, Solo.tsx, docs). Optional follow-ups: nursing
+  homes as places (left out per the brief); a nearest-building fallback for the 54 node sites outside
+  any footprint; show site outlines on top of 3D buildings when tilted.
+- Gotchas: rerun `python3 -m pipeline.bus_stops` and `python3 -m pipeline.site_buildings` after a
+  full `build_all` (it drops their meta blocks; caches make it offline). Fixture mode has no detail
+  files (the map warns and skips them).
+
+### 2026-10-03 19:08 EDT Claude (Opus 5.5) lanes A+C, semantic zoom S5 (shelter sites as buildings)
+- Done (data): pipeline/site_buildings.py (stdlib; two Overpass queries cached in
+  pipeline/cache/site_elements_overpass.json and site_nearby_buildings_overpass.json) wrote
+  app/public/data/site_buildings.json `[{id, match, osm, polygons}]` (MultiPolygon coords, 5
+  decimals): **162 of 216 sites matched** (contains 50, self 51, grounds 61; osm-node 50/104,
+  osm-way 100/100, osm-relation 12/12), 126,406 bytes. The 54 unmatched are nodes outside every
+  footprint (e.g. Ravenscroft School, East Garner Elementary); they keep their square. meta.json
+  gains `sources.siteBuildings` and `siteBuildings`. 2 more unit tests (rings, holes, rules).
+- Done (app): detail.ts source + `siteBuildingLayers(P)` (fill + outline, z15+, placed after
+  `buildings`), feature-state hover, `loadSiteBuildings()` (shared with useFloodMap, which hides the
+  square of matched sites at z15+), `installDetail(map, onSite)` wires mousemove/click/mouseleave
+  and closes on any other click or zoomstart. store `siteCard`; ui/SiteCard.tsx (name, type,
+  "Shelter for up to 10,000 people", flood note) rendered by MapView. Palette siteFill/siteHover/
+  siteLine per mood. Status text now says "marked building" (Hud.tsx, usePlanning.ts, DESIGN).
+- Verified: typecheck, 43 tests, 5 python tests. z12 0 site buildings; z15 6-7; z17 Broughton
+  outlined, square hidden. Hover at 1440 and tap at 390 show the card; a tap elsewhere closes it.
+  Day/storm 1440, 390 shots. No console errors.
+- Next exact step: S6. In useFloodMap/Solo, fade the H3 fills at z15+: deck.gl `opacity` on
+  `cells` (who-lives-here), `hood` tint and the cursor hex fill (plan/layers.ts cursorLayer), from
+  1 at z14.5 to 0.35 at z16 using the store's zoom. Keep `coverage` (plan/layers.ts coverageLayer)
+  at full alpha and add a thin ink rim from z15 so it reads over the aerial. Then the full DONE
+  check (z12/15/17 x day/storm x 1440/390), data sizes, attribution, and a final handoff.
+- Gotchas: with 3D on (pitch > 20) the 3D buildings cover the flat site outlines; fine for the storm
+  (DESIGN hides sites there), but a tilted planning view shows sites only as place icons.
+
+### 2026-10-03 19:00 EDT Claude (Opus 5.5) lane C, semantic zoom S4 (NC OneMap aerial)
+- Done: detail.ts raster source `aerial` (NC OneMap Orthoimagery_Latest_cached tiles, minzoom 16,
+  maxzoom 20, attribution "Imagery: NC OneMap, NC Center for Geographic Information and Analysis")
+  and `aerialLayer(P)` (raster-opacity z16 0 -> z17 85% day / 80% night), placed in basemap.ts
+  groundLayers after `waterway`, before `buildings`. Palette `aerial` {opacity, saturation,
+  contrast, brightnessMin, brightnessMax} per mood; applyPalette's regex now includes raster tone.
+- Verified: typecheck, 43 tests. nconemap requests: 0 at z12 and z15, 68 by z17 (1440). Day, storm
+  (1440) and 390 shots; labels and streets read on the photo. Pan at z17, GPU Chrome 1440x900, 12
+  drags over 10.5 s: 60 fps, p99 16.8 ms, max 16.8 ms, 0 frames over 33 ms. No console errors.
+- Next exact step: S5. Write pipeline/site_buildings.py (stdlib + Overpass at
+  https://overpass-api.de/api/interpreter, send a User-Agent or it is refused; cache responses in
+  pipeline/cache/). For each site in sites.json: osm-node -> the building way/relation whose
+  polygon contains it; osm-way/relation tagged building -> itself; grounds (school campus) ->
+  the building containing site lon/lat, else the largest building inside the grounds. Write
+  app/public/data/site_buildings.json `[{id, match, rings}]` (5 decimals, < 5 MB) and report counts
+  per rule. Then the app: GeoJSON source `site-buildings`, outline + fill layers z15+, hide the
+  deck.gl square for matched sites at z15+, hover/tap card (name, type, capacity 10,000).
+- Gotchas: raster sources pick tiles by rounded zoom, so z16.5 already loads z17 imagery.
+
+### 2026-10-03 18:56 EDT Claude (Opus 5.5) lanes A+C, semantic zoom S3 (GoRaleigh bus stops)
+- Done: pipeline/bus_stops.py (stdlib, cached in pipeline/cache/goraleigh_gtfs.zip + .json) wrote
+  app/public/data/bus_stops.json: 1,386 stops, 116,584 bytes, feed S1000098 resolved to
+  goraleigh.org/sites/default/files/2026-09/goraleighgtfs_sept062026.zip. meta.json gains
+  `sources.busStops` and `busStops` {url, resolvedUrl, lastModified, downloaded, feedVersion,
+  feedStart, feedEnd, count}. pipeline/tests/test_detail.py (3 tests). pipeline/README.md section.
+- Done (app): detail.ts `detailSources()` (GeoJSON `bus-stops` with attribution "Bus stops: GoRaleigh
+  GTFS"), a bus SDF badge, layer `bus-stops` (z14+, names z16+). `installDetail` fetches
+  `${DATA_BASE}/bus_stops.json`; a failed fetch only warns. Palette `busIcon` per mood.
+- Verified: typecheck, 43 tests, python unittest. z12: 0; z15: 29-32 stops; z17: 8-9 with names.
+  Attribution shows GoRaleigh once stops are in view. Day, storm (1440) and 390 shots. No errors.
+- Next exact step: S4. Add raster source `aerial` to `detailSources()`:
+  tiles `https://services.nconemap.gov/secure/rest/services/Imagery/Orthoimagery_Latest_cached/ImageServer/tile/{z}/{y}/{x}`,
+  tileSize 256, minzoom 16, maxzoom 20, attribution "Imagery: NC OneMap / NC CGIA". Layer
+  `aerial` (minzoom 16) in basemap.ts groundLayers after `water`/`waterway`, before `buildings`:
+  raster-opacity z16 0 -> z17 0.85; palette `aerialBrightnessMax`/`aerialSaturation` per mood and
+  widen applyPalette's regex to raster-brightness|raster-saturation. Then GPU=1 pan test at z17.
+- Gotchas: in fixture mode (VITE_DATA_BASE=/data/fixtures) bus_stops.json does not exist; the map
+  warns and shows no stops. `build_all` drops meta.busStops; rerun `python3 -m pipeline.bus_stops`.
+
+### 2026-10-03 18:52 EDT Claude (Opus 5.5) lane C, semantic zoom S2 (addresses, building names)
+- Done: detail.ts `detailLabelLayers(P)` (replaces placeLayers): `addresses` (housenumber, z16+,
+  lowest priority), `building-names` (z16+, `BUILDING_NAMES_FILTER`), then `places`. Palette gains
+  `address` (ink 55% / storm-label 60%).
+- Verified: typecheck, 43 tests. Shots at 1440 (day, storm) and 390 (day): z12 all 0; z17 Oakwood
+  57-80 house numbers; downtown z16.5 10 building names (museums, State Court of Appeals, NC
+  Department of Public Safety). No console errors.
+- Next exact step: S3. Write pipeline/bus_stops.py (stdlib only): GET https://goraleigh.org/gr_gtfs
+  (follows a 301 to the dated zip), cache it as pipeline/cache/goraleigh_gtfs.zip, read stops.txt
+  (location_type blank or 0), write app/public/data/bus_stops.json `[{id,name,lat,lon}]` (5
+  decimals), and add `sources.busStops` + a `busStops` block (url, resolved url, feed_version,
+  feed dates, downloaded) to meta.json. Then in detail.ts a GeoJSON source `bus-stops`, a bus SDF
+  icon, a `bus-stops` layer z14+ (names z16+), source attribution "GoRaleigh GTFS".
+- Gotchas: tile POIs include their own `bus/bus_stop` points (all agencies); we do not draw those.
+
+### 2026-10-03 18:50 EDT Claude (Opus 5.5) lane C, semantic zoom S1 (places)
+- Branch `sakhi/semantic-zoom` in wolfhacks/claude, from group/main a7b011c. Never pushed. The plan
+  (S1-S6) is in the task brief; research found: OpenFreeMap tiles have `poi` (class, subclass,
+  name, rank) and `housenumber`, but the `building` layer carries no names; GoRaleigh GTFS is at
+  https://goraleigh.org/gr_gtfs (1,386 stops); NC OneMap imagery is a 3857 tile cache at
+  services.nconemap.gov/secure/rest/services/Imagery/Orthoimagery_Latest_cached/ImageServer/tile/{z}/{y}/{x}
+  (CORS ok, terms "free and unrestricted use", cite NC OneMap / NC CGIA); sites.json ids are 104
+  osm-node, 100 osm-way, 12 osm-relation.
+- Done (S1): app/src/map/detail.ts: `PLACES_FILTER`, canvas pictograms (`PLACE_ICONS`) turned into
+  SDF images (`sdfImage`), `placeLayers(P)` (z14 icons, z15 names, below street names), and
+  `installDetail(map)` (adds icons; MapView calls it at map creation). basemap.ts exports `Palette`
+  with `placeIcon`/`placeLabel` per mood and slots the places into `labelLayers`.
+- Verified: typecheck, 43 tests. Shots (scratchpad, not committed) at 1440 day and storm and 390 day,
+  z12/z15/z17: `queryRenderedFeatures` on `places` gives 0 at z12, 18-21 at z15. No console errors.
+- Next exact step: S2. In detail.ts add `addressLayers(P)`: `housenumber` text at z16+ (10 px, ink
+  55% / storm-label 60%), placed lowest of the labels, plus a z16+ names layer for non-commercial
+  named POIs (town_hall courthouse/public_building, office government/educational_institution,
+  college, lodging/dormitory, museum, information/office) since the tiles have no building names.
+  Add palette entries `address`, then shots with IDS=places,addresses,building-names.
+- Gotchas: the map is never "idle" or `loaded()` while the water shimmers; wait on
+  `isStyleLoaded()` / `areTilesLoaded()` in scripts. The shot helper used is a scratch script around
+  app/scripts/drive.mjs (jumpTo a view, poll areTilesLoaded, count rendered features, shot). For
+  storm shots run GPU=1 and drag the map once first so the helicopter camera lets go.
 
 ### 2026-10-03 18:45 EDT Claude (Opus 5.5) lane D, P15 live feeds (server)
 - Done: server/src/live/ (sources.ts fetchers + pure parsers, store.ts Tiger/memory/failSoftLive,

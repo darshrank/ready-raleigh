@@ -1,10 +1,11 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { PickingInfo } from '@deck.gl/core';
 import type { Cell, Site } from '@shared/types';
 import type { MapData } from '../data';
 import { useMapUi } from '../store';
+import { SITE_BUILDING_ZOOM, loadSiteBuildings } from './detail';
 import { dataPoints } from './frame';
-import { HOSPITAL_LABEL_ZOOM, cellsLayer, existingSheltersLayers, hoodLayer, hospitalLayers, sitesLayer } from './layers';
+import { HOSPITAL_LABEL_ZOOM, cellsLayer, existingSheltersLayers, hexFade, hoodLayer, hospitalLayers, sitesLayer } from './layers';
 
 /**
  * Layers, framing points and click handling for the flood map, shared by every route that shows it.
@@ -19,14 +20,30 @@ export function useFloodMap(data: MapData | null, { targetingSites = false, nigh
   const nameZoom = useMapUi((s) => s.zoom >= 12);
   const selectedHood = useMapUi((s) => s.selectedHood);
   const selectHood = useMapUi((s) => s.selectHood);
+  const fade = useMapUi((s) => hexFade(s.zoom));
 
   const frame = useMemo(() => (data ? dataPoints(data) : null), [data]);
+  // From z15 a site with a real building draws as that building (map/detail.ts); its square hides.
+  const closeUp = useMapUi((s) => s.zoom >= SITE_BUILDING_ZOOM);
+  const [outlined, setOutlined] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadSiteBuildings().then(
+      (b) => live && setOutlined(new Set(b.map((x) => x.id))),
+      () => {}, // detail.ts warns; every site keeps its square
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
   // Candidate sites are the shelter targets: they show only while a shelter is being placed, and
   // only the ones that stay dry (a shelter in a building that floods helps no one).
-  const sites = useMemo(
-    () => sitesLayer((data?.sites ?? []).filter((s) => s.floodStep === null || s.floodStep > 3), { targeting: targetingSites, visible: targetingSites }),
-    [data, targetingSites],
-  );
+  useEffect(() => useMapUi.setState({ siteTargets: targetingSites }), [targetingSites]);
+  const sites = useMemo(() => {
+    const dry = (data?.sites ?? []).filter((s) => s.floodStep === null || s.floodStep > 3);
+    const shown = closeUp && outlined ? dry.filter((s) => !outlined.has(s.id)) : dry;
+    return sitesLayer(shown, { targeting: targetingSites, visible: targetingSites });
+  }, [data, targetingSites, closeUp, outlined]);
   const hospitals = useMemo(
     () => hospitalLayers(data?.hospitals ?? [], showFacilities, labelZoom ? HOSPITAL_LABEL_ZOOM : 0, night),
     [data, showFacilities, labelZoom, night],
@@ -36,8 +53,8 @@ export function useFloodMap(data: MapData | null, { targetingSites = false, nigh
   // basemap style (map/flood.ts), under every deck.gl layer.
   const under = useMemo(() => {
     if (!data) return [];
-    return [cellsLayer(data.cells, metric, showPeople), hoodLayer(data.cells, selectedHood)];
-  }, [data, metric, showPeople, selectedHood]);
+    return [cellsLayer(data.cells, metric, showPeople, fade), hoodLayer(data.cells, selectedHood, fade)];
+  }, [data, metric, showPeople, selectedHood, fade]);
   const base = under;
 
   // Registered shelters already in place: always shown, they are part of the city's answer.

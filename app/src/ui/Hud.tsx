@@ -265,7 +265,7 @@ export function Tray({
 }
 
 const ARMED_HINT: Record<FloodPiece, () => string> = {
-  shelter: () => `Tap a building square on the map to open a ${pieceName('shelter').toLowerCase()} there. Green houses already exist.`,
+  shelter: () => `Tap a marked building on the map to open a ${pieceName('shelter').toLowerCase()} there. Green houses already exist.`,
   bus_pickup: () => 'Tap a yellow block, where people without a car are at risk. Small squares are existing bus stops ($0.5M).',
   road_protection: () => `Tap a pink ${currentStory().roadKind} road to keep it open.`,
 };
@@ -327,7 +327,7 @@ export function Status({ data, preview }: { data: MapData; preview: Preview | nu
   } else if (placements.length === 0)
     body = (
       <p>
-        Place your first {pieceName('shelter').toLowerCase()}. Pick it below, then tap a building square on the map.
+        Place your first {pieceName('shelter').toLowerCase()}. Pick it below, then tap a marked building on the map.
         {(data.existingShelters?.length ?? 0) > 0 ? ' Green dots are people the existing shelters already keep safe.' : ''}
       </p>
     );

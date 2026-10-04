@@ -58,6 +58,52 @@ Rules:
 - The night palette is the map, not a UI theme. HUD plates stay `--bond` and `--ink` at night,
   like printed stickers on a dark board. No neon, no glow on UI chrome; only water glows.
 
+## The world: realistic city and storm water (realism)
+
+The board stays printed; the **world under it is realistic**: a lit 3D city and living storm water,
+drawn by deck.gl layers in `app/src/world/` (interleaved below road barriers and every label).
+The printed inks are the instruments (HUD, pieces, labels, coverage); the world tokens below are
+the city and the water. The "flat fills only" rule is for the instruments, not the world.
+
+| Token | Hex | Use |
+|---|---|---|
+| `--flood` / `--flood-deep` (inks above) | `#0078BF` / `#00508A` | storm water by day (500-year band / floodway), clean blue, never murky |
+| `--storm-water` / `--flood-deep` | `#2A9DEB` / `#00508A` | the same at night |
+| `--foam` | `#E9E4D2` | foam behind the advancing water, sun highlight, lightning on the water |
+| `--sky-day` / `--sky-night` | `#C9D8E6` / `#2D416B` | what the water reflects at a glancing angle |
+| `--wall-day` / `--wall-night` | `#D9D4C9` / `#2A3550` | 3D building walls (roofs a touch darker) |
+| `--glass-day` / `--glass-night` | `#5D6F80` / `#1A2236` | window panes |
+| `--window-lit` | `#FFD28A` | lit windows at night, the sun's warm key light |
+| `--shadow` | `#1B2333` (about 25%) | ground shadows |
+
+- **City:** every OpenFreeMap building in 3D when the camera tilts (sites + 2 km), lit by a warm
+  low sun by day and a dim cool moon at night. Shelter sites stand out in the site tint only while a
+  shelter is being placed.
+- **Water:** creeps out of the creeks, a foam band behind the edge, scrolling noise, sky fresnel, a
+  sun highlight by day, lightning by night; floodway deepest. Tilted, it rises (6 / 3 / 1.5 m by
+  step) and drains when the storm ends, keeping its final extent. Planning keeps the faint `--flood`
+  preview. Flood cities only; an earthquake or a heat wave keeps its printed ground colors.
+- **City lights:** at night the city is thousands of glowing points: building lights by residents
+  (a whiter tint of `--window-lit`, mostly dim, a few bright) and street lights every 60 m along
+  the main roads (`--window-lit`), 1.5-3 px, added over the map with a faint flicker. Only in the
+  storm's night; gone by day and in planning; they fade out by z15.5, where the windows take over.
+- **Blackout:** the lights follow the city's hazard into the dark. Flood: a light flickers and goes
+  out shortly after the water reaches it; lights within 400 m follow a few seconds later, so
+  neighborhoods go dark in a wave behind the water. Quake: each step's zones cut out almost at
+  once, as if lines snapped; nearby blocks follow within a second or two. Heat: rolling blackouts
+  in the hottest zones (blocks off and on in turns), then each zone dark for good as the grid fails.
+- **Windows:** a pane grid on every wall; at night a third glow `--window-lit`. When the water
+  reaches a building its lights flicker and go out a few seconds later.
+- **Only uniforms change per frame**: the shaders read the storm clock, the day/night mix and the
+  lightning; no attribute is rebuilt while the storm runs.
+- **Quality tiers** (`world/quality.ts`, `?quality=low|medium|high` to force): high on laptops;
+  medium on phones (two noise octaves, windows fade sooner); low on small or old devices (one
+  octave, no foam, window grid as its average tone, a shorter city, pixel ratio at most 1.25).
+- **Reduced motion:** the water appears per step with no creep, waves, foam or rise; lights go out without the flicker; no lightning on the water; the street dashes
+  stop.
+- `?realism=off` keeps the MapLibre buildings and water described in "Water (flood)" (removed
+  once realism passes its final check).
+
 ## Type
 
 | Role | Family | Notes |
@@ -76,6 +122,8 @@ real emergency alerts use it.
 
 Water is drawn as native MapLibre layers from `flood_steps.geojson`, inserted **above roads and
 buildings and below every label**, so street and place names read over the water.
+Under realism the deck.gl water ("The world" above) replaces these layers in the same slot; this
+section describes the `?realism=off` path, and the same rules (steps, growth, preview, results).
 
 - The three steps are disjoint bands (1 floodway, 2 the 100-year band, 3 the 500-year band).
   Each is a semi-transparent blue fill: step 1 `--flood-deep` (it arrives first, deepest), step 2
@@ -124,6 +172,21 @@ Coverage in planning is also a halftone: `--safe` dots that grow with the protec
     minor street names from zoom 15, water names in italic.
 - Night: land `--storm-land`, streets as faint `--storm-street` lines with no casing, buildings
   `--storm-street` / `--storm-building`, labels `--storm-label` with a `--storm-land` halo.
+- Detail by zoom (semantic zoom, `app/src/map/detail.ts`). The city view (z12 and below) shows
+  nothing new; each layer appears at its zoom, like a street atlas. Every layer has day and night
+  colors in the basemap palette (`basemap.ts`), so the storm re-paints it.
+
+  | Zoom | Layer | Day | Night |
+  |---|---|---|---|
+  | 14+ | Places from the tiles' `poi`: schools, hospitals and clinics, worship, community centers, libraries, grocery, fire, police. 16 px ink badge with a knocked-out pictogram; names from 15 | `--ink` 85% | `--storm-label` |
+| 16+ | House numbers (`housenumber`), 9.5-11 px, the lowest label priority | `--ink` 55% | `--storm-label` 60% |
+| 16+ | Building names: named non-commercial `poi` (courthouses, public and government buildings, campus offices, dormitories, museums); the tiles' buildings carry no names | `--ink` 85% | `--storm-label` |
+| 14+ | Nursing homes and assisted living (`care_homes.json`, OSM; the tiles drop them): the place badge with a house and heart; names from 15 | `--ink` 85% | `--storm-label` |
+| 14+ | GoRaleigh bus stops (`bus_stops.json`, GTFS): rounded-square badge with a bus front; stop names from 16 | `--ink` 85% | `--storm-label` |
+| 15+ | Shelter sites as their OSM building (`site_buildings.json`): ink outline and an ink 30% fill (hollow if the site floods); the site's square hides. Hover or tap: `--signal` fill and a card (name, type, "Shelter for up to 10,000 people", flood note). Sites with no building keep the square. Tilted (3D on): the site's building is extruded in an ink tint (pale if it floods) to the height of the tile building, so it stands out among the white 3D buildings | `--ink`, `--signal` on hover | `--storm-label` 55% outline, 14% fill |
+| 16-17 | Aerial photo (NC OneMap orthoimagery), fades in from 16 to 17, above the land and green fills, below buildings, streets, water and labels, so the printed street map stays on top | 85%, saturation -0.35, blacks lifted | 80%, brightness max 0.38, saturation -0.6 |
+| 14.5-16 | The hex fills step back: "Who lives here" and the selected-neighborhood tint fade from 100% to 35%, so streets and buildings read first. Coverage dots never fade; from 15 covered dots get a 1 px `--ink` rim | same | same |
+
 - Population ("Who lives here", off by default): flat H3 fill in `--ink`, at most 30% opacity,
   4 stepped tints, no outlines, no extrusion. Everyone, 65 and over, No car.
 - An invisible pickable cell layer is always on, so a tap anywhere opens the neighborhood card.
@@ -217,7 +280,7 @@ desktop, off by default on phones. Always show a mute toggle (top right).
 Plain, active, sentence case. Name things the way residents would.
 - Buttons: "Start planning", "Place shelter", "Start the storm", "Skip to results", "Play again".
 - Counters: "protected", "stranded", "left in budget", "covered".
-- Empty state: "Place your first shelter. Tap a building square on the map."
+- Empty state: "Place your first shelter. Tap a marked building on the map." (a square, or up close the outlined building)
 - Errors say what happened and what to do: "Voice is off. The game still works."
 - Debrief voice: direct and specific. "You left 1,800 households with no car north of Crabtree
   Creek without a bus pickup."
@@ -234,7 +297,9 @@ Plain, active, sentence case. Name things the way residents would.
 ## Performance floor
 The storm must hold 60 fps on a laptop with every effect on. Rain is one canvas path per frame at
 device pixel ratio 1; lightning is one DOM layer; water animation only touches constant colors,
-feature-state and visibility. If it stutters, drop rain particles first, then the shimmer.
+feature-state and visibility. If it stutters, drop rain particles first, then the shimmer. The
+realistic world changes only shader uniforms per frame; on slower devices its quality tier drops
+noise octaves, foam, window detail and pixel ratio before anything else.
 
 ## What we chose not to do (keep it that way)
 - No cream background with a serif headline and clay accent.

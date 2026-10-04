@@ -14,6 +14,7 @@ import type { NewsFacts, NewsScript } from '@shared/news';
 import { fetchNews } from '../api';
 import { useReducedMotion } from 'motion/react';
 import { FINAL_FLOOD_STEP } from '@shared/config';
+import type { CityId } from '../cities';
 import { CHANNELS, channelById, newsBook, useChannel, type ChannelId, type Lang } from '../news';
 import { currentStory, type Story } from '../story';
 import { PLATE } from '../ui/Hud';
@@ -252,31 +253,39 @@ async function findImage(name: string): Promise<string | null> {
 }
 
 type Portrait = { idle: string; talk: string | null };
-/** Portraits looked up so far, per channel (null: none, so the cartoon). */
-const portraits = new Map<ChannelId, Portrait | null>();
+/** Portraits looked up so far, per city and channel (null: none, so the cartoon). */
+const portraits = new Map<string, Portrait | null>();
 
-async function lookUpPortrait(id: ChannelId): Promise<void> {
+/**
+ * The city's own portrait first (anchors/<city>/<channel>.jpg: the anchor in that city's disaster),
+ * then the general one (anchors/<channel>.jpg).
+ */
+async function lookUpPortrait(city: CityId, id: ChannelId): Promise<void> {
+  const [own, ownTalk] = await Promise.all([findImage(`${city}/${id}`), findImage(`${city}/${id}-talk`)]);
+  if (own) return void portraits.set(`${city}/${id}`, { idle: own, talk: ownTalk });
   const [idle, talk] = await Promise.all([findImage(id), findImage(`${id}-talk`)]);
-  portraits.set(id, idle ? { idle, talk } : null);
+  portraits.set(`${city}/${id}`, idle ? { idle, talk } : null);
 }
 
 /** Look the anchors' portraits up ahead of the storm, so the desk opens on them (Solo, on mount). */
-export function preloadAnchors() {
-  for (const c of CHANNELS) if (!portraits.has(c.id)) void lookUpPortrait(c.id);
+export function preloadAnchors(city: CityId = currentStory().id) {
+  for (const c of CHANNELS) if (!portraits.has(`${city}/${c.id}`)) void lookUpPortrait(city, c.id);
 }
 
 /** The channel's portrait, from the cache as soon as it is known; null until then (the cartoon). */
 function usePortrait(id: ChannelId): Portrait | null {
+  const city = currentStory().id;
+  const key = `${city}/${id}`;
   const [, found] = useState(0);
   useEffect(() => {
-    if (portraits.has(id)) return;
+    if (portraits.has(key)) return;
     let live = true;
-    void lookUpPortrait(id).then(() => live && found((n) => n + 1));
+    void lookUpPortrait(city, id).then(() => live && found((n) => n + 1));
     return () => {
       live = false;
     };
-  }, [id]);
-  return portraits.get(id) ?? null;
+  }, [city, id, key]);
+  return portraits.get(key) ?? null;
 }
 
 let samples: Uint8Array<ArrayBuffer> | null = null;

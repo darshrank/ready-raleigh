@@ -5,7 +5,7 @@
 // lobby -> planning -> results -> lobby (next election)
 import { randomUUID } from 'node:crypto';
 import {
-  CANDIDATES, LOCK_GRACE_MS, MAX_PLAYERS, PLANNING_SECONDS, isCityId,
+  CANDIDATES, LOCK_GRACE_MS, MAX_PLAYERS, PLANNING_SECONDS, ROOM_CITIES, isCityId,
   type CandidateId, type CityId, type Placement, type Plan, type RoomResult, type RoomState, type ScoreResult,
 } from '@shared';
 
@@ -120,6 +120,7 @@ export function setCity(room: Room, player: Player, city: unknown): void {
   requireHost(room, player);
   if (room.phase !== 'lobby') throw new RoomError('Pick the city before the election starts.');
   if (!isCityId(city)) throw new RoomError('That city is not on the map.');
+  if (!ROOM_CITIES.includes(city)) throw new RoomError('That city is coming soon for rooms.');
   room.city = city;
   touch(room);
 }

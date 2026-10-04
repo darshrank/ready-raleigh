@@ -7,7 +7,7 @@ import { BUDGET, PLANNING_SECONDS } from '@shared/config';
 import type { CameraStop } from '../cities';
 import { currentStory, type BriefingLine, type Story } from '../story';
 import { money } from './format';
-import { PLATE, SoundButton } from './Hud';
+import { PLATE, SatelliteButton, SoundButton } from './Hud';
 import { audioRunning, unlockAudio } from './sound';
 import { hush, prefetchSpeech, say } from './voice';
 import { MenuButton } from './Exit';
@@ -156,8 +156,10 @@ export function Title({
           <span className="block text-72 short:text-48 lg:tall:text-120">Mayor</span>
           <span className="mt-2 block border-t-(length:--rule) border-ink pt-2 text-24 leading-none sm:text-32 lg:tall:text-48">{story.name}</span>
         </motion.h1>
-        <div className="pointer-events-auto flex gap-2">
+        {/* Wraps under itself beside the big title on a phone. */}
+        <div className="pointer-events-auto flex flex-wrap justify-end gap-2">
           <MenuButton />
+          <SatelliteButton />
           <SoundButton />
         </div>
       </div>

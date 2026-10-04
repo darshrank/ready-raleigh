@@ -81,7 +81,7 @@ export interface Preview {
   /** At-risk cells that piece reaches on its own. */
   cells: number[];
   result: ScoreResult;
-  /** Residents covered, plan with the preview minus plan without it. */
+  /** Residents the piece covers at this spot: the plan with it minus the plan without it (never negative). */
   gain: number;
   /** Why the piece cannot go there, if it cannot. */
   problem: string | null;
@@ -107,7 +107,10 @@ export function usePlanScore(data: MapData | null) {
     const next = movingId ? placements.map((p) => (p.id === movingId ? piece : p)) : [...placements, piece];
     const res = score(soloPlan(next), data);
     const links = piece.type === 'bus_pickup' || piece.type === 'shelter' ? busLinks(data, next) : [];
-    return { piece, cells, result: res, gain: res.protectedPeople - result.protectedPeople, problem: null, links };
+    // What the piece covers at this spot, with the rest of the plan as it is. A moved piece is
+    // compared with the plan without it, not with its old spot (that difference can be negative).
+    const without = movingId ? score(soloPlan(placements.filter((p) => p.id !== movingId)), data).protectedPeople : result.protectedPeople;
+    return { piece, cells, result: res, gain: Math.max(0, res.protectedPeople - without), problem: null, links };
   }, [data, result, hover, movingId, placements]);
   const links = useMemo(() => (data ? busLinks(data, placements) : []), [data, placements]);
 

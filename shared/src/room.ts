@@ -20,6 +20,8 @@ export type RoomPhase = 'lobby' | 'planning' | 'results';
 export const CITY_IDS = ['raleigh', 'miami', 'san-francisco', 'new-york'] as const;
 export type CityId = (typeof CITY_IDS)[number];
 export const isCityId = (v: unknown): v is CityId => typeof v === 'string' && (CITY_IDS as readonly string[]).includes(v);
+/** Cities a room can play. New York and San Francisco come later (their hazard models are flood stand-ins). */
+export const ROOM_CITIES: readonly CityId[] = ['raleigh', 'miami'];
 
 export interface RoomPlayer {
   seat: number;

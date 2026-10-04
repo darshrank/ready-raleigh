@@ -4,6 +4,7 @@ import { MemoryStore, type PlayStore } from './db/store';
 import { type LiveStore, MemoryLiveStore } from './live/store';
 import { summarize } from './live/summary';
 import { busDemand, demandCsv, demandGeoJson } from './demand';
+import { cleanName, rankBoard } from './leaderboard';
 import { rankPlanner } from './planner';
 import { BadPlay, buildPlay, cityOf } from './plays';
 import { lanAddresses } from './net';
@@ -12,6 +13,7 @@ import { type Gemini, gemini as defaultGemini } from './ai/gemini';
 import { cardService } from './cards/cards';
 import type { Minter } from './cards/mint';
 import { registerCards } from './cards/routes';
+import { registerDebrief } from './debrief';
 import { registerNews } from './news';
 import type { LiveStats } from './db/stats';
 import { type CivicRecord, civicRecord } from './solana/civic';
@@ -42,6 +44,8 @@ export interface ServerOptions {
   liveStats?: () => Promise<LiveStats>;
 }
 
+const BOARD_LIMIT = 8;
+
 /** Builds the server without listening, so tests can inject requests. */
 export function buildServer({ store = new MemoryStore(), data = () => null, live = new MemoryLiveStore(), civic, onAward, minter = null, gemini = defaultGemini, cardArt = true, liveStats }: ServerOptions = {}) {
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
@@ -70,7 +74,8 @@ export function buildServer({ store = new MemoryStore(), data = () => null, live
 
   app.get('/api/health', async () => ({ ok: true, voice: voiceReady(), ai: gemini.ready() }));
   registerVoice(app);
-  registerNews(app);
+  registerNews(app, gemini);
+  registerDebrief(app, gemini);
 
   // Where phones join a room: PUBLIC_URL (our domain or a tunnel) when set, else this machine's LAN
   // address. The page adds its own port, since in development it is served by Vite, not here.
@@ -87,6 +92,26 @@ export function buildServer({ store = new MemoryStore(), data = () => null, live
       if (err instanceof BadPlay) return reply.code(400).send({ error: 'invalid play', problems: err.problems });
       throw err;
     }
+  });
+
+  // The city's leaderboard: each player's best play, ranked. playerId marks the asker's row.
+  app.get<{ Querystring: { city?: string; mode?: string; playerId?: string; limit?: string } }>('/api/leaderboard', async (req, reply) => {
+    const city = req.query.city ?? 'raleigh';
+    if (!isCityId(city)) return reply.code(400).send({ error: 'unknown city' });
+    const mode = req.query.mode ?? 'flood';
+    if (mode !== 'flood' && mode !== 'heat') return reply.code(400).send({ error: 'mode must be flood or heat' });
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || BOARD_LIMIT));
+    const playerId = req.query.playerId?.slice(0, 64) || undefined;
+    return { store: store.kind, city, mode, ...rankBoard(await store.bests(city, mode), limit, playerId) };
+  });
+
+  // The name a player shows on the leaderboards (all their plays). The id is the browser's own.
+  app.post<{ Body: { playerId?: unknown; name?: unknown } }>('/api/players/name', async (req, reply) => {
+    const playerId = typeof req.body?.playerId === 'string' ? req.body.playerId.trim() : '';
+    const name = cleanName(req.body?.name);
+    if (!/^[\w-]{4,64}$/.test(playerId)) return reply.code(400).send({ error: 'playerId is required' });
+    if (!name) return reply.code(400).send({ error: 'name is required' });
+    return { name, updated: await store.renamePlayer(playerId, name) };
   });
 
   app.get<{ Querystring: { mode?: string; city?: string } }>('/api/planner', async (req, reply) => {

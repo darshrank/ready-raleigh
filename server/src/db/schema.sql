@@ -26,6 +26,9 @@ CREATE INDEX IF NOT EXISTS plays_room ON plays (room_code, created_at DESC);
 ALTER TABLE plays ADD COLUMN IF NOT EXISTS candidate text;
 -- The city pack a play is for; plays saved before cities existed are Raleigh.
 ALTER TABLE plays ADD COLUMN IF NOT EXISTS city text NOT NULL DEFAULT 'raleigh';
+-- Leaderboards: each player's best play per city and mode, and renaming a player's plays.
+CREATE INDEX IF NOT EXISTS plays_board ON plays (city, mode, player_id, score DESC);
+CREATE INDEX IF NOT EXISTS plays_player ON plays (player_id);
 
 -- One row per piece placed. target is 'site:<id>', 'road:<id>' or 'cell:<index>'.
 CREATE TABLE IF NOT EXISTS placements (

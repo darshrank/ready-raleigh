@@ -3,7 +3,7 @@
 // soulbound Metaplex Core asset to the wallet (Phantom, or a pasted address). Devnet only.
 import { useEffect, useState, type FormEvent } from 'react';
 import { type CivicCard, claimCard, connectWallet, fetchCard, fetchStatus, hasWallet } from '../civic/api';
-import { Link } from '../router';
+import { Link, navigate } from '../router';
 import { PLATE } from '../ui/Hud';
 
 const button = 'border-(length:--rule) border-ink px-4 py-3 text-left font-display text-24 font-extrabold disabled:opacity-50';
@@ -181,8 +181,37 @@ export function CardPage({ id }: { id: string }) {
             )}
           </section>
         )}
+        <CardExits />
         {authority && <p className="text-13">Issued by: {authority}. Devnet only, no monetary value.</p>}
       </div>
     </main>
+  );
+}
+
+/**
+ * The way back. The results card opens a card in its own tab, so "Back to the results" closes this
+ * tab and the game tab, still on the results, is underneath. A tab with one page may close itself;
+ * one with history goes back; if the browser keeps the tab open anyway, go to the main menu.
+ */
+function CardExits() {
+  const back = () => {
+    if (history.length > 1) {
+      history.back();
+      return;
+    }
+    window.close();
+    window.setTimeout(() => {
+      if (!window.closed) navigate('/');
+    }, 300);
+  };
+  return (
+    <nav aria-label="Leave the card" className="grid grid-cols-2 gap-2">
+      <button type="button" onClick={back} className={button + ' bg-ink text-signal'}>
+        Back to the results
+      </button>
+      <Link to="/" className={button + ' bg-bond text-center text-ink hover:bg-chalk'}>
+        Main menu
+      </Link>
+    </nav>
   );
 }

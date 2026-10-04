@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { type DataBundle, floodRiskShare, weightedPeople } from '@shared';
 import type { TransitStops } from '../data';
+import type { PlayerBest } from '../leaderboard';
 import { type Crowd, type PickCount, type PickupPicks, type PlayRecord, type PlayStore, cityOfPlay } from './store';
 
 /**
@@ -93,6 +94,35 @@ export class TigerStore implements PlayStore {
   async bestScore(mode: string, city: string = 'raleigh'): Promise<number | null> {
     const { rows } = await this.pool.query<{ best: number | null }>('SELECT max(score) AS best FROM plays WHERE mode = $1 AND city = $2', [mode, city]);
     return rows[0]?.best ?? null;
+  }
+
+  async bests(city: string, mode: string): Promise<PlayerBest[]> {
+    // DISTINCT ON keeps the first row per player in this order: the best score, then the earliest.
+    const { rows } = await this.pool.query<{
+      player_id: string; player_name: string; score: number; protected_people: number;
+      stranded_people: number; spent: string; created_at: Date; plays: number;
+    }>(
+      `SELECT DISTINCT ON (player_id) player_id, player_name, score, protected_people, stranded_people, spent,
+         created_at, (count(*) OVER (PARTITION BY player_id))::int AS plays
+       FROM plays WHERE city = $1 AND mode = $2
+       ORDER BY player_id, score DESC, created_at ASC`, [city, mode]);
+    return rows.map((r) => ({
+      playerId: r.player_id,
+      name: r.player_name,
+      score: r.score,
+      protectedPeople: r.protected_people,
+      strandedPeople: r.stranded_people,
+      spent: Number(r.spent),
+      createdAt: r.created_at,
+      plays: r.plays,
+    }));
+  }
+
+  async renamePlayer(playerId: string, name: string) {
+    const res = await this.pool.query(
+      `UPDATE plays SET player_name = $2, plan = jsonb_set(plan, '{playerName}', to_jsonb($2::text))
+       WHERE player_id = $1`, [playerId, name]);
+    return res.rowCount ?? 0;
   }
 
   async close() {

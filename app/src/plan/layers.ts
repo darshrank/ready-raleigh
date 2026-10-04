@@ -159,6 +159,8 @@ interface PieceDatum {
 
 let atlasCache: ReturnType<typeof pieceAtlas> | null = null;
 const atlas = () => (atlasCache ??= pieceAtlas(tokens().hex));
+/** The game's piece discs as a deck.gl icon atlas (the planner's pegs use it too). */
+export const pieceIconAtlas = atlas;
 
 /** Icon height in px. The face is 60 of the 80-unit box, so the disc is 30 px across. */
 export const PIECE_SIZE = 40;

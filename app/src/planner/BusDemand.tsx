@@ -76,7 +76,11 @@ export function useBusDemandLayers(report: BusDemandReport | null) {
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 const distance = (m: number) => (m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1)} km`);
 
+/** Areas listed before "Show all". */
+const SHOWN = 3;
+
 export function BusDemandPanel({ report, error }: State) {
+  const [all, setAll] = useState(false);
   if (!report) {
     return (
       <section className="grid gap-2">
@@ -91,7 +95,7 @@ export function BusDemandPanel({ report, error }: State) {
   return (
     <section className="grid gap-3" aria-labelledby="bus-demand-title">
       <h2 id="bus-demand-title" className="text-18 font-semibold">Bus pickup demand</h2>
-      <p className="text-15">{report.summary}</p>
+      <p className="text-13">Where players keep asking for an evacuation bus pickup. Gaps have no stop within a five-minute walk.</p>
       <dl className="grid grid-cols-3 gap-2 text-13">
         {[
           ['plays', report.plays],
@@ -100,14 +104,14 @@ export function BusDemandPanel({ report, error }: State) {
         ].map(([label, n]) => (
           <div key={label} className="flex flex-col-reverse border-(length:--rule) border-ink bg-bond px-2 py-1">
             <dt>{label}</dt>
-            <dd className="font-display text-32 leading-none font-extrabold tabular-nums">{fmt(n as number)}</dd>
+            <dd className="font-display text-24 leading-none font-extrabold tabular-nums">{fmt(n as number)}</dd>
           </div>
         ))}
       </dl>
       {report.areas.length > 0 && (
-        <ol className="grid gap-2">
-          {report.areas.map((a) => (
-            <li key={a.area} className="grid gap-1 border-(length:--rule) border-ink bg-bond px-3 py-2 text-13">
+        <ol className="grid gap-1.5">
+          {(all ? report.areas : report.areas.slice(0, SHOWN)).map((a) => (
+            <li key={a.area} title={a.reason} className="grid gap-0.5 border-(length:--rule) border-ink bg-bond px-2 py-1.5 text-13">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-15 font-semibold">
                   {a.rank}. {a.hood}
@@ -126,10 +130,14 @@ export function BusDemandPanel({ report, error }: State) {
                 {Math.round(a.noCarHouseholds) === 1 ? 'household' : 'households'} with no car
                 {a.nearestStop ? ` · nearest stop ${distance(a.nearestStop.meters)}` : ''}
               </p>
-              <p>{a.reason}</p>
             </li>
           ))}
         </ol>
+      )}
+      {report.areas.length > SHOWN && (
+        <button type="button" onClick={() => setAll((v) => !v)} className="justify-self-start text-13 font-semibold underline">
+          {all ? 'Show fewer' : `Show all ${report.areas.length} areas`}
+        </button>
       )}
       <div className="flex flex-wrap gap-2 text-15 font-semibold">
         <a href={`${URL}&format=csv`} download className="border-(length:--rule) border-ink bg-bond px-3 py-1 shadow-piece hover:bg-chalk">
@@ -141,6 +149,7 @@ export function BusDemandPanel({ report, error }: State) {
       </div>
       <details className="text-13">
         <summary className="cursor-pointer font-semibold">How this is counted</summary>
+        <p className="mt-1">{report.summary}</p>
         <p className="mt-1">{report.method}</p>
         <p className="mt-1">
           Bus stops: {report.transitSources.map((s) => `${s.agency} (${fmt(s.stops)} stops, feed to ${s.feedEnd ?? 'unknown'})`).join(', ')}.

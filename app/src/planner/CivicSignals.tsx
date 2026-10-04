@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react';
 import { currentCityId } from '../story';
 
 const REFRESH_MS = 15_000;
+/** Signals listed before "Show all". */
+const SHOWN = 3;
 
 interface Signal {
   id: string;
@@ -47,6 +49,7 @@ function ago(iso: string): string {
 export function CivicSignalsPanel({ city = currentCityId() }: { city?: string }) {
   const [signals, setSignals] = useState<Signal[] | null>(null);
   const [off, setOff] = useState(false);
+  const [all, setAll] = useState(false);
   useEffect(() => {
     let live = true;
     const load = () =>
@@ -54,7 +57,14 @@ export function CivicSignalsPanel({ city = currentCityId() }: { city?: string })
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
         .then((body: { enabled: boolean; signals: Signal[] }) => {
           if (!live) return;
-          setSignals(body.signals.filter((s) => s.city === city));
+          // One entry per spot and kind: its latest state (the full history stays on Solana).
+          const seen = new Set<string>();
+          setSignals(body.signals.filter((s) => {
+            const key = `${s.type}|${s.label}`;
+            if (s.city !== city || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          }));
           setOff(!body.enabled);
         })
         .catch(() => live && setSignals((s) => s ?? []));
@@ -77,11 +87,11 @@ export function CivicSignalsPanel({ city = currentCityId() }: { city?: string })
       ) : signals.length === 0 ? (
         <p className="text-15">No signals yet. They appear as residents play: consensus needs three different players behind the same spot.</p>
       ) : (
-        <ol className="grid max-h-80 gap-2 overflow-y-auto pr-1">
-          {signals.map((s) => {
+        <ol className="grid gap-2">
+          {(all ? signals : signals.slice(0, SHOWN)).map((s) => {
             const d = describe(s);
             return (
-              <li key={s.id} className={`grid gap-0.5 border-(length:--rule) border-ink px-3 py-2 text-13 ${d.tone}`}>
+              <li key={s.id} className={`grid gap-0.5 border-(length:--rule) border-ink px-2 py-1.5 text-13 ${d.tone}`}>
                 <p className="text-15 font-semibold">{d.title}</p>
                 <p>{d.detail}</p>
                 <p className="flex flex-wrap gap-x-3">
@@ -98,6 +108,11 @@ export function CivicSignalsPanel({ city = currentCityId() }: { city?: string })
             );
           })}
         </ol>
+      )}
+      {signals && signals.length > SHOWN && (
+        <button type="button" onClick={() => setAll((v) => !v)} className="justify-self-start text-13 font-semibold underline">
+          {all ? 'Show fewer' : `Show all ${signals.length}`}
+        </button>
       )}
     </section>
   );

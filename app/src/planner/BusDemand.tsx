@@ -1,13 +1,10 @@
 // The planner page's bus pickup demand: where players keep asking for an evacuation bus pickup,
 // from GET /api/planner/bus-demand. A list for planners, hexagons on the map, and downloads for GIS.
-import { useEffect, useMemo, useState } from 'react';
-import { H3HexagonLayer } from '@deck.gl/geo-layers';
-import { TextLayer } from '@deck.gl/layers';
-import type { BusDemandReport, DemandArea } from '@shared/demand';
-import { withAlpha } from '../map/layers';
-import { tokens } from '../tokens';
+import { useEffect, useState } from 'react';
+import type { BusDemandReport } from '@shared/demand';
 import { currentCityId } from '../story';
 import { type Focus, type SetFocus, focusRow } from './focus';
+import type { Peg } from './pegs';
 
 // The city the page shows (?city=, Raleigh by default), like the map.
 const URL = `/api/planner/bus-demand?mode=flood&city=${currentCityId()}`;
@@ -35,43 +32,14 @@ export function useBusDemand(): State {
   return state;
 }
 
-/**
- * Demand areas on the map. A gap (no stop within a five-minute walk) is a --signal hexagon with a
- * thick ink edge; an area that already has a stop is a hollow --safe hexagon. The player count sits
- * in the middle, so the map does not rely on color alone.
- */
-export function useBusDemandLayers(report: BusDemandReport | null) {
-  return useMemo(() => {
-    if (!report?.areas.length) return [];
-    const { rgb } = tokens();
-    return [
-      new H3HexagonLayer<DemandArea>({
-        id: 'bus-demand',
-        data: report.areas,
-        getHexagon: (a) => a.area,
-        extruded: false,
-        stroked: true,
-        filled: true,
-        getFillColor: (a) => (a.gap ? withAlpha(rgb.signal, 0.55) : withAlpha(rgb.safe, 0.12)),
-        getLineColor: (a) => (a.gap ? rgb.ink : rgb.safe),
-        getLineWidth: (a) => (a.gap ? 3 : 2),
-        lineWidthUnits: 'pixels',
-      }),
-      new TextLayer<DemandArea>({
-        id: 'bus-demand-count',
-        data: report.areas,
-        getPosition: (a) => [a.lon, a.lat],
-        getText: (a) => String(a.players),
-        getSize: 15,
-        getColor: rgb.ink,
-        fontFamily: '"Big Shoulders Display", "Arial Narrow", sans-serif',
-        fontWeight: 800,
-        outlineWidth: 3,
-        outlineColor: withAlpha(rgb.bond, 1),
-        fontSettings: { sdf: true },
-      }),
-    ];
-  }, [report]);
+/** Demand areas as bus pegs: blue where a stop is near, pink at a gap. */
+export function busDemandPegs(report: BusDemandReport | null): Peg[] {
+  return (report?.areas ?? []).map((a) => ({
+    key: `bus:${a.area}`, lon: a.lon, lat: a.lat, symbol: 'bus_pickup', face: a.gap ? 'alarm' : 'flood',
+    // Down and right of the area's center: a top-place bus pickup often sits on the same spot. No
+    // number badge (numbers on the map are ranks); the player count is in the rail and the label.
+    label: `${a.hood}, ${a.players} players`, size: 34, offset: [20, 20] as [number, number],
+  }));
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
@@ -96,7 +64,7 @@ export function BusDemandPanel({ report, error, focus, setFocus }: State & { foc
   return (
     <section className="grid gap-3" aria-labelledby="bus-demand-title">
       <h2 id="bus-demand-title" className="text-18 font-semibold">Bus pickup demand</h2>
-      <p className="text-13">Where players keep asking for an evacuation bus pickup. Gaps have no stop within a five-minute walk.</p>
+      <p className="text-13">Where players keep asking for an evacuation bus pickup (blue bus pegs; pink where no stop is within a five-minute walk).</p>
       <dl className="grid grid-cols-3 gap-2 text-13">
         {[
           ['plays', report.plays],
@@ -115,7 +83,7 @@ export function BusDemandPanel({ report, error, focus, setFocus }: State & { foc
             <li
               key={a.area}
               title={a.reason}
-              {...focusRow(`bus:${a.area}`, () => ({ lon: a.lon, lat: a.lat, label: a.hood, hex: a.area }), focus, setFocus)}
+              {...focusRow(`bus:${a.area}`, focus, setFocus)}
               className={`grid cursor-pointer gap-0.5 border-(length:--rule) border-ink px-2 py-1.5 text-13 ${focus?.key === `bus:${a.area}` ? 'bg-signal' : 'bg-bond'}`}
             >
               <div className="flex items-baseline justify-between gap-2">

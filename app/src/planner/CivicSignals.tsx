@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import type { MapData } from '../data';
 import { currentCityId } from '../story';
 import { type Focus, type SetFocus, focusRow, spotPoint } from './focus';
+import type { Peg } from './pegs';
 
 const REFRESH_MS = 15_000;
 /** Signals listed before "Show all". */
@@ -32,7 +33,7 @@ function describe(s: Signal): { title: string; detail: string; tone: string } {
   if (s.type === 'consensus') {
     return s.state === 'on'
       ? { title: `Consensus at ${s.label}`, detail: `Residents and the data agree (${players} plays back it). Act here first.`, tone: 'bg-safe' }
-      : { title: `Consensus faded at ${s.label}`, detail: 'Fewer recent plans pick it.', tone: 'bg-bond' };
+      : { title: `Consensus faded at ${s.label}`, detail: '', tone: 'bg-bond' };
   }
   if (s.type === 'blind_spot') {
     return s.state === 'on'
@@ -50,10 +51,17 @@ function ago(iso: string): string {
   return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} days ago`;
 }
 
-export function CivicSignalsPanel({ city = currentCityId(), data, focus, setFocus }: { city?: string; data: MapData | null; focus: Focus | null; setFocus: SetFocus }) {
+export interface SignalsState {
+  /** One per spot and kind, newest state; null while loading. */
+  signals: Signal[] | null;
+  /** The server's chain is off. */
+  off: boolean;
+}
+
+/** The city's civic signals, refreshed every 15 s. */
+export function useCivicSignals(city = currentCityId()): SignalsState {
   const [signals, setSignals] = useState<Signal[] | null>(null);
   const [off, setOff] = useState(false);
-  const [all, setAll] = useState(false);
   useEffect(() => {
     let live = true;
     const load = () =>
@@ -79,12 +87,30 @@ export function CivicSignalsPanel({ city = currentCityId(), data, focus, setFocu
       clearInterval(id);
     };
   }, [city]);
+  return { signals, off };
+}
 
+/** Pegs for the signals with a place: green for consensus, pink for a blind spot, grey once over. */
+export function signalPegs(data: MapData | null, signals: Signal[] | null): Peg[] {
+  if (!data || !signals) return [];
+  return signals.flatMap((s): Peg[] => {
+    if (s.type === 'new_best') return [];
+    const at = spotPoint(data, s.spot);
+    if (!at) return [];
+    const face = s.state === 'off' ? 'chalk' : s.type === 'consensus' ? 'safe' : 'alarm';
+    // Up and left of the place, so a top-place peg on the same spot still shows.
+    return [{ key: `signal:${s.id}`, lon: at[0], lat: at[1], symbol: s.type, face, label: s.label, size: 32, offset: [-20, -20] }];
+  });
+}
+
+export function CivicSignalsPanel({ signals, off, focus, setFocus }: SignalsState & { focus: Focus | null; setFocus: SetFocus }) {
+  const [all, setAll] = useState(false);
   return (
     <section className="grid gap-2" aria-labelledby="signals-title">
       <h2 id="signals-title" className="text-18 font-semibold">Civic signals</h2>
       <p className="text-13">
-        What residents' plans reveal, published on Solana{off ? ' (the chain is off on this server)' : ''} so anyone can check it.
+        What residents' plans reveal, published on Solana{off ? ' (the chain is off on this server)' : ''} so anyone can check it. On the map: green
+        pegs for consensus, pink for blind spots, grey once over.
       </p>
       {signals === null ? (
         <p className="text-15">Loading signals.</p>
@@ -97,14 +123,11 @@ export function CivicSignalsPanel({ city = currentCityId(), data, focus, setFocu
             return (
               <li
                 key={s.id}
-                {...focusRow(`signal:${s.id}`, () => {
-                  const at = data ? spotPoint(data, s.spot) : null;
-                  return at ? { lon: at[0], lat: at[1], label: s.label } : null;
-                }, focus, setFocus)}
+                {...focusRow(`signal:${s.id}`, focus, setFocus)}
                 className={`grid cursor-pointer gap-0.5 border-(length:--rule) border-ink px-2 py-1.5 text-13 ${focus?.key === `signal:${s.id}` ? 'bg-signal' : d.tone}`}
               >
                 <p className="text-15 font-semibold">{d.title}</p>
-                <p>{d.detail}</p>
+                {d.detail && <p>{d.detail}</p>}
                 <p className="flex flex-wrap gap-x-3">
                   <span className="tabular-nums">{ago(s.createdAt)}</span>
                   {s.anchor?.explorerUrl ? (

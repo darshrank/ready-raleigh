@@ -1,14 +1,11 @@
 // The planner page's top places to act: the ranking from GET /api/planner (the best plan's spots,
 // then the next ones with a bigger budget, joined with how often residents picked each), as a
 // numbered list in the rail and numbered pegs on the map, drawn with the game's own piece discs.
-import { useEffect, useMemo, useState } from 'react';
-import { IconLayer, TextLayer } from '@deck.gl/layers';
-import { pieceIconAtlas, PIECE_SIZE } from '../plan/layers';
+import { useEffect, useState } from 'react';
 import { pieceName, type FloodPiece } from '../plan/pieces';
 import { currentCityId } from '../story';
-import { withAlpha } from '../map/layers';
-import { tokens } from '../tokens';
 import { type Focus, type SetFocus, focusRow } from './focus';
+import type { Peg } from './pegs';
 
 /** How many places the page ranks (pegs and rows). */
 export const TOP = 8;
@@ -59,44 +56,12 @@ const CATEGORY: Record<Spot['category'], { label: string; chip: string }> = {
   crowd: { label: "Residents' pick", chip: 'bg-flood text-bond' },
 };
 
-/** Numbered pegs: the piece's disc (signal face where residents and the data agree) and its rank. */
-export function useTopActionLayers(ranking: Ranking | null, focus: Focus | null) {
-  const active = focus?.key.startsWith('top:') ? Number(focus.key.slice(4)) : null;
-  return useMemo(() => {
-    if (!ranking?.spots.length) return [];
-    const { atlas, mapping } = pieceIconAtlas();
-    const { rgb } = tokens();
-    const items = ranking.spots.map((s, i) => ({ ...s, rank: i + 1 }));
-    return [
-      new IconLayer<(typeof items)[number]>({
-        id: 'top-actions',
-        data: items,
-        iconAtlas: atlas,
-        iconMapping: mapping,
-        getIcon: (s) => (s.category === 'both' || s.rank - 1 === active ? `${s.type}:sel` : s.type),
-        getPosition: (s) => [s.lon, s.lat],
-        getSize: (s) => (s.rank - 1 === active ? PIECE_SIZE * 1.35 : PIECE_SIZE),
-        sizeUnits: 'pixels',
-        parameters: { depthCompare: 'always' },
-        updateTriggers: { getIcon: active, getSize: active },
-      }),
-      new TextLayer<(typeof items)[number]>({
-        id: 'top-actions-rank',
-        data: items,
-        getPosition: (s) => [s.lon, s.lat],
-        getText: (s) => String(s.rank),
-        getPixelOffset: [15, -15],
-        getSize: 15,
-        getColor: rgb.bond,
-        background: true,
-        getBackgroundColor: withAlpha(rgb.ink, 1),
-        backgroundPadding: [5, 2],
-        fontFamily: '"Big Shoulders Display", "Arial Narrow", sans-serif',
-        fontWeight: 800,
-        parameters: { depthCompare: 'always' },
-      }),
-    ];
-  }, [ranking, active]);
+/** Numbered pegs: the piece's disc on a white face (green where residents and the data agree). */
+export function topPegs(ranking: Ranking | null): Peg[] {
+  return (ranking?.spots ?? []).map((s, i) => ({
+    key: `top:${i}`, lon: s.lon, lat: s.lat, symbol: s.type, face: s.category === 'both' ? 'safe' : 'bond',
+    badge: String(i + 1), label: `${i + 1}. ${s.name}`,
+  }));
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
@@ -128,7 +93,7 @@ export function TopActionsPanel({ ranking, error, focus, setFocus }: {
           return (
             <li
               key={s.target}
-              {...focusRow(`top:${i}`, () => ({ lon: s.lon, lat: s.lat, label: `${i + 1}. ${s.name}` }), focus, setFocus)}
+              {...focusRow(`top:${i}`, focus, setFocus)}
               title={s.reason}
               className={`grid cursor-pointer grid-cols-[1.75rem_1fr] gap-x-2 border-(length:--rule) border-ink px-2 py-1.5 text-13 ${focus?.key === `top:${i}` ? 'bg-signal' : 'bg-bond'}`}
             >

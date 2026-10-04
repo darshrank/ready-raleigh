@@ -6,6 +6,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import { FINAL_FLOOD_STEP } from '@shared/config';
 import type { ScoreResult } from '@shared/types';
 import { usePlan } from '../plan/store';
+import { currentStory } from '../story';
 import { GROW_MS, STORM_MS, TICK_MS, stepAt, stepStart, type Storm, type StormEvent } from './sim';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
@@ -231,7 +232,7 @@ export function ResultsCard({ storm, result, footer }: { storm: Storm; result: S
       className="pointer-events-auto w-full max-w-md border-(length:--rule) border-ink bg-bond p-4 shadow-plate lg:p-6"
     >
       <h2 id="results-title" className="font-display text-32 font-extrabold">
-        The storm has passed
+        {currentStory().passed}
       </h2>
       <p className="mt-3 flex items-baseline gap-3">
         <span className="tabular font-display text-72 leading-none font-extrabold">{Math.round(result?.score ?? 0)}</span>
@@ -250,7 +251,7 @@ export function ResultsCard({ storm, result, footer }: { storm: Storm; result: S
       <p className="mt-2 text-15">
         {(result?.baseline.protectedPeople ?? 0) >= 1
           ? `Existing shelters took ${fmt(result!.baseline.protectedPeople)}. Your plan reached ${fmt(prot - result!.baseline.protectedPeople)} of the ${fmt(prot + strand - result!.baseline.protectedPeople)} residents they could not.`
-          : `Your plan reached ${Math.round(prot + strand > 0 ? (100 * prot) / (prot + strand) : 0)}% of the residents the water put at risk.`}
+          : `Your plan reached ${Math.round(prot + strand > 0 ? (100 * prot) / (prot + strand) : 0)}% of the residents ${currentStory().cause} put at risk.`}
       </p>
       {footer ?? (
         <button

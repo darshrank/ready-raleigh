@@ -4,7 +4,7 @@ import { create } from 'zustand';
 import { BUDGET, PLANNING_SECONDS, placementCost } from '@shared/config';
 import { planCost } from '@shared/engine';
 import type { Placement } from '@shared/types';
-import { minPieceCost, type FloodPiece } from './pieces';
+import { minPieceCost, pieceName, type FloodPiece } from './pieces';
 
 /**
  * Where a piece can go: shelters on a site, bus pickups on a cell (at an existing bus stop when
@@ -48,7 +48,7 @@ export let lastLandingAt = -Infinity;
 export function targetProblem(placements: Placement[], t: Target, movingId: string | null = null): string | null {
   const others = placements.filter((p) => p.id !== movingId);
   if (t.type === 'shelter' && others.some((p) => p.type === 'shelter' && p.siteId === t.siteId))
-    return 'This building already has a shelter.';
+    return `This building already has a ${pieceName('shelter').toLowerCase()}.`;
   if (t.type === 'road_protection' && others.some((p) => p.type === 'road_protection' && p.roadId === t.roadId))
     return 'This road is already protected.';
   if (t.type === 'bus_pickup' && t.stopId !== undefined && others.some((p) => p.stopId === t.stopId))

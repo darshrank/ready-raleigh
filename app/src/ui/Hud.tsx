@@ -1,15 +1,18 @@
 // The planning HUD (DESIGN.md "Layouts", planning): plates that float on the full-bleed map.
 // Top center: budget, timer, residents covered. Bottom: the tray of chunky pieces, the placed
-// pieces, Start the storm, and the status line above them. Top right: Tilt, Layers, Sound.
+// pieces, Start the storm, and the status line above them. Top right: Tilt, Satellite, Light or
+// Dark, Layers, Sound.
 import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { BUDGET } from '@shared/config';
 import type { Placement, ScoreResult } from '@shared/types';
 import type { MapData } from '../data';
-import { DISC_BOX, FLOOD_PIECES, PIECE_INFO, discSvg, minPieceCost, pieceCost, type FloodPiece } from '../plan/pieces';
+import { DISC_BOX, PIECE_INFO, cityPieces, discSvg, minPieceCost, pieceCost, pieceCovers, pieceName, type FloodPiece } from '../plan/pieces';
+import { currentStory } from '../story';
 import { targetOf, usePlan } from '../plan/store';
 import { targetLabel } from '../plan/targets';
 import { pieceGain, type Preview } from '../plan/usePlanScore';
 import { useMapUi } from '../store';
+import { useTheme } from '../theme';
 import { tokens } from '../tokens';
 import { clock, money } from './format';
 import { FacilitiesControl, Legend, PeopleLayerControl } from './MapRail';
@@ -147,7 +150,7 @@ function TrayPiece({ piece, left, size, onArmed }: { piece: FloodPiece; left: nu
       aria-pressed={on}
       aria-disabled={!usable}
       aria-keyshortcuts={info.key}
-      title={`${info.covers}. Key ${info.key}.`}
+      title={`${pieceCovers(piece)}. Key ${info.key}.`}
       onClick={(e: MouseEvent) => {
         unlockAudio();
         if (!planning) return;
@@ -171,7 +174,7 @@ function TrayPiece({ piece, left, size, onArmed }: { piece: FloodPiece; left: nu
       >
         <Disc piece={piece} size={size} selected={on} shadow={false} />
       </span>
-      <span className="mt-1 text-13 leading-tight font-semibold lg:text-15">{info.name}</span>
+      <span className="mt-1 text-13 leading-tight font-semibold lg:text-15">{pieceName(piece)}</span>
       <span className={'tabular font-display text-24 leading-none font-extrabold ' + (affordable || !planning ? '' : 'text-alarm')}>
         {least < cost ? `$${least / 1e6}–${cost / 1e6}M` : money(cost)}
       </span>
@@ -194,8 +197,8 @@ function Placed({ data, onSelect }: { data: MapData; onSelect: (id: string, byKe
             <button
               type="button"
               aria-pressed={on}
-              aria-label={`${PIECE_INFO[p.type as FloodPiece].name} at ${t ? targetLabel(data, t) : ''}`}
-              title={`${PIECE_INFO[p.type as FloodPiece].name} at ${t ? targetLabel(data, t) : ''}`}
+              aria-label={`${pieceName(p.type as FloodPiece)} at ${t ? targetLabel(data, t) : ''}`}
+              title={`${pieceName(p.type as FloodPiece)} at ${t ? targetLabel(data, t) : ''}`}
               onClick={(e) => onSelect(p.id, e.detail === 0)}
               className="block rounded-full"
             >
@@ -224,7 +227,7 @@ function StartStorm({ wide }: { wide: boolean }) {
         (wide ? 'w-full' : 'self-center')
       }
     >
-      Start the storm
+      {currentStory().start}
     </button>
   );
 }
@@ -245,8 +248,8 @@ export function Tray({
 }) {
   return (
     <div className={PLATE + ' pointer-events-auto flex flex-col gap-3 px-3 pt-3 pb-3 lg:flex-row lg:items-stretch lg:gap-5 lg:px-5'}>
-      <div role="group" aria-label="Pieces" className="grid grid-cols-3 gap-2 lg:gap-4">
-        {FLOOD_PIECES.map((piece) => (
+      <div role="group" aria-label="Pieces" className="grid gap-2 lg:gap-4" style={{ gridTemplateColumns: `repeat(${cityPieces().length}, minmax(0, 1fr))` }}>
+        {cityPieces().map((piece) => (
           <TrayPiece key={piece} piece={piece} left={left} size={compact ? 56 : 76} onArmed={onArmed} />
         ))}
       </div>
@@ -261,10 +264,10 @@ export function Tray({
   );
 }
 
-const ARMED_HINT: Record<FloodPiece, string> = {
-  shelter: 'Tap a building square on the map to open a shelter there. Green houses are shelters that already exist.',
-  bus_pickup: 'Tap a yellow block, where people without a car are at risk. Small squares are existing bus stops ($0.5M).',
-  road_protection: 'Tap a pink flood-prone road to keep it open.',
+const ARMED_HINT: Record<FloodPiece, () => string> = {
+  shelter: () => `Tap a building square on the map to open a ${pieceName('shelter').toLowerCase()} there. Green houses already exist.`,
+  bus_pickup: () => 'Tap a yellow block, where people without a car are at risk. Small squares are existing bus stops ($0.5M).',
+  road_protection: () => `Tap a pink ${currentStory().roadKind} road to keep it open.`,
 };
 
 /** What to do next, what the hovered target would do, or the selected piece with Remove. */
@@ -295,22 +298,20 @@ export function Status({ data, preview }: { data: MapData; preview: Preview | nu
           : inPlace
             ? '. The piece is here now. Move the cursor to pick another spot, then press Enter.'
             : site && site.floodStep !== null
-              ? '. This building floods, so a shelter here helps no one.'
+              ? `. ${currentStory().siteLost}, so a ${pieceName('shelter').toLowerCase()} here helps no one.`
               : preview.piece.type === 'bus_pickup' && preview.gain < 0.5
-                ? placements.some((p) => p.type === 'shelter')
-                  ? '. No shelter within 15 minutes of these blocks has seats left for bus riders.'
-                  : '. The nearby shelters are full: place a shelter within 15 minutes, then the bus has somewhere to go.'
+                ? `. No ${pieceName('shelter').toLowerCase()} within 15 minutes of these blocks has seats left for bus riders.`
                 : `: covers ${fmt(preview.gain)} more residents${preview.piece.stopId ? '. Existing stop, $0.5M' : ''}.`}
       </p>
     );
-  } else if (armed) body = <p>{ARMED_HINT[armed]} Press Esc to cancel.</p>;
+  } else if (armed) body = <p>{ARMED_HINT[armed]()} Press Esc to cancel.</p>;
   else if (selected) {
     const t = targetOf(selected);
     body = (
       <div className="flex items-center justify-between gap-3">
         <p>
           <strong>
-            {PIECE_INFO[selected.type as FloodPiece].name} at {t ? targetLabel(data, t) : 'nowhere'}
+            {pieceName(selected.type as FloodPiece)} at {t ? targetLabel(data, t) : 'nowhere'}
           </strong>
           . Adds {fmt(gain)} residents. Drag it to move it.
         </p>
@@ -323,7 +324,13 @@ export function Status({ data, preview }: { data: MapData; preview: Preview | nu
         </button>
       </div>
     );
-  } else if (placements.length === 0) body = <p>Place your first shelter. Pick it below, then tap a building square on the map. Green dots are people the existing shelters already keep safe.</p>;
+  } else if (placements.length === 0)
+    body = (
+      <p>
+        Place your first {pieceName('shelter').toLowerCase()}. Pick it below, then tap a building square on the map.
+        {(data.existingShelters?.length ?? 0) > 0 ? ' Green dots are people the existing shelters already keep safe.' : ''}
+      </p>
+    );
   else body = <p>Tap a piece on the map to move or remove it.</p>;
 
   return (
@@ -334,7 +341,7 @@ export function Status({ data, preview }: { data: MapData; preview: Preview | nu
 }
 
 /** A small square control on the map: bond plate, ink rule, hard shadow; ink when on. */
-function MapButton({ on, label, onClick, children }: { on: boolean; label: string; onClick: () => void; children: ReactNode }) {
+export function MapButton({ on, label, onClick, children }: { on: boolean; label: string; onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
@@ -370,7 +377,53 @@ export function SoundButton() {
   );
 }
 
-/** Top right: Tilt, Layers (the map's toggles, the legend, the keys) and Sound. */
+/** Light or Dark map (theme.ts). The sun and moon say which one is on. */
+export function ThemeButton() {
+  const dark = useTheme((s) => s.theme === 'dark');
+  const toggle = useTheme((s) => s.toggle);
+  return (
+    <MapButton on={dark} label={dark ? 'Dark map. Switch to light.' : 'Light map. Switch to dark.'} onClick={toggle}>
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden className="fill-current stroke-current">
+        {dark ? (
+          <path d="M12.5 2.5a7.5 7.5 0 1 0 5 12 6.5 6.5 0 0 1-5-12z" strokeWidth="0" />
+        ) : (
+          <>
+            <circle cx="10" cy="10" r="3.6" strokeWidth="0" />
+            <path d="M10 1.5v2.2M10 16.3v2.2M1.5 10h2.2M16.3 10h2.2M4 4l1.6 1.6M14.4 14.4 16 16M4 16l1.6-1.6M14.4 5.6 16 4" fill="none" strokeWidth="1.8" strokeLinecap="round" />
+          </>
+        )}
+      </svg>
+    </MapButton>
+  );
+}
+
+/** Satellite imagery under the streets, names and water instead of the printed land. */
+export function SatelliteButton() {
+  const on = useMapUi((s) => s.satellite);
+  const set = useMapUi((s) => s.setSatellite);
+  return (
+    <MapButton on={on} label={on ? 'Satellite map. Switch to the printed map.' : 'Printed map. Switch to satellite.'} onClick={() => set(!on)}>
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden className="fill-none stroke-current" strokeWidth="1.8" strokeLinejoin="round">
+        <rect x="7.2" y="7.2" width="5.6" height="5.6" transform="rotate(45 10 10)" />
+        <path d="M5.8 5.8 2.5 2.5M14.2 14.2l3.3 3.3M2 6.5 6.5 2M13.5 18 18 13.5" strokeLinecap="round" />
+        <path d="M13 3.5a4.5 4.5 0 0 1 3.5 3.5" strokeLinecap="round" />
+      </svg>
+      <span className="hidden lg:inline">Satellite</span>
+    </MapButton>
+  );
+}
+
+/** The two looks of the map, together wherever the map has controls. */
+export function MapLookButtons() {
+  return (
+    <>
+      <SatelliteButton />
+      <ThemeButton />
+    </>
+  );
+}
+
+/** Top right: Tilt, Satellite, Light or Dark, Layers (toggles, the legend, the keys) and Sound. */
 export function MapControls({ phase }: { phase: 'planning' | 'storm' | 'results' }) {
   const tilt = useMapUi((s) => s.tilt);
   const setTilt = useMapUi((s) => s.setTilt);
@@ -389,6 +442,7 @@ export function MapControls({ phase }: { phase: 'planning' | 'storm' | 'results'
             3D
           </MapButton>
         )}
+        <MapLookButtons />
         <MapButton on={open} label="Layers and legend" onClick={() => setOpen(!open)}>
           Layers
         </MapButton>

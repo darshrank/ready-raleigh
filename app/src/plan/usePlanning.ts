@@ -7,7 +7,8 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import type { Placement } from '@shared/types';
 import type { MapData } from '../data';
-import { FLOOD_PIECES, type FloodPiece } from './pieces';
+import { currentStory } from '../story';
+import { cityPieces, pieceName, type FloodPiece } from './pieces';
 import { targetOf, usePlan } from './store';
 import { anchorOf, cellCenter, nearestCell, stepCell, targetAt, type SnapKind } from './targets';
 
@@ -17,10 +18,10 @@ type Px = { x: number; y: number };
 const TAP_SLOP_PX = 6;
 const PIECE_HIT_PX = { mouse: 20, touch: 28 };
 
-const MISSED: Record<FloodPiece, string> = {
-  shelter: 'Tap closer to a building square to open a shelter there.',
-  bus_pickup: 'Bus pickups go inside the study area. Tap a street near the people it serves.',
-  road_protection: 'Tap one of the pink flood-prone roads to protect it.',
+const MISSED: Record<FloodPiece, () => string> = {
+  shelter: () => `Tap closer to a building square to open a ${pieceName('shelter').toLowerCase()} there.`,
+  bus_pickup: () => 'Bus pickups go inside the study area. Tap a street near the people it serves.',
+  road_protection: () => `Tap one of the pink ${currentStory().roadKind} roads to protect it.`,
 };
 
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -137,7 +138,7 @@ export function usePlanning(data: MapData | null) {
         suppressClick = true;
         const t = targetAt(s.armed, map, d, local(e), s.placements, g.snap);
         if (t) s.place(t);
-        else s.setNotice(MISSED[s.armed]);
+        else s.setNotice(MISSED[s.armed]());
       }
     };
 
@@ -223,10 +224,11 @@ export function usePlanning(data: MapData | null) {
       if (!map || !d || s.phase !== 'planning') return;
       const onControl = !!target?.closest('button, a, [role="button"]');
 
-      const k = FLOOD_PIECES.findIndex((_, i) => e.key === String(i + 1));
+      const pieces = cityPieces();
+      const k = pieces.findIndex((_, i) => e.key === String(i + 1));
       if (k >= 0) {
         e.preventDefault();
-        const piece = FLOOD_PIECES[k]!;
+        const piece = pieces[k]!;
         s.arm(s.armed === piece ? null : piece);
         if (usePlan.getState().armed && s.cursor !== null) aimAtCursor(s.cursor);
         return;
@@ -255,7 +257,7 @@ export function usePlanning(data: MapData | null) {
           e.preventDefault();
           if (s.armed) {
             if (s.hover) s.place(s.hover);
-            else s.setNotice(s.cursor === null ? 'Use the arrow keys to pick a spot, then press Enter.' : MISSED[s.armed]);
+            else s.setNotice(s.cursor === null ? 'Use the arrow keys to pick a spot, then press Enter.' : MISSED[s.armed]());
           } else if (s.selectedId && s.hover && s.movingId === s.selectedId) {
             s.move(s.selectedId, s.hover);
           }

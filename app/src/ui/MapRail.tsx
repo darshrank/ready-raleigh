@@ -1,8 +1,9 @@
 // Pieces of the map rail: "Who lives here" and Facilities layers, legend, neighborhood card.
 import { useEffect, useMemo } from 'react';
 import type { Cell } from '@shared/types';
-import { FLOOD_STEP_NAMES } from '@shared/config';
 import { PEOPLE_ALPHA, type PeopleMetric } from '../map/layers';
+import { cityPieces, pieceName } from '../plan/pieces';
+import { currentStory, type Hazard } from '../story';
 import { useMapUi } from '../store';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
@@ -87,17 +88,33 @@ const WATER_SWATCH: Record<number, string> = {
   2: 'bg-flood opacity-50',
   3: 'bg-flood opacity-30',
 };
+/** Failing ground and heat (map/flood.ts groundLook): the same three strengths in signal or alarm. */
+const groundSwatch = (step: number) =>
+  `${currentStory().hazard === 'quake' ? 'bg-signal' : 'bg-alarm'} ${step === 1 ? 'opacity-80' : step === 2 ? 'opacity-55' : 'opacity-35'}`;
+
+const EVENT: Record<Hazard, string> = { flood: 'The storm', quake: 'The quake', heat: 'The heat wave' };
+const UNDER: Record<Hazard, string> = {
+  flood: 'Street under water (flowing dashes)',
+  quake: 'Street on failing ground',
+  heat: 'Street in dangerous heat',
+};
+const SITE_LOST: Record<Hazard, string> = { flood: 'that floods', quake: 'on failing ground', heat: 'that loses power' };
 
 export function Legend({ planning = false, storm = false }: { planning?: boolean; storm?: boolean }) {
+  const story = currentStory();
+  const flood = story.hazard === 'flood';
+  const site = pieceName('shelter');
+  // Roads close (and can be protected) in the flood and the quake, not in the heat.
+  const roads = cityPieces().includes('road_protection');
   return (
     <div className="grid gap-3 text-13">
       <div>
-        <p className="text-15 font-semibold">Where water reaches</p>
+        <p className="text-15 font-semibold">{flood ? 'Where water reaches' : 'Where the disaster reaches'}</p>
         <ul className="mt-1.5 grid gap-1">
           {[1, 2, 3].map((step) => (
             <li key={step} className="flex items-center gap-2">
-              <span aria-hidden className={'h-3.5 w-6 shrink-0 ' + WATER_SWATCH[step]} />
-              {FLOOD_STEP_NAMES[step]}
+              <span aria-hidden className={'h-3.5 w-6 shrink-0 ' + (flood ? WATER_SWATCH[step] : groundSwatch(step))} />
+              {story.steps[step]}
             </li>
           ))}
         </ul>
@@ -132,14 +149,14 @@ export function Legend({ planning = false, storm = false }: { planning?: boolean
       </div>
       {storm && (
         <div>
-          <p className="text-15 font-semibold">The storm</p>
+          <p className="text-15 font-semibold">{EVENT[story.hazard]}</p>
           <ul className="mt-1.5 grid gap-1">
             <li className="flex items-center gap-2">
               <svg width="24" height="14" aria-hidden className="shrink-0">
                 <line x1="2" y1="7" x2="15" y2="7" className="stroke-safe" strokeWidth="2" strokeLinecap="round" />
                 <circle cx="18" cy="7" r="3" className="fill-safe" />
               </svg>
-              Residents reaching a shelter or bus
+              Residents reaching a {site.toLowerCase()} or bus
             </li>
             <li className="flex items-center gap-2">
               <svg width="24" height="14" aria-hidden className="shrink-0 fill-none stroke-alarm" strokeWidth="1.5">
@@ -152,22 +169,26 @@ export function Legend({ planning = false, storm = false }: { planning?: boolean
                 <line x1="1" y1="7" x2="23" y2="7" className="stroke-flood-deep" strokeWidth="6" />
                 <line x1="1" y1="7" x2="23" y2="7" className="stroke-bond" strokeWidth="2" strokeDasharray="3 5" />
               </svg>
-              Street under water (flowing dashes)
+              {UNDER[story.hazard]}
             </li>
-            <li className="flex items-center gap-2">
-              <svg width="24" height="14" viewBox="0 0 26 11" aria-hidden className="shrink-0">
-                <rect x="0.75" y="0.75" width="24.5" height="9.5" className="fill-bond stroke-ink" strokeWidth="1.5" />
-                <path d="M5 10 9 1h3l-4 9zM13 10l4-9h3l-4 9z" className="fill-alarm" />
-              </svg>
-              Road closed
-            </li>
-            <li className="flex items-center gap-2">
-              <svg width="24" height="14" aria-hidden className="shrink-0">
-                <line x1="3" y1="7" x2="21" y2="7" className="stroke-ink" strokeWidth="8" strokeLinecap="round" />
-                <line x1="3" y1="7" x2="21" y2="7" className="stroke-safe" strokeWidth="4.5" strokeLinecap="round" />
-              </svg>
-              Protected road, stays open
-            </li>
+            {roads && (
+              <>
+                <li className="flex items-center gap-2">
+                  <svg width="24" height="14" viewBox="0 0 26 11" aria-hidden className="shrink-0">
+                    <rect x="0.75" y="0.75" width="24.5" height="9.5" className="fill-bond stroke-ink" strokeWidth="1.5" />
+                    <path d="M5 10 9 1h3l-4 9zM13 10l4-9h3l-4 9z" className="fill-alarm" />
+                  </svg>
+                  Road closed
+                </li>
+                <li className="flex items-center gap-2">
+                  <svg width="24" height="14" aria-hidden className="shrink-0">
+                    <line x1="3" y1="7" x2="21" y2="7" className="stroke-ink" strokeWidth="8" strokeLinecap="round" />
+                    <line x1="3" y1="7" x2="21" y2="7" className="stroke-safe" strokeWidth="4.5" strokeLinecap="round" />
+                  </svg>
+                  Protected road, stays open
+                </li>
+              </>
+            )}
           </ul>
         </div>
       )}
@@ -182,19 +203,23 @@ export function Legend({ planning = false, storm = false }: { planning?: boolean
               </svg>
               Green dots: residents already safe, from existing shelters or your pieces (bigger dot, more of the block)
             </li>
-            <li className="flex items-center gap-2">
-              <svg width="24" height="14" aria-hidden className="shrink-0">
-                <line x1="2" y1="7" x2="22" y2="7" className="stroke-alarm" strokeWidth="3.5" strokeLinecap="round" />
-              </svg>
-              Flood-prone road, closes in the flood
-            </li>
-            <li className="flex items-center gap-2">
-              <svg width="24" height="14" aria-hidden className="shrink-0">
-                <line x1="3" y1="7" x2="21" y2="7" className="stroke-ink" strokeWidth="8" strokeLinecap="round" />
-                <line x1="3" y1="7" x2="21" y2="7" className="stroke-safe" strokeWidth="4.5" strokeLinecap="round" />
-              </svg>
-              Protected road, stays open
-            </li>
+            {roads && (
+              <>
+                <li className="flex items-center gap-2">
+                  <svg width="24" height="14" aria-hidden className="shrink-0">
+                    <line x1="2" y1="7" x2="22" y2="7" className="stroke-alarm" strokeWidth="3.5" strokeLinecap="round" />
+                  </svg>
+                  {flood ? 'Flood-prone road, closes in the flood' : 'Quake-prone road, closes in the quake'}
+                </li>
+                <li className="flex items-center gap-2">
+                  <svg width="24" height="14" aria-hidden className="shrink-0">
+                    <line x1="3" y1="7" x2="21" y2="7" className="stroke-ink" strokeWidth="8" strokeLinecap="round" />
+                    <line x1="3" y1="7" x2="21" y2="7" className="stroke-safe" strokeWidth="4.5" strokeLinecap="round" />
+                  </svg>
+                  Protected road, stays open
+                </li>
+              </>
+            )}
           </ul>
         </div>
       )}
@@ -209,11 +234,11 @@ export function Legend({ planning = false, storm = false }: { planning?: boolean
           </li>
           <li className="flex items-center gap-2">
             <span aria-hidden className="mx-1.5 size-3 shrink-0 bg-ink" />
-            Shelter site, stays dry
+            {site} site, {flood ? 'stays dry' : 'stays open'}
           </li>
           <li className="flex items-center gap-2">
             <span aria-hidden className="mx-1.5 size-3 shrink-0 border-[3px] border-ink bg-bond" />
-            Shelter site that floods, cannot open
+            {site} site {SITE_LOST[story.hazard]}, cannot open
           </li>
         </ul>
       </div>
@@ -272,12 +297,12 @@ export function NeighborhoodCard({ cells, hideEmpty = false, compact = false }: 
       </dl>
       <p className={'border-t-(length:--rule) border-ink pt-2 ' + (compact ? 'mt-2 text-13' : 'mt-3 text-15')}>
         {stats.firstStep === null ? (
-          'Stays dry through the 500-year flood.'
+          currentStory().hazard === 'flood' ? 'Stays dry through the 500-year flood.' : 'Outside the hazard steps.'
         ) : (
           <>
-            First floods in the <strong>{FLOOD_STEP_NAMES[stats.firstStep]?.toLowerCase()}</strong>{' '}
+            First {currentStory().verb} at <strong>{currentStory().steps[stats.firstStep]?.toLowerCase()}</strong>{' '}
             (step {stats.firstStep}). <span className="tabular">{fmt(stats.popInWater)}</span> residents
-            live where the water reaches.
+            live where it reaches.
           </>
         )}
       </p>

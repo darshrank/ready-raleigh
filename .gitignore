@@ -4,5 +4,6 @@ dist/
 .venv/
 __pycache__/
 pipeline/cache/
+server/.cache/
 *.pyc
 .DS_Store

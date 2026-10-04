@@ -13,7 +13,7 @@ import type {
   SourceSpecification,
 } from 'maplibre-gl';
 import type { Feature, FeatureCollection, LineString, MultiPolygon, Point, Polygon, Position } from 'geojson';
-import { DATA_BASE } from '../data';
+import { currentStory, dataBase } from '../story';
 import { rgba, tint, type RGB, type Tokens } from '../tokens';
 import type { Mood } from './basemap';
 
@@ -59,7 +59,32 @@ export type WaterLevel = 'preview' | 'full';
 
 const a = (c: RGB, alpha: number): RGBA => [c[0], c[1], c[2], alpha];
 
-function look(mood: Mood, level: WaterLevel, { rgb }: Tokens): Look {
+function look(mood: Mood, level: WaterLevel, t: Tokens): Look {
+  const hazard = currentStory().hazard;
+  return hazard === 'flood' ? waterLook(mood, level, t) : groundLook(mood, level, t, hazard);
+}
+
+/**
+ * The other disasters in the same printed inks: failing ground in ochre (signal mixed with alarm),
+ * heat in alarm, the colour DESIGN.md gives the heat halftone. Same steps, same growth and shimmer.
+ */
+function groundLook(mood: Mood, level: WaterLevel, { rgb }: Tokens, hazard: 'quake' | 'heat'): Look {
+  const k = level === 'preview' ? 0.75 : 1;
+  const base = hazard === 'quake' ? tint(rgb.signal, rgb.alarm, 0.3) : rgb.alarm;
+  const light = tint(base, rgb.bond, 0.3);
+  const deep = tint(base, rgb.ink, 0.25);
+  const night = mood === 'storm' ? 1.1 : 1;
+  return {
+    fill: [a(deep, 0.62 * k * night), a(base, 0.46 * k * night), a(light, 0.34 * k * night)],
+    edge: a(tint(base, rgb.ink, 0.5), 0.5 * k),
+    glow: a(base, mood === 'storm' ? 0.18 * k : 0),
+    extrude: [a(deep, 0.4), a(base, 0.4), a(light, 0.4)],
+    under: a(tint(mood === 'storm' ? rgb['storm-land'] : rgb.ink, rgb.alarm, 0.4), 0.85),
+    dash: a(mood === 'storm' ? rgb.signal : rgb.bond, 0.95),
+  };
+}
+
+function waterLook(mood: Mood, level: WaterLevel, { rgb }: Tokens): Look {
   // Planning preview: faint, but strong enough to read under the coverage dots at the city view.
   const k = level === 'preview' ? 0.75 : 1;
   if (mood === 'storm') {
@@ -587,7 +612,7 @@ export class FloodView {
     views.set(map, this);
     this.current = this.from = this.to = look('day', 'preview', t);
     if (!map.hasImage(BARRIER)) map.addImage(BARRIER, barrierImage(t), { pixelRatio: 2 });
-    this.ready = fetch(`${DATA_BASE}/flood_steps.geojson`)
+    this.ready = fetch(`${dataBase()}/flood_steps.geojson`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`flood_steps.geojson: ${r.status}`))))
       .then((raw: FeatureCollection<Polygon | MultiPolygon, { step: number }>) => {
         if (!this.raf) return; // destroyed while loading

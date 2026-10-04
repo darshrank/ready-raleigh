@@ -6,10 +6,15 @@ const app = buildServer();
 afterAll(() => app.close());
 
 describe('server', () => {
-  it('GET /api/health returns ok', async () => {
+  it('GET /api/health returns ok and whether voice is on', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/health' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true });
+    expect(res.json()).toEqual({ ok: true, voice: !!process.env.ELEVENLABS_API_KEY });
+  });
+
+  it('POST /api/tts refuses empty text', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/tts', payload: { text: '  ' } });
+    expect(res.statusCode).toBe(400);
   });
 
   it('GET /api/join-base reports where phones can join', async () => {

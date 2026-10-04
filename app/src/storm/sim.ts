@@ -4,7 +4,8 @@
 // things to draw: when each flood step prints, which roads close, and a sample of residents who
 // either travel to their shelter (driving, or walking to a bus stop and riding), stay safe behind a
 // protected road, or are stranded.
-import { FINAL_FLOOD_STEP, FLOOD_STEP_NAMES } from '@shared/config';
+import { FINAL_FLOOD_STEP } from '@shared/config';
+import { currentStory } from '../story';
 import {
   PART_CAR,
   PART_NO_CAR,
@@ -56,6 +57,11 @@ export interface StormEvent {
   step: number;
   /** For the LIVE caption, uppercase like the band. */
   title: string;
+  /** The same words in sentence case, for the timeline. */
+  label: string;
+  /** What the news anchor reports, phrased per channel (news.ts): a road closing, a neighborhood
+   *  the disaster reaches, or one cut off from every hospital. */
+  about: { kind: 'road' | 'area' | 'cut'; name: string };
   /** What the camera frames. */
   points: LngLat[];
   /** Times, ms after the storm starts. */
@@ -276,23 +282,18 @@ function top(counts: Map<string, number>, k: number): string[] {
     .map(([name]) => name);
 }
 
-const STEP_HEADLINE: Record<number, string> = {
-  1: 'Creeks leave their banks',
-  2: `Water reaches the ${FLOOD_STEP_NAMES[2]} line`,
-  3: `Water reaches the ${FLOOD_STEP_NAMES[3]} line`,
-};
-
 /** Named roads only: "Unnamed road in X" makes a poor alert line, so those count as "more". */
 const named = (data: MapData, r: FloodRoad) => (/^unnamed road/i.test(r.name) ? null : roadLabel(data, r));
 
 function bandLines(data: MapData, timeline: TimelineStep[], closing: Record<number, FloodRoad[]>, held: FloodRoad[]) {
   const idx = engineIndex(data);
+  const story = currentStory();
   const heldUnlocks = new Set(held.flatMap((r) => r.unlocks));
-  const band: string[][] = [['Flood warning for Raleigh', 'Heavy rain over the creeks', 'Stay off flooded roads'].map(upper)];
-  const spoken: string[] = ['Flood warning for Raleigh.'];
+  const band: string[][] = [story.band.map(upper)];
+  const spoken: string[] = [`${story.band[0]}.`];
 
   for (const s of timeline) {
-    const lines = [STEP_HEADLINE[s.step] ?? `Flood step ${s.step}`];
+    const lines = [story.headline[s.step] ?? `Step ${s.step}`];
 
     const wet = new Map<string, number>();
     for (const i of s.newlyFlooded) {
@@ -300,7 +301,7 @@ function bandLines(data: MapData, timeline: TimelineStep[], closing: Record<numb
       wet.set(hood, (wet.get(hood) ?? 0) + idx.pop[i]!);
     }
     const hoods = top(wet, 3);
-    if (hoods.length) lines.push(`Water in ${hoods.join(', ')}`);
+    if (hoods.length) lines.push(story.reaches(hoods.join(', '), s.step));
 
     const roads = closing[s.step] ?? [];
     const names = [...new Set(roads.map((r) => named(data, r)).filter((x): x is string => !!x))];
@@ -337,7 +338,8 @@ const roadPoints = (r: FloodRoad): LngLat[] => r.coords.map((c) => [c[0], c[1]])
  * One helicopter stop per step: the closing road that strands the most blocks (named roads first),
  * and at the final step the neighborhood with the most people cut off from hospitals.
  */
-function stormEvents(data: MapData, closing: Record<number, FloodRoad[]>, held: FloodRoad[]): StormEvent[] {
+function stormEvents(data: MapData, closing: Record<number, FloodRoad[]>, held: FloodRoad[], timeline: TimelineStep[]): StormEvent[] {
+  const story = currentStory();
   const heldUnlocks = new Set(held.flatMap((r) => r.unlocks));
   const out: StormEvent[] = [];
   const used = new Set<string>();
@@ -355,7 +357,8 @@ function stormEvents(data: MapData, closing: Record<number, FloodRoad[]>, held: 
       });
       const best = [...cut.entries()].sort((p, q) => q[1].pop - p[1].pop)[0];
       if (best) {
-        out.push({ ...at, title: upper(`${best[0]} cut off from hospitals`), points: best[1].pts });
+        const label = `${best[0]} cut off from hospitals`;
+        out.push({ ...at, title: upper(label), label, about: { kind: 'cut', name: best[0] }, points: best[1].pts });
         continue;
       }
     }
@@ -363,9 +366,26 @@ function stormEvents(data: MapData, closing: Record<number, FloodRoad[]>, held: 
       .filter((r) => !used.has(named(data, r) ?? r.id))
       .sort((p, q) => Number(!named(data, p)) - Number(!named(data, q)) || q.unlocks.length - p.unlocks.length);
     const road = roads[0];
-    if (!road) continue;
-    used.add(named(data, road) ?? road.id);
-    out.push({ ...at, title: upper(`${roadLabel(data, road)} goes under`), points: roadPoints(road) });
+    if (road) {
+      used.add(named(data, road) ?? road.id);
+      const name = roadLabel(data, road);
+      out.push({ ...at, title: upper(story.road(name)), label: story.road(name), about: { kind: 'road', name }, points: roadPoints(road) });
+      continue;
+    }
+    // No road closes this step (heat): the neighborhood the step reaches with the most people.
+    const reached = new Map<string, { pop: number; pts: LngLat[] }>();
+    for (const i of timeline.find((s) => s.step === k)?.newlyFlooded ?? []) {
+      const c = data.cells[i]!;
+      const e = reached.get(c.hood) ?? { pop: 0, pts: [] };
+      e.pop += c.pop;
+      e.pts.push(cellCenter(data, i));
+      reached.set(c.hood, e);
+    }
+    const best = [...reached.entries()].sort((p, q) => q[1].pop - p[1].pop)[0];
+    if (best) {
+      const label = story.area(best[0], k);
+      out.push({ ...at, title: upper(label), label, about: { kind: 'area', name: best[0] }, points: best[1].pts });
+    }
   }
   return out;
 }
@@ -392,7 +412,7 @@ export function buildStorm(data: MapData, placements: Placement[]): Storm {
     last = Math.max(last, residents.arrive[k]!);
   }
   const { band, spoken } = bandLines(data, timeline, closing, held);
-  const events = stormEvents(data, closing, held);
+  const events = stormEvents(data, closing, held, timeline);
   return {
     timeline,
     residents,

@@ -1,6 +1,7 @@
 // The flood game pieces: round discs like board game tokens (DESIGN.md "Game pieces").
 // One SVG source draws both the tray buttons (DOM) and the map icons (deck.gl atlas).
 import { BUS_STOP_ACTIVATE_COST, COSTS } from '@shared/config';
+import { currentStory } from '../story';
 
 export type FloodPiece = 'shelter' | 'bus_pickup' | 'road_protection';
 export const FLOOD_PIECES: FloodPiece[] = ['shelter', 'bus_pickup', 'road_protection'];
@@ -29,6 +30,12 @@ export const PIECE_INFO: Record<FloodPiece, { name: string; verb: string; covers
 export const pieceCost = (p: FloodPiece) => COSTS[p];
 /** The least a piece can cost: a bus pickup at an existing stop is cheaper than a new one. */
 export const minPieceCost = (p: FloodPiece) => (p === 'bus_pickup' ? Math.min(COSTS[p], BUS_STOP_ACTIVATE_COST) : COSTS[p]);
+
+/** The piece's name in this city (a cooling center in a heat wave), and the pieces the city uses. */
+export const pieceName = (p: FloodPiece) => currentStory().pieceNames?.[p] ?? PIECE_INFO[p].name;
+export const pieceCovers = (p: FloodPiece) =>
+  p === 'road_protection' ? `Keeps one ${currentStory().roadKind} road open` : PIECE_INFO[p].covers;
+export const cityPieces = (): FloodPiece[] => FLOOD_PIECES.filter((p) => !currentStory().hidePieces?.includes(p));
 
 // Pictograms on a 64 x 64 grid, drawn in `ink` with `face` cut-outs.
 const PICTOGRAM: Record<FloodPiece, (ink: string, face: string) => string> = {

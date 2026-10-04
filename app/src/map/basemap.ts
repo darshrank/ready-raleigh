@@ -9,12 +9,15 @@ import type { ExpressionSpecification, LayerSpecification, Map as MapLibreMap, S
 import { rgba, type Tokens } from '../tokens';
 import { floodFlatLayers, floodSources, flood3dLayers, closuresLayer } from './flood';
 
-const TILES = 'https://tiles.openfreemap.org/planet';
-const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
-const ATTRIBUTION =
+export const TILES = 'https://tiles.openfreemap.org/planet';
+export const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
+export const ATTRIBUTION =
   '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> ' +
   '<a href="https://www.openmaptiles.org/" target="_blank">&copy; OpenMapTiles</a> ' +
   'Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
+/** Satellite imagery (the Satellite toggle): Esri World Imagery, no key, credited while it shows. */
+const SATELLITE_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const SATELLITE_ATTRIBUTION = 'Imagery <a href="https://www.esri.com" target="_blank">&copy; Esri</a>, Maxar, Earthstar Geographics';
 
 const REGULAR = ['Noto Sans Regular'];
 const BOLD = ['Noto Sans Bold'];
@@ -52,9 +55,33 @@ interface Palette {
   motorway: string;
   label: string;
   halo: string;
+  /** The satellite imagery: full daylight, or dimmed and greyed for the night. */
+  imagery: { brightness: number; saturation: number };
 }
 
-export function palette(mood: Mood, { hex, rgb }: Tokens): Palette {
+/**
+ * The palette for `mood`. With `satellite`, the imagery is the land: the printed fills (green,
+ * building footprints) go clear and the streets are faint lines over the photo, so the water,
+ * the pieces and the names stay what you read.
+ */
+export function palette(mood: Mood, tokens: Tokens, satellite = false): Palette {
+  const P = basePalette(mood, tokens);
+  if (!satellite) return P;
+  const { rgb } = tokens;
+  const line = mood === 'storm' ? rgb['storm-label'] : rgb.bond;
+  return {
+    ...P,
+    wood: 0,
+    park: 0,
+    building: rgba(rgb.ink, 0),
+    casingOpacity: [0, 0, 0],
+    street: rgba(line, mood === 'storm' ? 0.18 : 0.35),
+    major: rgba(line, mood === 'storm' ? 0.28 : 0.5),
+    motorway: rgba(line, mood === 'storm' ? 0.35 : 0.6),
+  };
+}
+
+function basePalette(mood: Mood, { hex, rgb }: Tokens): Palette {
   if (mood === 'storm')
     return {
       land: hex['storm-land'],
@@ -73,6 +100,7 @@ export function palette(mood: Mood, { hex, rgb }: Tokens): Palette {
       motorway: rgba(rgb['storm-label'], 0.35),
       label: hex['storm-label'],
       halo: hex['storm-land'],
+      imagery: { brightness: 0.42, saturation: -0.4 },
     };
   return {
     land: hex.chalk,
@@ -91,6 +119,7 @@ export function palette(mood: Mood, { hex, rgb }: Tokens): Palette {
     motorway: hex.bond,
     label: hex.ink,
     halo: hex.chalk,
+    imagery: { brightness: 1, saturation: 0 },
   };
 }
 
@@ -162,6 +191,14 @@ function groundLayers(P: Palette): LayerSpecification[] {
       filter: notTunnel,
       layout: { 'line-cap': 'round' },
       paint: { 'line-color': P.waterway, 'line-width': width(11, 0.8, 17, 4) },
+    },
+    // Satellite imagery covers the printed land and water when the toggle is on (applyPalette).
+    {
+      id: 'satellite',
+      type: 'raster',
+      source: 'satellite',
+      layout: { visibility: 'none' },
+      paint: { 'raster-brightness-max': P.imagery.brightness, 'raster-saturation': P.imagery.saturation, 'raster-fade-duration': 150 },
     },
     {
       id: 'buildings',
@@ -293,7 +330,11 @@ export function basemapStyle(t: Tokens): StyleSpecification {
   return {
     version: 8,
     glyphs: GLYPHS,
-    sources: { omt: { type: 'vector', url: TILES, attribution: ATTRIBUTION }, ...floodSources() },
+    sources: {
+      omt: { type: 'vector', url: TILES, attribution: ATTRIBUTION },
+      satellite: { type: 'raster', tiles: [SATELLITE_TILES], tileSize: 256, maxzoom: 19, attribution: SATELLITE_ATTRIBUTION },
+      ...floodSources(),
+    },
     layers: [
       ...groundLayers(P),
       ...floodFlatLayers(t),
@@ -305,13 +346,17 @@ export function basemapStyle(t: Tokens): StyleSpecification {
   };
 }
 
-/** Re-paint the basemap in `mood`, fading over `ms` (0 swaps at once). Only changed values are sent. */
-export function applyPalette(map: MapLibreMap, mood: Mood, t: Tokens, ms: number) {
-  for (const layer of paletteLayers(palette(mood, t))) {
+/**
+ * Re-paint the basemap in `mood`, with or without the satellite imagery, fading over `ms` (0 swaps
+ * at once). MapLibre skips values that did not change.
+ */
+export function applyPalette(map: MapLibreMap, mood: Mood, t: Tokens, ms: number, satellite = false) {
+  map.setLayoutProperty('satellite', 'visibility', satellite ? 'visible' : 'none');
+  for (const layer of paletteLayers(palette(mood, t, satellite))) {
     if (!('paint' in layer) || !layer.paint) continue;
     for (const [prop, value] of Object.entries(layer.paint)) {
-      // Only colors and opacities change between moods; widths and heights are the same objects.
-      if (!/color|opacity/.test(prop)) continue;
+      // Only colors, opacities and the imagery's light change; widths and heights stay.
+      if (!/color|opacity|brightness|saturation/.test(prop)) continue;
       map.setPaintProperty(layer.id, `${prop}-transition`, { duration: ms, delay: 0 });
       map.setPaintProperty(layer.id, prop, value);
     }

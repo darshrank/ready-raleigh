@@ -3,7 +3,9 @@
 // now; blind spot = a top priority nobody picks, outreach needed; new best = residents beat the
 // record. Each links to its transaction, so a planner can cite it.
 import { useEffect, useState } from 'react';
+import type { MapData } from '../data';
 import { currentCityId } from '../story';
+import { type Focus, type SetFocus, focusRow, spotPoint } from './focus';
 
 const REFRESH_MS = 15_000;
 /** Signals listed before "Show all". */
@@ -13,6 +15,8 @@ interface Signal {
   id: string;
   city: string;
   type: 'consensus' | 'blind_spot' | 'new_best';
+  /** Planner target ('site:<id>', ...), or 'city' for a city-wide signal. */
+  spot: string;
   label: string;
   state: 'on' | 'off';
   evidence: Record<string, number | string>;
@@ -46,7 +50,7 @@ function ago(iso: string): string {
   return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} days ago`;
 }
 
-export function CivicSignalsPanel({ city = currentCityId() }: { city?: string }) {
+export function CivicSignalsPanel({ city = currentCityId(), data, focus, setFocus }: { city?: string; data: MapData | null; focus: Focus | null; setFocus: SetFocus }) {
   const [signals, setSignals] = useState<Signal[] | null>(null);
   const [off, setOff] = useState(false);
   const [all, setAll] = useState(false);
@@ -91,7 +95,14 @@ export function CivicSignalsPanel({ city = currentCityId() }: { city?: string })
           {(all ? signals : signals.slice(0, SHOWN)).map((s) => {
             const d = describe(s);
             return (
-              <li key={s.id} className={`grid gap-0.5 border-(length:--rule) border-ink px-2 py-1.5 text-13 ${d.tone}`}>
+              <li
+                key={s.id}
+                {...focusRow(`signal:${s.id}`, () => {
+                  const at = data ? spotPoint(data, s.spot) : null;
+                  return at ? { lon: at[0], lat: at[1], label: s.label } : null;
+                }, focus, setFocus)}
+                className={`grid cursor-pointer gap-0.5 border-(length:--rule) border-ink px-2 py-1.5 text-13 ${focus?.key === `signal:${s.id}` ? 'bg-signal' : d.tone}`}
+              >
                 <p className="text-15 font-semibold">{d.title}</p>
                 <p>{d.detail}</p>
                 <p className="flex flex-wrap gap-x-3">

@@ -8,6 +8,7 @@ import { pieceName, type FloodPiece } from '../plan/pieces';
 import { currentCityId } from '../story';
 import { withAlpha } from '../map/layers';
 import { tokens } from '../tokens';
+import { type Focus, type SetFocus, focusRow } from './focus';
 
 /** How many places the page ranks (pegs and rows). */
 export const TOP = 8;
@@ -59,7 +60,8 @@ const CATEGORY: Record<Spot['category'], { label: string; chip: string }> = {
 };
 
 /** Numbered pegs: the piece's disc (signal face where residents and the data agree) and its rank. */
-export function useTopActionLayers(ranking: Ranking | null, active: number | null) {
+export function useTopActionLayers(ranking: Ranking | null, focus: Focus | null) {
+  const active = focus?.key.startsWith('top:') ? Number(focus.key.slice(4)) : null;
   return useMemo(() => {
     if (!ranking?.spots.length) return [];
     const { atlas, mapping } = pieceIconAtlas();
@@ -99,11 +101,11 @@ export function useTopActionLayers(ranking: Ranking | null, active: number | nul
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 
-export function TopActionsPanel({ ranking, error, active, setActive }: {
+export function TopActionsPanel({ ranking, error, focus, setFocus }: {
   ranking: Ranking | null;
   error: boolean;
-  active: number | null;
-  setActive: (i: number | null) => void;
+  focus: Focus | null;
+  setFocus: SetFocus;
 }) {
   if (!ranking) {
     return (
@@ -126,14 +128,9 @@ export function TopActionsPanel({ ranking, error, active, setActive }: {
           return (
             <li
               key={s.target}
-              onMouseEnter={() => setActive(i)}
-              onMouseLeave={() => setActive(null)}
-              onFocus={() => setActive(i)}
-              onBlur={() => setActive(null)}
-              onClick={() => setActive(active === i ? null : i)}
-              tabIndex={0}
+              {...focusRow(`top:${i}`, () => ({ lon: s.lon, lat: s.lat, label: `${i + 1}. ${s.name}` }), focus, setFocus)}
               title={s.reason}
-              className={`grid grid-cols-[1.75rem_1fr] gap-x-2 border-(length:--rule) border-ink px-2 py-1.5 text-13 ${active === i ? 'bg-signal' : 'bg-bond'}`}
+              className={`grid cursor-pointer grid-cols-[1.75rem_1fr] gap-x-2 border-(length:--rule) border-ink px-2 py-1.5 text-13 ${focus?.key === `top:${i}` ? 'bg-signal' : 'bg-bond'}`}
             >
               <span className="row-span-2 flex h-7 w-7 items-center justify-center bg-ink font-display text-18 font-extrabold text-bond tabular-nums">{i + 1}</span>
               <span className="text-15 leading-snug font-semibold">

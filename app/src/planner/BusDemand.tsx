@@ -7,6 +7,7 @@ import type { BusDemandReport, DemandArea } from '@shared/demand';
 import { withAlpha } from '../map/layers';
 import { tokens } from '../tokens';
 import { currentCityId } from '../story';
+import { type Focus, type SetFocus, focusRow } from './focus';
 
 // The city the page shows (?city=, Raleigh by default), like the map.
 const URL = `/api/planner/bus-demand?mode=flood&city=${currentCityId()}`;
@@ -79,7 +80,7 @@ const distance = (m: number) => (m < 1000 ? `${Math.round(m / 10) * 10} m` : `${
 /** Areas listed before "Show all". */
 const SHOWN = 3;
 
-export function BusDemandPanel({ report, error }: State) {
+export function BusDemandPanel({ report, error, focus, setFocus }: State & { focus: Focus | null; setFocus: SetFocus }) {
   const [all, setAll] = useState(false);
   if (!report) {
     return (
@@ -111,7 +112,12 @@ export function BusDemandPanel({ report, error }: State) {
       {report.areas.length > 0 && (
         <ol className="grid gap-1.5">
           {(all ? report.areas : report.areas.slice(0, SHOWN)).map((a) => (
-            <li key={a.area} title={a.reason} className="grid gap-0.5 border-(length:--rule) border-ink bg-bond px-2 py-1.5 text-13">
+            <li
+              key={a.area}
+              title={a.reason}
+              {...focusRow(`bus:${a.area}`, () => ({ lon: a.lon, lat: a.lat, label: a.hood, hex: a.area }), focus, setFocus)}
+              className={`grid cursor-pointer gap-0.5 border-(length:--rule) border-ink px-2 py-1.5 text-13 ${focus?.key === `bus:${a.area}` ? 'bg-signal' : 'bg-bond'}`}
+            >
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-15 font-semibold">
                   {a.rank}. {a.hood}

@@ -7,8 +7,8 @@
 //               plays; it turns off when a play finally covers it (that play earns a card)
 //   new_best    a play beats the best score so far (after NEW_BEST_MIN_PLAYS plays)
 // Every city has its own spots, so the rules run per city and mode on that city's data and crowd,
-// and each memo names the city. The rules start from the state at boot without publishing it, so a
-// restart never floods the chain.
+// and each memo names the city. The rules start from what was last published, so the record on
+// chain is a true history of changes across restarts.
 import { randomUUID } from 'node:crypto';
 import { type CityId, canonicalJson, engineIndex, isCityId, merkleTree, sha256Hex, signalMemo, type Mode } from '@shared';
 import type { GameData } from '../data';
@@ -23,6 +23,8 @@ export const BLIND_MIN_PLAYS = 10;
 export const NEW_BEST_MIN_PLAYS = 5;
 /** A new best must beat the old one by this much (scores are 0..100). */
 export const NEW_BEST_MARGIN = 0.5;
+/** How many published signals the boot state is read from (newest first). */
+const PUBLISHED_HISTORY = 2000;
 
 export interface Change {
   type: SignalType;
@@ -98,16 +100,20 @@ export function civicSignals({ plays, civic, data, log, onAward }: SignalOptions
   const planner = ({ mode, game }: Scope, crowd: Awaited<ReturnType<PlayStore['crowd']>>) =>
     rankPlanner(mode, game.bundle, game.optimal(mode), game.extended(mode), crowd);
 
-  /** The state at boot (or on a city's first play): remembered, not published. */
+  /**
+   * Where the rules start (boot, or a city's first play): the state as published, i.e. each spot's
+   * latest signal on record. The chain then only ever says what changed against what it already said;
+   * something true but never published is published on the next play.
+   */
   async function baseline(scope: Scope, skipPlay: PlayRecord) {
     if (state.has(scope.key)) return;
-    const crowd = await plays.crowd(scope.mode, scope.city);
-    const { on } = spotSignals(planner(scope, crowd), new Set());
-    // Consensus counts only with enough different players, at boot as later.
-    for (const key of [...on].filter((k) => k.startsWith('consensus|'))) {
-      if (!(await enoughPlayers(scope, key.slice('consensus|'.length)))) on.delete(key);
+    const latest = new Map<string, 'on' | 'off'>();
+    for (const s of await civic.store.signals(PUBLISHED_HISTORY)) {
+      if (s.city !== scope.city || s.mode !== scope.mode || s.type === 'new_best') continue;
+      const key = `${s.type}|${s.spot}`;
+      if (!latest.has(key)) latest.set(key, s.state); // newest first
     }
-    state.set(scope.key, on);
+    state.set(scope.key, new Set([...latest].filter(([, st]) => st === 'on').map(([key]) => key)));
     // The best before this play: the store already holds it, so recompute without it when it leads.
     const top = await plays.bestScore(scope.mode, scope.city);
     best.set(scope.key, top !== null && top <= skipPlay.score.score ? null : top);
@@ -121,10 +127,6 @@ export function civicSignals({ plays, civic, data, log, onAward }: SignalOptions
 
   const pickersOf = (scope: Scope, target: string, limit: number) => plays.pickers(scope.mode, targetsOf(scope.game, target), limit, scope.city);
 
-  async function enoughPlayers(scope: Scope, target: string) {
-    const pickers = await pickersOf(scope, target, 200);
-    return new Set(pickers.map((p) => p.playerId)).size >= CONSENSUS_MIN_PLAYERS;
-  }
 
   async function publish({ city, mode }: Scope, change: Change, playIds: string[]): Promise<Signal> {
     const prints = (await Promise.all(playIds.map((id) => civic.store.play(id)))).flatMap((p) => (p ? [p.fingerprint] : []));

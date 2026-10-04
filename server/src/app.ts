@@ -13,6 +13,7 @@ import { cardService } from './cards/cards';
 import type { Minter } from './cards/mint';
 import { registerCards } from './cards/routes';
 import { registerNews } from './news';
+import type { LiveStats } from './db/stats';
 import { type CivicRecord, civicRecord } from './solana/civic';
 import { registerCivic } from './solana/routes';
 import { civicSignals } from './solana/signals';
@@ -37,10 +38,12 @@ export interface ServerOptions {
   gemini?: Gemini;
   /** Paint card art with Gemini (tests turn it off). */
   cardArt?: boolean;
+  /** Tiger Data's live numbers for the planner page (absent with the memory store). */
+  liveStats?: () => Promise<LiveStats>;
 }
 
 /** Builds the server without listening, so tests can inject requests. */
-export function buildServer({ store = new MemoryStore(), data = () => null, live = new MemoryLiveStore(), civic, onAward, minter = null, gemini = defaultGemini, cardArt = true }: ServerOptions = {}) {
+export function buildServer({ store = new MemoryStore(), data = () => null, live = new MemoryLiveStore(), civic, onAward, minter = null, gemini = defaultGemini, cardArt = true, liveStats }: ServerOptions = {}) {
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
   const record = civic ?? civicRecord({
     store: new MemoryCivicStore(),
@@ -121,6 +124,23 @@ export function buildServer({ store = new MemoryStore(), data = () => null, live
       }
       return { store: store.kind, ...report };
     });
+
+  // What Tiger Data is doing now, for the planner page: aggregates, the gauge stream, compression,
+  // timed queries. Cached for a few seconds so an open page (or several) costs little.
+  let live_: { at: number; stats: Promise<LiveStats> } | null = null;
+  app.get('/api/planner/live', async (_req, reply) => {
+    if (!liveStats) return { store: store.kind };
+    if (!live_ || Date.now() - live_.at > 5000) {
+      live_ = { at: Date.now(), stats: liveStats() };
+      live_.stats.catch(() => (live_ = null));
+    }
+    try {
+      return await live_.stats;
+    } catch (err) {
+      app.log.warn({ err }, 'planner live stats failed');
+      return reply.code(503).send({ store: store.kind, error: 'Tiger Data did not answer' });
+    }
+  });
 
   // Live feeds: the latest reading per gauge, with trend and flood stage, plus weather.
   app.get('/api/live/gauges', async () => {

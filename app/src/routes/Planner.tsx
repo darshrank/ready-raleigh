@@ -1,4 +1,5 @@
 import { BusDemandPanel, useBusDemand, useBusDemandLayers } from '../planner/BusDemand';
+import { CivicSignalsPanel } from '../planner/CivicSignals';
 import { PeopleLayerControl, Legend } from '../ui/MapRail';
 import { MapScreen } from '../ui/MapScreen';
 
@@ -11,6 +12,7 @@ export function Planner() {
       extraLayers={layers}
       rail={() => (
         <>
+          <CivicSignalsPanel />
           <BusDemandPanel {...demand} />
           <PeopleLayerControl />
           <Legend />

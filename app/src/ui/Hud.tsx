@@ -5,7 +5,8 @@ import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'r
 import { BUDGET } from '@shared/config';
 import type { Placement, ScoreResult } from '@shared/types';
 import type { MapData } from '../data';
-import { DISC_BOX, FLOOD_PIECES, PIECE_INFO, discSvg, pieceCost, type FloodPiece } from '../plan/pieces';
+import { DISC_BOX, PIECE_INFO, cityPieces, discSvg, pieceCost, pieceCovers, pieceName, type FloodPiece } from '../plan/pieces';
+import { currentStory } from '../story';
 import { targetOf, usePlan } from '../plan/store';
 import { targetLabel } from '../plan/targets';
 import { pieceGain, type Preview } from '../plan/usePlanScore';
@@ -138,7 +139,7 @@ function TrayPiece({ piece, left, size, onArmed }: { piece: FloodPiece; left: nu
       aria-pressed={on}
       aria-disabled={!usable}
       aria-keyshortcuts={info.key}
-      title={`${info.covers}. Key ${info.key}.`}
+      title={`${pieceCovers(piece)}. Key ${info.key}.`}
       onClick={(e: MouseEvent) => {
         unlockAudio();
         if (!planning) return;
@@ -162,7 +163,7 @@ function TrayPiece({ piece, left, size, onArmed }: { piece: FloodPiece; left: nu
       >
         <Disc piece={piece} size={size} selected={on} shadow={false} />
       </span>
-      <span className="mt-1 text-13 leading-tight font-semibold lg:text-15">{info.name}</span>
+      <span className="mt-1 text-13 leading-tight font-semibold lg:text-15">{pieceName(piece)}</span>
       <span className={'tabular font-display text-24 leading-none font-extrabold ' + (affordable || !planning ? '' : 'text-alarm')}>
         {money(cost)}
       </span>
@@ -185,8 +186,8 @@ function Placed({ data, onSelect }: { data: MapData; onSelect: (id: string, byKe
             <button
               type="button"
               aria-pressed={on}
-              aria-label={`${PIECE_INFO[p.type as FloodPiece].name} at ${t ? targetLabel(data, t) : ''}`}
-              title={`${PIECE_INFO[p.type as FloodPiece].name} at ${t ? targetLabel(data, t) : ''}`}
+              aria-label={`${pieceName(p.type as FloodPiece)} at ${t ? targetLabel(data, t) : ''}`}
+              title={`${pieceName(p.type as FloodPiece)} at ${t ? targetLabel(data, t) : ''}`}
               onClick={(e) => onSelect(p.id, e.detail === 0)}
               className="block rounded-full"
             >
@@ -215,7 +216,7 @@ function StartStorm({ wide }: { wide: boolean }) {
         (wide ? 'w-full' : 'self-center')
       }
     >
-      Start the storm
+      {currentStory().start}
     </button>
   );
 }
@@ -236,8 +237,8 @@ export function Tray({
 }) {
   return (
     <div className={PLATE + ' pointer-events-auto flex flex-col gap-3 px-3 pt-3 pb-3 lg:flex-row lg:items-stretch lg:gap-5 lg:px-5'}>
-      <div role="group" aria-label="Pieces" className="grid grid-cols-3 gap-2 lg:gap-4">
-        {FLOOD_PIECES.map((piece) => (
+      <div role="group" aria-label="Pieces" className="grid gap-2 lg:gap-4" style={{ gridTemplateColumns: `repeat(${cityPieces().length}, minmax(0, 1fr))` }}>
+        {cityPieces().map((piece) => (
           <TrayPiece key={piece} piece={piece} left={left} size={compact ? 56 : 76} onArmed={onArmed} />
         ))}
       </div>
@@ -252,10 +253,10 @@ export function Tray({
   );
 }
 
-const ARMED_HINT: Record<FloodPiece, string> = {
-  shelter: 'Tap a building square on the map to open a shelter there.',
-  bus_pickup: 'Tap the map where a bus should pick up people with no car.',
-  road_protection: 'Tap a pink flood-prone road to keep it open.',
+const ARMED_HINT: Record<FloodPiece, () => string> = {
+  shelter: () => `Tap a building square on the map to open a ${pieceName('shelter').toLowerCase()} there.`,
+  bus_pickup: () => 'Tap the map where a bus should pick up people with no car.',
+  road_protection: () => `Tap a pink ${currentStory().roadKind} road to keep it open.`,
 };
 
 /** What to do next, what the hovered target would do, or the selected piece with Remove. */
@@ -286,18 +287,18 @@ export function Status({ data, preview }: { data: MapData; preview: Preview | nu
           : inPlace
             ? '. The piece is here now. Move the cursor to pick another spot, then press Enter.'
             : site && site.floodStep !== null
-              ? '. This building floods, so a shelter here helps no one.'
+              ? `. ${currentStory().siteLost}, so a ${pieceName('shelter').toLowerCase()} here helps no one.`
               : `: covers ${fmt(preview.gain)} more residents.`}
       </p>
     );
-  } else if (armed) body = <p>{ARMED_HINT[armed]} Press Esc to cancel.</p>;
+  } else if (armed) body = <p>{ARMED_HINT[armed]()} Press Esc to cancel.</p>;
   else if (selected) {
     const t = targetOf(selected);
     body = (
       <div className="flex items-center justify-between gap-3">
         <p>
           <strong>
-            {PIECE_INFO[selected.type as FloodPiece].name} at {t ? targetLabel(data, t) : 'nowhere'}
+            {pieceName(selected.type as FloodPiece)} at {t ? targetLabel(data, t) : 'nowhere'}
           </strong>
           . Adds {fmt(gain)} residents. Drag it to move it.
         </p>
@@ -310,7 +311,8 @@ export function Status({ data, preview }: { data: MapData; preview: Preview | nu
         </button>
       </div>
     );
-  } else if (placements.length === 0) body = <p>Place your first shelter. Pick it below, then tap a building square on the map.</p>;
+  } else if (placements.length === 0)
+    body = <p>Place your first {pieceName('shelter').toLowerCase()}. Pick it below, then tap a building square on the map.</p>;
   else body = <p>Tap a piece on the map to move or remove it.</p>;
 
   return (
@@ -321,7 +323,7 @@ export function Status({ data, preview }: { data: MapData; preview: Preview | nu
 }
 
 /** A small square control on the map: bond plate, ink rule, hard shadow; ink when on. */
-function MapButton({ on, label, onClick, children }: { on: boolean; label: string; onClick: () => void; children: ReactNode }) {
+export function MapButton({ on, label, onClick, children }: { on: boolean; label: string; onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"

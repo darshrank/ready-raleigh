@@ -6,3 +6,4 @@ export * from './plan';
 export * from './score';
 export * from './optimizer';
 export * from './timeline';
+export * from './weakSpot';

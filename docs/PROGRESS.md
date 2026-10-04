@@ -15,6 +15,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [x] P6 Planning phase: tray, placing, budget, timer, instant coverage (C)
 - [~] P7 Simulation: halftone flood, closing roads, trips, counters (C + B). Pass 1 done (Claude, C); pass 2 = road routing
 - [x] V1 Visual overhaul: title and briefing, game HUD, realistic water, night storm with helicopter camera, daylight end (C)
+- [x] V2 Four cities and the broadcast: globe landing, Miami / San Francisco / New York on the same engine, narrated briefing tour, Find the weak spot, storm timeline, news desk with anchor, hazard sound and vibration (C + D, branch feat/new-features-adit)
 - [ ] P8 Results screen with score breakdown and optimal plan side by side (C)
 - [~] P9 Rooms: (aum) done: lobby + QR, mayoral candidates, any player hosts, shared clock, storm starts together, ranked results stored in Tiger Data. Open: crowd heatmap, perception gap
 
@@ -26,7 +27,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 
 ## Phase 4: bonus challenges
 - [ ] P12 Gemini briefing and debrief (D)
-- [ ] P13 ElevenLabs broadcast and narration (D)
+- [x] P13 ElevenLabs broadcast and narration (D): POST /api/tts, narrated briefing, news anchor (V2)
 - [ ] P14 GoDaddy domain and deploy (any)
 - [~] P15 Live mode: USGS gauges and NWS weather into Tiger Data (D). Server done (Claude, D); title-screen live line (C) next
 - [ ] P16 Solana plan record (D)
@@ -71,6 +72,55 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Next exact step:
 - Gotchas:
 -->
+
+### 2026-10-03 21:30 (machine clock) Claude (Opus 5.5) for Adit, lanes C + D, V2 four cities and the broadcast (branch feat/new-features-adit)
+- Done:
+  - Landing: interactive globe (map/globe.ts, MapLibre globe projection): drag to spin, scroll,
+    pinch or +/- to zoom, slow auto-spin that pauses while you touch it. City markers and four
+    city cards (cities.ts, ui/Skyline.tsx); Play flies into the city and hands off to the title
+    orbit. The rooms plate (join, host, planner) is unchanged.
+  - Four cities, one engine: `?city=raleigh|miami|san-francisco|new-york` (Raleigh by default).
+    story.ts holds each city's words (title, narrated briefing, step names, band, headlines,
+    anchor lines, button and result copy, piece names); dataBase() picks the folder. Raleigh keeps
+    /data; the others read app/public/data/cities/<id>/ in main's contracts, converted from the
+    feat/ready-raleigh-adit packs by shared/scripts/import-city.ts. map/flood.ts draws water for
+    floods and a flat ground look (signal for the quake, alarm for the heat) for the others.
+  - Voice (P13): server/src/voice.ts, POST /api/tts {text, voice: broadcast|narrator} via
+    ElevenLabs REST, cached in server/.cache/tts (git-ignored); 503 without a key. GET /api/health
+    now returns `voice`. ui/voice.ts plays clips through the game's AudioContext; captions only
+    when voice is off.
+  - Narrated briefing: "Hear the briefing" on the title (starts on its own once audio is
+    unlocked); the camera flies to each tour stop while its sentence is said (useBriefingTour).
+  - Find the weak spot (once per round): shared/src/engine/weakSpot.ts (+ test) and
+    plan/WeakSpot.tsx: scan, fly to the road, highlight, "Protect it". Hidden where no road can be
+    protected (New York).
+  - Storm timeline: storm/Timeline.tsx + clock.ts, a 6 PM to 7 AM clock with dusk, night and dawn
+    bands, pins at each step and event, and a playhead; the director fades the day map to night
+    over 2.6 s.
+  - News desk: storm/NewsDesk.tsx, a flat-ink cartoon anchor whose mouth follows the clip's
+    analyser (a synthetic rhythm without voice), the last 3 headlines with clock times, voice
+    prefetched. StormEvent gained `label` (pin) and `news` (anchor sentence).
+  - Hazard effects (storm/Weather.tsx, ui/sound.ts): a siren and a vibration at the start in
+    every city. Floods: rain, lightning with thunder, a water rush each step. Quake: map shake,
+    rumble and aftershocks. Heat: a breathing heat tint, a blackout flicker with power-down at step
+    2. Vibration only on coarse pointers; reduced motion drops the shake and the flicker.
+- Verified: typecheck (shared, app, server); npm test 60/60 (new weakSpot.test.ts, /api/tts
+  refuses empty text, health has `voice`); each converted city passes shared/src/fixtures.test.ts
+  with DATA_DIR. Browser at 1440: globe, Play hand-off (Miami), planning in all four cities, storms
+  with the news desk and the results card, no console errors. 390: landing, New York planning,
+  Raleigh news desk.
+- Next exact step: play each city on a real phone with sound on and tune the story lines; then
+  let rooms pick a city (server scores Raleigh only today).
+- Gotchas:
+  - New York runs the flood engine as a heat stand-in: steps are the hottest blocks by heat score,
+    no road closes, sites in step-1 cells lose power. The real heat engine (P10) is not used.
+  - San Francisco's steps are the scenario's high-liquefaction zones split by shaking (MMI), so
+    the west side near the fault reads high. Miami is ~40% at risk (broad FEMA zones).
+  - Imported cities have no optimal_flood.json (the offline optimizer refuses above 20% at risk);
+    score() computes bestPossible in the browser (~0.6 s for Miami).
+  - Rooms, the planner and POST /api/plays still use Raleigh data.
+  - The automated browser pane stops drawing frames after ~10 s, so flights and animations look
+    frozen there; judge motion in a real browser.
 
 ### 2026-10-03 18:45 EDT Claude (Opus 5.5) lane D, P15 live feeds (server)
 - Done: server/src/live/ (sources.ts fetchers + pure parsers, store.ts Tiger/memory/failSoftLive,

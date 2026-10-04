@@ -25,6 +25,8 @@ import {
 export const STORM_PITCH = 55;
 /** The helicopter circles this many degrees while it holds on an event. */
 const ORBIT_DEG = 14;
+/** Dusk: the city darkens over this long, the dusk band of the storm timeline (storm/clock.ts). */
+const DUSK_MS = 2600;
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
@@ -75,11 +77,11 @@ export function directStorm(map: MapLibreMap, flood: FloodView | null, storm: St
   /** Skipped past the end: go straight to the aftermath. */
   const skipped = now >= STORM_MS;
 
-  // Night: swapped at the middle of the wipe (instantly when the storm is skipped past).
+  // Night falls from the middle of the wipe over the timeline's dusk (instantly when skipped past).
   if (!skipped) {
     at(o.reduce ? 0 : WIPE_MS / 2, () => {
-      applyPalette(map, 'storm', t, 0);
-      flood?.setLook('storm', 'full', 0);
+      applyPalette(map, 'storm', t, o.reduce ? 0 : DUSK_MS);
+      flood?.setLook('storm', 'full', o.reduce ? 0 : DUSK_MS);
     });
   }
 

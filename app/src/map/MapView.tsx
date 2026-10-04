@@ -3,6 +3,7 @@ import { Map as MapLibreMap } from 'maplibre-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { LayersList, PickingInfo } from '@deck.gl/core';
 import { useMapUi } from '../store';
+import { currentStory } from '../story';
 import { tokens } from '../tokens';
 import { basemapStyle } from './basemap';
 import { FloodView } from './flood';
@@ -81,7 +82,7 @@ export function MapView({
     const map = new MapLibreMap({
       container: containerRef.current,
       style: basemapStyle(tokens()),
-      center: [-78.64, 35.78],
+      center: currentStory().orbit,
       zoom: 11,
       pitch: useMapUi.getState().tilt ? TILT_PITCH : 0,
       attributionControl: { compact: true },

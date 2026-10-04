@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { Cell, FloodRoad, Site } from '@shared/types';
 import type { DataBundle, Hospital } from '@shared/data';
+import { dataBase } from './story';
 
-/** Where the static data lives: the real pipeline output, or /data/fixtures for the small test set. */
-export const DATA_BASE: string = import.meta.env.VITE_DATA_BASE || '/data';
-
-async function getJson<T>(file: string): Promise<T> {
-  const res = await fetch(`${DATA_BASE}/${file}`);
+async function getJson<T>(base: string, file: string): Promise<T> {
+  const res = await fetch(`${base}/${file}`);
   if (!res.ok) throw new Error(`${file}: ${res.status} ${res.statusText}`);
   return (await res.json()) as T;
 }
@@ -19,18 +17,22 @@ export interface MapData extends DataBundle {
   hospitals: Hospital[];
 }
 
-// One fetch per page load, shared by every route.
-let mapData: Promise<MapData> | null = null;
+// One fetch per city per page load, shared by every route.
+const cache = new Map<string, Promise<MapData>>();
 
-export function loadMapData(): Promise<MapData> {
-  mapData ??= Promise.all([
-    getJson<Cell[]>('cells.json'),
-    getJson<Site[]>('sites.json'),
-    getJson<FloodRoad[]>('flood_roads.json'),
-    getJson<Hospital[]>('hospitals.json'),
-  ]).then(([cells, sites, floodRoads, hospitals]) => ({ cells, sites, floodRoads, hospitals }));
-  mapData.catch(() => (mapData = null)); // let a later mount retry
-  return mapData;
+export function loadMapData(base = dataBase()): Promise<MapData> {
+  let p = cache.get(base);
+  if (!p) {
+    p = Promise.all([
+      getJson<Cell[]>(base, 'cells.json'),
+      getJson<Site[]>(base, 'sites.json'),
+      getJson<FloodRoad[]>(base, 'flood_roads.json'),
+      getJson<Hospital[]>(base, 'hospitals.json'),
+    ]).then(([cells, sites, floodRoads, hospitals]) => ({ cells, sites, floodRoads, hospitals }));
+    p.catch(() => cache.delete(base)); // let a later mount retry
+    cache.set(base, p);
+  }
+  return p;
 }
 
 export function useMapData() {

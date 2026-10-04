@@ -39,6 +39,17 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 ## Handoff log
 <!-- Newest first. Template:
 
+### 2026-10-04 00:15 EDT Claude (Opus 5.5) lane D, Gemini harness
+- Done: server/src/ai/gemini.ts, one Gemini client for the whole server: `gemini.json()` (schema
+  output), `gemini.text()`, `gemini.image()`, `GROUNDED` prompt rules, `AIError` on any failure,
+  timeouts, model fallback chains (DECISIONS.md). GET /api/health reports `ai`. 8 unit tests with a
+  fake client; `npm run ai:smoke -w server` makes one live call of each kind.
+- Verified: typecheck, 85 tests; live smoke with the team key: JSON 1.0 s, image 10 s
+  (gemini-3.1-flash-image, 934 KB JPEG, flat print look).
+- Next exact step: Gemini news desk (the anchor reports what the mayors planned, template
+  fallback), then Solana (docs/SOLANA.md on branch `solana`).
+- Gotcha: no route exposes raw prompts; each feature adds its own endpoint and keeps a template.
+
 ### 2026-10-03 18:40 (machine clock) Claude (Opus 5.5) for Aum, lane D + C, P9 rooms (branch feat/multiplayer)
 - Story: every player is a mayoral candidate. Gameplay is the solo game unchanged; rooms only add
   the lobby, a shared planning clock, a storm that starts for everyone at once, and the ranking.

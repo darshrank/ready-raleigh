@@ -6,10 +6,10 @@ const app = buildServer();
 afterAll(() => app.close());
 
 describe('server', () => {
-  it('GET /api/health returns ok and whether voice is on', async () => {
+  it('GET /api/health returns ok and whether voice and AI are on', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/health' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true, voice: !!process.env.ELEVENLABS_API_KEY });
+    expect(res.json()).toEqual({ ok: true, voice: !!process.env.ELEVENLABS_API_KEY, ai: !!process.env.GEMINI_API_KEY?.trim() });
   });
 
   it('POST /api/tts refuses empty text', async () => {

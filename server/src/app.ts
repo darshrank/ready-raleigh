@@ -8,6 +8,7 @@ import { rankPlanner } from './planner';
 import { BadPlay, buildPlay } from './plays';
 import { lanAddresses } from './net';
 import { roomServer } from './roomSocket';
+import { gemini } from './ai/gemini';
 import { registerVoice, voiceReady } from './voice';
 
 export interface ServerOptions {
@@ -23,7 +24,7 @@ export interface ServerOptions {
 export function buildServer({ store = new MemoryStore(), data = () => null, live = new MemoryLiveStore() }: ServerOptions = {}) {
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
 
-  app.get('/api/health', async () => ({ ok: true, voice: voiceReady() }));
+  app.get('/api/health', async () => ({ ok: true, voice: voiceReady(), ai: gemini.ready() }));
   registerVoice(app);
 
   // Where phones join a room: PUBLIC_URL (our domain or a tunnel) when set, else this machine's LAN

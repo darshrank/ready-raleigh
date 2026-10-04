@@ -36,7 +36,7 @@ even if the server is down. Server features are layered on top and must fail sof
 - app: Vite, React 18, TypeScript strict, maplibre-gl, deck.gl (`@deck.gl/mapbox` MapboxOverlay,
   interleaved), h3-js, zustand, motion (framer-motion), Tailwind with tokens from DESIGN.md.
   No component kits with default styling (no stock shadcn look).
-- server: Node 20, Fastify, ws, `@google/genai`, ElevenLabs JS SDK, `pg`, `@solana/web3.js` (v1).
+- server: Node 20, Fastify, ws, `@google/genai` (use `server/src/ai/gemini.ts`, never a second client), ElevenLabs JS SDK, `pg`, `@solana/web3.js` (v1).
 - pipeline: Python 3.11, osmnx, geopandas, shapely, h3, rasterio, requests, pystac-client.
 - Basemap: free vector tiles (OpenFreeMap or Protomaps), restyled per DESIGN.md. Verify the tile
   URL works before building on it.
@@ -167,7 +167,7 @@ WebSocket `/ws/rooms/:code`, JSON messages with a `type` field:
 - `/planner` planner dashboard
 
 ### Environment (`.env`, never commit; see `.env.example`)
-`GEMINI_API_KEY`, `GEMINI_MODEL`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_BROADCAST`,
+`GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_IMAGE_MODEL`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_BROADCAST`,
 `ELEVENLABS_VOICE_NARRATOR`, `DATABASE_URL`, `SOLANA_RPC_URL`, `SOLANA_SECRET_KEY`,
 `CENSUS_API_KEY`, `PORT`, `VITE_SERVER_URL`, `VITE_FEATURE_VOICE`, `VITE_FEATURE_AI`.
 

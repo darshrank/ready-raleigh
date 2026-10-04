@@ -102,6 +102,8 @@ describe('failSoft', () => {
       pickups: async () => { throw new Error('down'); },
       pickers: async () => { throw new Error('down'); },
       bestScore: async () => { throw new Error('down'); },
+      bests: async () => { throw new Error('down'); },
+      renamePlayer: async () => { throw new Error('down'); },
       close: async () => {},
     };
     const warnings: string[] = [];

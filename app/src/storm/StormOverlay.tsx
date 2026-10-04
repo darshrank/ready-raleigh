@@ -1,15 +1,12 @@
-// What sits over the map during the storm: the broadcast band, the counters, and the results card.
-// The band and counters animate from the storm clock with their own rAF loops, writing to the DOM
-// directly, so React renders them once per step at most.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+// What sits over the map during the storm: the broadcast band and the counters (the results that
+// follow are storm/Results.tsx). The band and counters animate from the storm clock with their own
+// rAF loops, writing to the DOM directly, so React renders them once per step at most.
+import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { FINAL_FLOOD_STEP } from '@shared/config';
-import type { ScoreResult } from '@shared/types';
 import { usePlan } from '../plan/store';
-import { currentStory } from '../story';
 import { GROW_MS, STORM_MS, TICK_MS, stepAt, stepStart, type Storm, type StormEvent } from './sim';
 import { hush } from '../ui/voice';
-import { leaveGame } from '../ui/Exit';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 const easeOut = (x: number) => 1 - (1 - x) ** 3;
@@ -212,71 +209,6 @@ export function Counters({ storm, stormAt }: { storm: Storm; stormAt: number }) 
         </span>
       </p>
     </div>
-  );
-}
-
-/** The end of the storm: score, protected, stranded, Play again (same city) and Main menu. P8 replaces it with the full results. */
-/** `footer` replaces "Play again" (rooms: the standing; the TV runs the next election). */
-export function ResultsCard({ storm, result, footer, civic }: { storm: Storm; result: ScoreResult | null; footer?: ReactNode; civic?: ReactNode }) {
-  const reset = usePlan((s) => s.reset);
-  const reduce = useReducedMotion();
-  const button = useRef<HTMLButtonElement>(null);
-  useEffect(() => button.current?.focus({ preventScroll: true }), []);
-  const last = storm.timeline[storm.timeline.length - 1];
-  const prot = last?.protectedPeople ?? 0;
-  const strand = last?.strandedPeople ?? 0;
-  return (
-    <motion.section
-      aria-labelledby="results-title"
-      initial={reduce ? false : { y: '120%' }}
-      animate={{ y: 0 }}
-      transition={{ type: 'spring', stiffness: 260, damping: 28 }}
-      // A room's standings plus the public record can outgrow a phone: the card scrolls inside itself.
-      className="pointer-events-auto max-h-[calc(100dvh-5rem)] w-full max-w-md overflow-y-auto border-(length:--rule) border-ink bg-bond p-4 shadow-plate lg:p-6"
-    >
-      <h2 id="results-title" className="font-display text-32 font-extrabold">
-        {currentStory().passed}
-      </h2>
-      <p className="mt-3 flex items-baseline gap-3">
-        <span className="tabular font-display text-72 leading-none font-extrabold">{Math.round(result?.score ?? 0)}</span>
-        <span className="text-18 font-semibold">out of 100</span>
-      </p>
-      <dl className="tabular mt-3 grid grid-cols-2 gap-3 border-t-(length:--rule) border-ink pt-3">
-        <div>
-          <dt className="text-13">Protected</dt>
-          <dd className="font-display text-32 font-extrabold">{fmt(prot)}</dd>
-        </div>
-        <div>
-          <dt className="text-13">Stranded</dt>
-          <dd className="font-display text-32 font-extrabold">{fmt(strand)}</dd>
-        </div>
-      </dl>
-      <p className="mt-2 text-15">
-        {(result?.baseline.protectedPeople ?? 0) >= 1
-          ? `Existing shelters took ${fmt(result!.baseline.protectedPeople)}. Your plan reached ${fmt(prot - result!.baseline.protectedPeople)} of the ${fmt(prot + strand - result!.baseline.protectedPeople)} residents they could not.`
-          : `Your plan reached ${Math.round(prot + strand > 0 ? (100 * prot) / (prot + strand) : 0)}% of the residents ${currentStory().cause} put at risk.`}
-      </p>
-      {civic}
-      {footer ?? (
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <button
-            ref={button}
-            type="button"
-            onClick={reset}
-            className="border-(length:--rule) border-ink bg-ink px-4 py-3 text-left font-display text-24 font-extrabold text-signal hover:bg-bond hover:text-ink"
-          >
-            Play again
-          </button>
-          <button
-            type="button"
-            onClick={leaveGame}
-            className="border-(length:--rule) border-ink bg-bond px-4 py-3 text-left font-display text-24 font-extrabold text-ink hover:bg-chalk"
-          >
-            Main menu
-          </button>
-        </div>
-      )}
-    </motion.section>
   );
 }
 

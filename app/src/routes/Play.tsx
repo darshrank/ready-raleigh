@@ -8,6 +8,7 @@ import { Invite } from '../room/Invite';
 import { savedPlayer, useRoom, type Room } from '../room/useRoom';
 import { Link } from '../router';
 import { PLATE } from '../ui/Hud';
+import { RESULT_BUTTON } from '../storm/Results';
 import { Solo } from './Solo';
 import { CITIES, cityById } from '../cities';
 import { leaveGame } from '../ui/Exit';
@@ -38,7 +39,8 @@ export function Play({ code }: { code: string }) {
           onLock: room.lock,
           stormGo: s.phase === 'results',
           waiting: <Waiting state={s} />,
-          footer: <Standing state={s} room={room} />,
+          standings: <Standings state={s} />,
+          actions: <NextElection state={s} room={room} />,
           playId: s.playId,
           owner: savedPlayer(code),
           mayor: me.name,
@@ -263,12 +265,12 @@ function Waiting({ state }: { state: RoomState }) {
   );
 }
 
-/** Replaces "Play again" on the results card: the election result. */
-function Standing({ state, room }: { state: RoomState; room: Room }) {
+/** The results' leaderboard page in a room: this election, ranked, above the city's all-time board. */
+function Standings({ state }: { state: RoomState }) {
   if (!state.results) {
     const waiting = state.players.filter((p) => p.connected && !p.locked).length;
     return (
-      <p className="mt-4 border-t-(length:--rule) border-ink pt-3 text-15" role="status">
+      <p className="text-15" role="status">
         Your platform is in. {waiting > 0 ? `Waiting for ${waiting} more candidate${waiting === 1 ? '' : 's'}.` : 'Counting the votes…'}
       </p>
     );
@@ -276,55 +278,79 @@ function Standing({ state, room }: { state: RoomState; room: Room }) {
   const mine = state.results.find((r) => r.seat === state.you);
   const best = state.bestPossible ?? 0;
   return (
-    <div className="mt-4 border-t-(length:--rule) border-ink pt-3">
-      <p className="font-display text-24 font-extrabold">
+    <section aria-labelledby="election-title">
+      <h2 id="election-title" className="font-display text-32 font-extrabold">
+        This election
+      </h2>
+      <p className="mt-1 font-display text-24 leading-tight font-extrabold" role="status">
         {mine?.rank === 1 ? 'You are the mayor-elect!' : `You placed ${mine?.rank ?? '?'} of ${state.results.length}.`}
       </p>
-      <ol className="mt-2 flex max-h-48 flex-col gap-1 overflow-y-auto" aria-label="Election results">
+      <ol className="mt-3 flex flex-col gap-1" aria-label="Election results">
         {state.results.map((r) => (
-          <li key={r.seat} className={`grid grid-cols-[1.5rem_2rem_1fr_auto] items-center gap-2 ${r.seat === state.you ? 'font-bold' : ''}`}>
-            <span className="tabular">{r.rank}</span>
+          <li
+            key={r.seat}
+            className={
+              'grid grid-cols-[2rem_2rem_1fr_auto] items-center gap-2 px-2 py-1.5' +
+              (r.seat === state.you ? ' border-(length:--rule) border-ink bg-signal shadow-piece' : '')
+            }
+          >
+            <span className="tabular font-display text-24 leading-none font-extrabold">{r.rank}</span>
             <Portrait id={r.candidate} bg={seatInk(r.seat)} className="aspect-square w-8" />
             <span className="min-w-0">
-              <span className="block truncate">{r.submitted ? r.name : `${r.name} (no plan)`}</span>
-              <span className="tabular block text-13 font-normal">{Math.round(r.protectedPeople).toLocaleString('en-US')} protected</span>
+              <span className="block truncate font-semibold">
+                {r.submitted ? r.name : `${r.name} (no plan)`}
+                {r.seat === state.you ? ' (you)' : ''}
+              </span>
+              <span className="tabular block text-13">{Math.round(r.protectedPeople).toLocaleString('en-US')} protected</span>
             </span>
             <span className="tabular text-right">
-              {Math.round(r.score)}
-              {best > 0 && <span className="block text-13 font-normal">{Math.round((100 * r.score) / best)}% of best</span>}
+              <span className="block font-display text-24 leading-none font-extrabold">{Math.round(r.score)}</span>
+              {best > 0 && <span className="block text-13">{Math.round((100 * r.score) / best)}% of best</span>}
             </span>
           </li>
         ))}
       </ol>
-      {state.you === state.hostSeat ? (
-        <div className="mt-3 grid gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              room.again();
-              room.start();
-            }}
-            className="w-full border-(length:--rule) border-ink bg-ink px-4 py-3 text-left font-display text-24 font-extrabold text-signal"
-          >
-            Next election in {cityName(state.city)}
-          </button>
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={room.again} className="border-(length:--rule) border-ink bg-bond px-3 py-2 text-left text-15 font-semibold hover:bg-chalk">
-              Choose another city
-            </button>
-            <button type="button" onClick={leaveGame} className="border-(length:--rule) border-ink bg-bond px-3 py-2 text-left text-15 font-semibold hover:bg-chalk">
-              Leave room
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <p className="text-15">Waiting for the host to call the next election.</p>
-          <button type="button" onClick={leaveGame} className="shrink-0 border-(length:--rule) border-ink bg-bond px-3 py-2 text-15 font-semibold hover:bg-chalk">
-            Leave room
-          </button>
-        </div>
-      )}
-    </div>
+    </section>
+  );
+}
+
+/**
+ * The results' last page in a room, beside Back: the host runs the next election in the same city
+ * (or goes back to the lobby to pick another); anyone can leave. The full-width button wraps below.
+ */
+function NextElection({ state, room }: { state: RoomState; room: Room }) {
+  const leave = (
+    <button type="button" onClick={leaveGame} className={RESULT_BUTTON.secondary}>
+      Leave room
+    </button>
+  );
+  if (state.you !== state.hostSeat || !state.results) {
+    return (
+      <div className="flex items-center gap-2">
+        <p className="text-15">Waiting for the host to call the next election.</p>
+        {leave}
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className="flex gap-2">
+        <button type="button" onClick={room.again} className={RESULT_BUTTON.secondary}>
+          <span className="sm:hidden">Change city</span>
+          <span className="hidden sm:inline">Choose another city</span>
+        </button>
+        {leave}
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          room.again();
+          room.start();
+        }}
+        className={RESULT_BUTTON.primary + ' basis-full'}
+      >
+        Next election in {cityName(state.city)}
+      </button>
+    </>
   );
 }

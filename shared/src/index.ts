@@ -5,3 +5,4 @@ export * from './engine';
 export * from './room';
 export * from './demand';
 export * from './news';
+export * from './proof';

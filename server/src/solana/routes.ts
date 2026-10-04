@@ -26,6 +26,18 @@ export function registerCivic(app: FastifyInstance, civic: CivicRecord) {
     return { enabled: civic.enabled, cluster: CLUSTER, play, anchor: view.anchor };
   });
 
+  // Civic signals, newest first, each with the transaction that published it.
+  app.get<{ Querystring: { limit?: string } }>('/api/solana/signals', async (req) => {
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 30) || 30));
+    const signals = await civic.store.signals(limit);
+    const anchors = await Promise.all(signals.map((s) => (s.anchorId ? civic.store.anchor(s.anchorId) : null)));
+    return {
+      enabled: civic.enabled,
+      cluster: CLUSTER,
+      signals: signals.map((s, i) => ({ ...s, anchor: anchors[i] ? withExplorer(anchors[i]!) : null })),
+    };
+  });
+
   app.get<{ Querystring: { limit?: string } }>('/api/solana/anchors', async (req) => {
     const limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 20) || 20));
     return { enabled: civic.enabled, cluster: CLUSTER, anchors: (await civic.store.anchors(limit)).map(withExplorer) };

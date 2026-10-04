@@ -12,7 +12,8 @@ import { gemini } from './ai/gemini';
 import { registerNews } from './news';
 import { type CivicRecord, civicRecord } from './solana/civic';
 import { registerCivic } from './solana/routes';
-import { MemoryCivicStore } from './solana/store';
+import { civicSignals } from './solana/signals';
+import { MemoryCivicStore, type Signal } from './solana/store';
 import { registerVoice, voiceReady } from './voice';
 
 export interface ServerOptions {
@@ -24,10 +25,12 @@ export interface ServerOptions {
   live?: LiveStore;
   /** The civic record on Solana (P16). Defaults to memory with the chain off. */
   civic?: CivicRecord;
+  /** A play earned a card for a civic signal (tests listen here; cards hook in too). */
+  onAward?: (signal: Signal, play: { playId: string; playerId: string }) => void;
 }
 
 /** Builds the server without listening, so tests can inject requests. */
-export function buildServer({ store = new MemoryStore(), data = () => null, live = new MemoryLiveStore(), civic }: ServerOptions = {}) {
+export function buildServer({ store = new MemoryStore(), data = () => null, live = new MemoryLiveStore(), civic, onAward }: ServerOptions = {}) {
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
   const record = civic ?? civicRecord({
     store: new MemoryCivicStore(),
@@ -36,6 +39,9 @@ export function buildServer({ store = new MemoryStore(), data = () => null, live
     log: { info: (m) => app.log.info(m), warn: (o, m) => app.log.warn(o, m) },
   });
   registerCivic(app, record);
+  // Civic signals: the rules run after each fingerprinted play (room or solo).
+  const signals = civicSignals({ plays: store, civic: record, data, onAward, log: { info: (m) => app.log.info(m), warn: (o, m) => app.log.warn(o, m) } });
+  record.onRecorded((play) => void signals.onPlay(play));
 
   app.get('/api/health', async () => ({ ok: true, voice: voiceReady(), ai: gemini.ready() }));
   registerVoice(app);

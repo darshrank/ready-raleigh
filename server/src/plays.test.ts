@@ -77,6 +77,8 @@ describe('failSoft', () => {
       savePlay: async () => { throw new Error('down'); },
       crowd: async () => { throw new Error('down'); },
       pickups: async () => { throw new Error('down'); },
+      pickers: async () => { throw new Error('down'); },
+      bestScore: async () => { throw new Error('down'); },
       close: async () => {},
     };
     const warnings: string[] = [];

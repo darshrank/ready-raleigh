@@ -45,7 +45,16 @@ export interface PlayStore {
   crowd(mode: Mode): Promise<Crowd>;
   /** Bus pickups placed in this mode since `since`. */
   pickups(mode: Mode, since: Date): Promise<PickupPicks>;
+  /** Plays in this mode with a piece on any of `targets`, newest first (civic signals, P16). */
+  pickers(mode: Mode, targets: string[], limit: number): Promise<Picker[]>;
+  /** The best score in this mode so far, or null before the first play. */
+  bestScore(mode: Mode): Promise<number | null>;
   close(): Promise<void>;
+}
+
+export interface Picker {
+  playId: string;
+  playerId: string;
 }
 
 export class MemoryStore implements PlayStore {
@@ -81,6 +90,20 @@ export class MemoryStore implements PlayStore {
         .filter((r) => r.type === 'bus_pickup' && r.cell !== null)
         .map((r) => ({ cell: r.cell!, player: p.plan.playerId, ...(r.target.startsWith('stop:') ? { stopId: r.target.slice(5) } : {}) }))),
     };
+  }
+
+  async pickers(mode: Mode, targets: string[], limit: number): Promise<Picker[]> {
+    const want = new Set(targets);
+    return this.plays
+      .filter((p) => p.plan.mode === mode && p.placements.some((r) => want.has(r.target)))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit)
+      .map((p) => ({ playId: p.id, playerId: p.plan.playerId }));
+  }
+
+  async bestScore(mode: Mode): Promise<number | null> {
+    const scores = this.plays.filter((p) => p.plan.mode === mode).map((p) => p.score.score);
+    return scores.length ? Math.max(...scores) : null;
   }
 
   async close() {}
@@ -123,6 +146,25 @@ export function failSoft(primary: PlayStore, log: Log): PlayStore {
         return { plays: remote.plays + local.plays, players: remote.players + local.players, picks: [...remote.picks, ...local.picks] };
       } catch (err) {
         log.warn({ err }, 'pickups read failed; answering from memory');
+        return local;
+      }
+    },
+    async pickers(mode, targets, limit) {
+      const local = await backup.pickers(mode, targets, limit);
+      try {
+        return [...local, ...(await primary.pickers(mode, targets, limit))].slice(0, limit);
+      } catch (err) {
+        log.warn({ err }, 'pickers read failed; answering from memory');
+        return local;
+      }
+    },
+    async bestScore(mode) {
+      const local = await backup.bestScore(mode);
+      try {
+        const remote = await primary.bestScore(mode);
+        return remote === null ? local : local === null ? remote : Math.max(remote, local);
+      } catch (err) {
+        log.warn({ err }, 'bestScore read failed; answering from memory');
         return local;
       }
     },

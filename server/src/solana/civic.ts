@@ -37,6 +37,7 @@ export const withExplorer = (a: Anchor) => ({ ...a, explorerUrl: a.signature ? e
 
 export function civicRecord({ store, chain, dataBuild, log, batchMs = 5 * 60_000 }: CivicOptions) {
   let flushing: Promise<Anchor | null> = Promise.resolve(null);
+  const listeners: ((record: PlayRecord, play: PlayProof) => void)[] = [];
 
   /** Fingerprints a stored play. The anchoring comes later (flush). */
   async function recordPlay(record: PlayRecord): Promise<PlayProof> {
@@ -52,7 +53,23 @@ export function civicRecord({ store, chain, dataBuild, log, batchMs = 5 * 60_000
     };
     const play: PlayProof = { playId: record.id, playerId: record.plan.playerId, input, fingerprint: await playFingerprint(input), anchorId: null, proof: null };
     await store.savePlay(play);
+    for (const fn of listeners) fn(record, play);
     return play;
+  }
+
+  /** Writes one memo (a civic signal) and records it as an anchor; null when the chain is off. */
+  async function anchorMemo(kind: Anchor['kind'], city: string, root: string, count: number, memo: string): Promise<Anchor | null> {
+    if (!chain) return null;
+    const anchor: Anchor = { id: randomUUID(), kind, city, createdAt: new Date().toISOString(), root, count, memo, status: 'pending', signature: null, slot: null };
+    try {
+      Object.assign(anchor, { status: 'confirmed' }, await chain.memo(memo));
+    } catch (err) {
+      anchor.status = 'failed';
+      anchor.error = (err as Error).message.slice(0, 200);
+      log.warn({ err: anchor.error }, `civic: memo failed (${memo.slice(0, 60)})`);
+    }
+    await store.saveAnchor(anchor);
+    return anchor;
   }
 
   async function anchorWaiting(): Promise<Anchor | null> {
@@ -106,6 +123,9 @@ export function civicRecord({ store, chain, dataBuild, log, batchMs = 5 * 60_000
     address: chain?.address ?? null,
     store,
     recordPlay,
+    /** Called after each play is fingerprinted (civic signals listen here). */
+    onRecorded: (fn: (record: PlayRecord, play: PlayProof) => void) => void listeners.push(fn),
+    anchorMemo,
     flush,
     proof,
     close: () => clearInterval(timer),

@@ -8,7 +8,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AIError, GROUNDED, type Gemini } from '../ai/gemini';
-import { numbersIn } from '@shared';
+import { fitMemo, memoDecisions, numbersIn } from '@shared';
 import type { CivicLog, CivicRecord } from '../solana/civic';
 import type { Card, CardKind, Signal } from '../solana/store';
 import type { Minter } from './mint';
@@ -222,8 +222,14 @@ export function cardService({ civic, gemini, log, minter, art = true }: CardOpti
     if (card.status === 'minting') throw new ClaimError(409, 'This card is being minted.');
     if (!minter) throw new ClaimError(503, 'Cards cannot be minted yet (no collection set up).');
     await store.saveCard({ ...card, status: 'minting' });
+    // The mint transaction carries the card and the play's decisions in words (a Memo), so Solana
+    // Explorer shows them as text right there. The decisions come from the play's own memo.
+    const play = await store.play(card.playId);
+    const head = `ready-raleigh:v1:card:${CARD_NAMES[card.kind]}:${card.city}:play=${play?.fingerprint.slice(0, 16) ?? card.playId.slice(0, 8)}`;
+    const decisions = play?.memo?.text ? memoDecisions(play.memo.text) : [];
+    const memo = (maxBytes: number) => fitMemo(head, decisions, maxBytes, 'decisions not on record');
     try {
-      const { asset, signature } = await minter.mint({ name: card.title, uri: `${publicBase()}/api/cards/${card.id}/metadata.json`, owner: wallet, attributes: card.attributes });
+      const { asset, signature } = await minter.mint({ name: card.title, uri: `${publicBase()}/api/cards/${card.id}/metadata.json`, owner: wallet, attributes: card.attributes, memo });
       const minted: Card = { ...card, status: 'minted', asset, owner: wallet, mintSignature: signature };
       await store.saveCard(minted);
       log.info(`cards: minted "${card.title}" to ${wallet.slice(0, 6)}… (${asset})`);

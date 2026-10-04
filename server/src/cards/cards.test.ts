@@ -65,6 +65,8 @@ describe('contribution cards', () => {
     expect(ok.json().card).toMatchObject({ status: 'minted', asset: 'Asset1111', owner: WALLET });
     expect(minted).toHaveLength(1);
     expect(minted[0]!.uri).toMatch(new RegExp(`/api/cards/${mine.id}/metadata.json$`));
+    // The mint transaction carries a readable memo; this play has no decisions memo on record.
+    expect(minted[0]!.memo!(560)).toBe('ready-raleigh:v1:card:Mayor-elect:raleigh:play=p1 | decisions not on record');
     await claim({ wallet: WALLET, owner: 'secret-player' });
     expect(minted).toHaveLength(1); // already minted: no second asset
   });

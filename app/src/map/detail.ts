@@ -17,6 +17,7 @@ import type {
 import type { FeatureCollection, MultiPolygon, Point, Position } from 'geojson';
 import { loadMapData } from '../data';
 import { cityById } from '../cities';
+import { useMapUi } from '../store';
 import { currentCityId, dataBase } from '../story';
 import type { Palette } from './basemap';
 import { TILT_3D } from './flood';
@@ -369,6 +370,8 @@ export function siteBuildingLayers(P: Palette): LayerSpecification[] {
       type: 'fill',
       source: SITE_BUILDINGS,
       minzoom: SITE_BUILDING_ZOOM,
+      // Targets: shown only while a shelter is armed (installDetail follows useMapUi.siteTargets).
+      layout: { visibility: 'none' },
       paint: {
         'fill-color': ['case', hovered, P.siteHover, P.siteFill],
         'fill-opacity': ['case', hovered, 1, ['get', 'floods'], 0, 1],
@@ -379,7 +382,7 @@ export function siteBuildingLayers(P: Palette): LayerSpecification[] {
       type: 'line',
       source: SITE_BUILDINGS,
       minzoom: SITE_BUILDING_ZOOM,
-      layout: { 'line-join': 'round' },
+      layout: { 'line-join': 'round', visibility: 'none' },
       paint: {
         'line-color': P.siteLine,
         'line-width': ['interpolate', ['linear'], ['zoom'], SITE_BUILDING_ZOOM, 1.5, 18, 3],
@@ -734,7 +737,8 @@ export function installDetail(map: MapLibreMap, onSite: (card: SiteCardInfo | nu
       const fc: FeatureCollection<MultiPolygon> = { type: 'FeatureCollection', features: [] };
       buildings.forEach((b, i) => {
         const s = sites.get(b.id);
-        if (!s) return;
+        // Only sites that stay dry are shelter targets (a shelter in a building that floods helps no one).
+        if (!s || (s.floodStep !== null && s.floodStep <= 3)) return;
         fc.features.push({
           type: 'Feature',
           id: i,
@@ -749,7 +753,7 @@ export function installDetail(map: MapLibreMap, onSite: (card: SiteCardInfo | nu
         polys: f.geometry.coordinates,
         bbox: bboxOf(f.geometry.coordinates),
       }));
-      publishSolids(footprints);
+      publish();
       markSoon(0);
     },
     (e: unknown) => console.warn('Site buildings did not load:', e),
@@ -792,7 +796,8 @@ export function installDetail(map: MapLibreMap, onSite: (card: SiteCardInfo | nu
   const mark = () => {
     const on = map.getPitch() > TILT_3D;
     // With the realistic city (world/), deck.gl draws the site buildings (onSiteSolids).
-    if (map.getLayer(SITE_BUILDINGS_3D)) map.setLayoutProperty(SITE_BUILDINGS_3D, 'visibility', on && !REALISM ? 'visible' : 'none');
+    const targets = useMapUi.getState().siteTargets;
+    if (map.getLayer(SITE_BUILDINGS_3D)) map.setLayoutProperty(SITE_BUILDINGS_3D, 'visibility', on && targets && !REALISM ? 'visible' : 'none');
     if (!on || map.getZoom() < SITE_3D_ZOOM) return;
     const view = map.getBounds();
     const todo = footprints.filter((s) => s.height === undefined && view.intersects([[s.bbox[0], s.bbox[1]], [s.bbox[2], s.bbox[3]]]));
@@ -813,7 +818,7 @@ export function installDetail(map: MapLibreMap, onSite: (card: SiteCardInfo | nu
       if (REALISM) continue;
       map.setFeatureState({ source: SITE_BUILDINGS, id: s.fid }, { height: hit.height });
     }
-    if (found) publishSolids(footprints);
+    if (found) publish();
   };
   const markSoon = (ms: number) => {
     clearTimeout(markTimer);
@@ -825,6 +830,23 @@ export function installDetail(map: MapLibreMap, onSite: (card: SiteCardInfo | nu
   const onMoveEnd = () => markSoon(50);
   map.on('sourcedata', onTiles);
   map.on('moveend', onMoveEnd);
+
+  // Planning targets come and go with the armed piece: the site buildings (2D and 3D) show while a
+  // shelter is armed; the GoRaleigh stops step aside while the bus stop targets show.
+  const publish = () => publishSolids(useMapUi.getState().siteTargets ? footprints : []);
+  const applyTargets = () => {
+    const { siteTargets, stopTargets } = useMapUi.getState();
+    for (const id of [SITE_BUILDINGS, `${SITE_BUILDINGS}-line`]) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', siteTargets ? 'visible' : 'none');
+    if (map.getLayer(BUS_STOPS)) map.setLayoutProperty(BUS_STOPS, 'visibility', stopTargets ? 'none' : 'visible');
+    if (!siteTargets) hide();
+    publish();
+    markSoon(0);
+  };
+  const stopTargets = useMapUi.subscribe((s, prev) => {
+    if (s.siteTargets !== prev.siteTargets || s.stopTargets !== prev.stopTargets) applyTargets();
+  });
+  if (map.isStyleLoaded()) applyTargets();
+  else map.once('load', applyTargets);
 
   if (raleighData()) loadRaleighPoints(map, () => live);
 
@@ -846,6 +868,8 @@ export function installDetail(map: MapLibreMap, onSite: (card: SiteCardInfo | nu
     map.off('zoomstart', hide);
     map.off('sourcedata', onTiles);
     map.off('moveend', onMoveEnd);
+    map.off('load', applyTargets);
+    stopTargets();
     clearTimeout(markTimer);
   };
 }

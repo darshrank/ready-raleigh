@@ -35,6 +35,12 @@ interface MapUi {
   /** The shelter site building under the pointer or last tapped (z15+), for the site card. */
   siteCard: SiteCardInfo | null;
   setSiteCard: (card: SiteCardInfo | null) => void;
+  /**
+   * Planning targets show only while their piece is armed: shelter sites (useFloodMap) and the
+   * existing bus stops (Solo). The detail layers (map/detail.ts) follow these.
+   */
+  siteTargets: boolean;
+  stopTargets: boolean;
 }
 
 export const useMapUi = create<MapUi>((set) => ({
@@ -61,4 +67,6 @@ export const useMapUi = create<MapUi>((set) => ({
   selectHood: (selectedHood) => set({ selectedHood }),
   siteCard: null,
   setSiteCard: (siteCard) => set({ siteCard }),
+  siteTargets: false,
+  stopTargets: false,
 }));

@@ -38,6 +38,7 @@ export function useFloodMap(data: MapData | null, { targetingSites = false, nigh
   }, []);
   // Candidate sites are the shelter targets: they show only while a shelter is being placed, and
   // only the ones that stay dry (a shelter in a building that floods helps no one).
+  useEffect(() => useMapUi.setState({ siteTargets: targetingSites }), [targetingSites]);
   const sites = useMemo(() => {
     const dry = (data?.sites ?? []).filter((s) => s.floodStep === null || s.floodStep > 3);
     const shown = closeUp && outlined ? dry.filter((s) => !outlined.has(s.id)) : dry;

@@ -213,6 +213,8 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
   );
   // Bus pickups: while one is being placed, where it helps and the existing stops there.
   const placingBus = armed === 'bus_pickup' || moving?.type === 'bus_pickup';
+  // The atlas's GoRaleigh stops (map/detail.ts) step aside while the stop targets show.
+  useEffect(() => useMapUi.setState({ stopTargets: placingBus }), [placingBus]);
   const busArea = useMemo(() => (data ? busAreaLayer(data, placingBus) : null), [data, placingBus]);
   const stops = useMemo(() => (data ? busStopsLayer(busStops(data), placingBus) : null), [data, placingBus]);
   // Bus -> shelter lines: the preview's while aiming, else the plan's.

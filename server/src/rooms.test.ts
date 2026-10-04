@@ -45,10 +45,11 @@ describe('room state machine', () => {
     expect(room.city).toBe('raleigh');
     expect(() => setCity(room, b, 'miami')).toThrow(/Only the host/);
     expect(() => setCity(room, a, 'atlantis')).toThrow(/not on the map/);
+    expect(() => setCity(room, a, 'new-york')).toThrow(/coming soon/);
     setCity(room, a, 'miami');
     expect(publicState(room, a, 0, null).city).toBe('miami');
     start(room, a, 1000);
-    expect(() => setCity(room, a, 'new-york')).toThrow(/before the election/);
+    expect(() => setCity(room, a, 'raleigh')).toThrow(/before the election/);
     const cities: (string | undefined)[] = [];
     const scorer = (plan: { city?: string }) => { cities.push(plan.city); return okScorer(50)(); };
     lock(room, a, [], scorer, 2000);

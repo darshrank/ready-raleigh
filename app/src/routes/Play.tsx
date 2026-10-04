@@ -2,7 +2,7 @@
 // QR code or type the code. Every player is a mayoral candidate on their own phone or laptop; the
 // host is just the player with the Start and Next election buttons. Gameplay is the solo game.
 import { useEffect, useState, type FormEvent } from 'react';
-import { CANDIDATES, type CandidateId, type RoomState } from '@shared';
+import { CANDIDATES, ROOM_CITIES, type CandidateId, type CityId, type RoomState } from '@shared';
 import { CandidateCard, Portrait, seatInk } from '../room/Candidate';
 import { Invite } from '../room/Invite';
 import { savedPlayer, useRoom, type Room } from '../room/useRoom';
@@ -199,6 +199,7 @@ const cityName = (id: string) => cityById(id)?.name ?? id;
 /** The city of the next election: the host picks one, everyone else sees it. */
 function CityPicker({ state, room, isHost }: { state: RoomState; room: Room; isHost: boolean }) {
   const ready = CITIES.filter((c) => c.ready);
+  const soon = (id: CityId) => !ROOM_CITIES.includes(id);
   if (!isHost) {
     return (
       <p className="text-15">
@@ -214,14 +215,16 @@ function CityPicker({ state, room, isHost }: { state: RoomState; room: Room; isH
           <button
             key={c.id}
             type="button"
+            disabled={soon(c.id)}
             aria-pressed={state.city === c.id}
             onClick={() => room.city(c.id)}
             className={
-              'border-(length:--rule) border-ink px-3 py-2 text-left ' + (state.city === c.id ? 'bg-signal shadow-piece' : 'bg-bond hover:bg-chalk')
+              'border-(length:--rule) border-ink px-3 py-2 text-left ' +
+              (soon(c.id) ? 'cursor-not-allowed bg-chalk opacity-60' : state.city === c.id ? 'bg-signal shadow-piece' : 'bg-bond hover:bg-chalk')
             }
           >
             <span className="block font-display text-18 font-extrabold">{c.name}</span>
-            <span className="block text-13">{c.hazard}</span>
+            <span className="block text-13">{soon(c.id) ? 'Coming soon' : c.hazard}</span>
           </button>
         ))}
       </div>

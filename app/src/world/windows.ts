@@ -10,6 +10,7 @@
 // - Flooded buildings go dark: once the water reaches a building, its lights go out a few seconds
 //   later (stains.ts `stain_dark`), each building at its own moment.
 import { unit, type Tokens } from '../tokens';
+import { TIER } from './quality';
 
 /** Meters between window columns (fitted to each wall's length) and between floors. */
 const COLUMN_M = 3;
@@ -32,6 +33,8 @@ const fsCode = /* glsl */ `\
 vec2 windows_at(vec4 wall, float px) {
   float len = wall.z;
   if (len < 2.0) return vec2(0.0);
+  ${TIER.windowFade ? '' : `// Low quality tier: the grid's average only.
+  return vec2(0.56 * 0.52, ${LIT_SHARE.toFixed(2)} * 1.6);`}
   float n = max(1.0, floor(len / ${COLUMN_M.toFixed(1)}));
   float colM = len / n;
   float u = wall.x / colM;
@@ -43,7 +46,7 @@ vec2 windows_at(vec4 wall, float px) {
   float h = world_hash(vec2(wall.w * 113.0 + floor(u) * 1.37, floor(v) * 7.31 + wall.w * 17.0));
   float glow = step(h, ${LIT_SHARE.toFixed(2)}) * (0.7 + 0.3 * fract(h * 41.0));
   // Far away: the grid's average pane and glow instead of sub-pixel detail.
-  float detail = 1.0 - smoothstep(0.7, 1.6, px);
+  float detail = 1.0 - smoothstep(${(TIER.windowFade ?? [0.7, 1.6])[0].toFixed(2)}, ${(TIER.windowFade ?? [0.7, 1.6])[1].toFixed(2)}, px);
   return vec2(mix(0.56 * 0.52, across * up, detail), mix(${LIT_SHARE.toFixed(2)} * 1.6, glow, detail));
 }
 `;

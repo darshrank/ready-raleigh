@@ -12,6 +12,7 @@ import { Model } from '@luma.gl/engine';
 import { tint, unit, type RGB, type Tokens } from '../tokens';
 import type { FloodData } from './floodData';
 import type { Solids } from './solids';
+import { TIER } from './quality';
 import { frame, WORLD_BEFORE } from './state';
 import { stainBindings, stainModule, stainPaint, stainProps } from './stains';
 import { windowsModule, windowsPaint } from './windows';
@@ -137,7 +138,7 @@ const BUFFER_LAYOUT = [
 ] as const;
 
 /** Buildings sink away beyond about this many screen pixels from the view's center. */
-const FAR_PX = 1800;
+const FAR_PX = TIER.farPx;
 /** Meters from the view's center where buildings have sunk into the ground. */
 function farMeters(viewport: Layer['context']['viewport']): number {
   return FAR_PX * viewport.metersPerPixel;

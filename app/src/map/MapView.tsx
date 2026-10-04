@@ -10,6 +10,8 @@ import { basemapStyle } from './basemap';
 import { installDetail } from './detail';
 import { SiteCard } from '../ui/SiteCard';
 import { FloodView } from './flood';
+import { TIER } from '../world/quality';
+import { REALISM } from '../world/state';
 import { cameraForPoints, framePadding, framePoints, type Pad } from './frame';
 
 /** DESIGN.md: top-down by default; the Tilt toggle tilts to 45 degrees. */
@@ -93,6 +95,8 @@ export function MapView({
       zoom: 11,
       pitch: useMapUi.getState().tilt ? TILT_PITCH : 0,
       attributionControl: { compact: true },
+      // The realistic world's quality tier caps the pixel ratio on small devices (world/quality.ts).
+      ...(REALISM ? { pixelRatio: Math.min(window.devicePixelRatio, TIER.maxPixelRatio) } : {}),
     });
     // Fold the attribution to its (i) button. MapLibre unfolds it once, when the first source
     // attribution arrives. Waiting for 'idle' was not enough: the water shimmer keeps the map busy,

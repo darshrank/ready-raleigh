@@ -42,7 +42,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - [x] R5 wet stains (3D water rise landed in R4)
   - [x] rebase checkpoint after R5: onto main 6434b22, conflicts combined; four-city adaptation
   - [x] R3 windows (+ flooded windows go dark)
-  - [ ] R7 tiers, reduced motion, docs (then remove the kill switch)
+  - [x] R7 tiers, reduced motion, docs (kill switch stays until the final check at the end)
   - [ ] R2 shadows
   - [ ] R6 flow, rain, ending, then final rebase checkpoint and screenshots
 
@@ -248,6 +248,27 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
     remove them: DELETE FROM placements WHERE play_id IN (SELECT id FROM plays WHERE player_name =
     'Test Mayor'); then DELETE FROM plays WHERE player_name = 'Test Mayor';
 - Next exact step: a weekly board (filter on created_at) if the all-time one fills up.
+
+### 2026-10-04 01:42 EDT Claude (Opus 5.5) lane C, realism R7 (quality tiers, reduced motion, docs)
+- Done: `world/quality.ts` (TIER: high / medium / low, auto from device or `?quality=`); water.ts
+  builds 3/2/1 noise octaves and drops foam on low; windows.ts fades the grid sooner on medium and
+  keeps only its average on low; buildings.ts sinks the city at TIER.farPx; MapView caps the map's
+  pixel ratio (3/2/1.25) under realism. Reduced motion was already wired through `frame.reduce`
+  (no creep, waves, foam, rise, drain, flicker, water lightning, street dashes): checked with
+  REDUCE=1. DESIGN.md: "The world" section (tokens, city, water, stains, windows, tiers, reduced
+  motion, kill switch), notes in "Water (flood)" and "Performance floor".
+- Kill switch: kept. The final check (quiet-machine A/B + full matrix with realism on and off)
+  moved to the end (user), so `?realism=off` is removed only after it passes.
+- Checks: typecheck; vitest 85/85; Raleigh /solo storm -> results at 1440 for the default tier,
+  `?quality=medium`, `?quality=low` and REDUCE=1: no console errors (framer-motion's reduced-motion
+  note only). One 1440 trace (realism, high, load ~6): 5.8 avg / 9.4 p95 / 37 max ms, 59.7 fps.
+- Next exact step: R2 ground shadows, cheap only (user: skip deck.gl's built-in shadows). Plan:
+  a flat --shadow footprint offset away from the sun (SUN_FROM), drawn by the building layers'
+  roofs again at z=0 with a sun-projected offset in the vertex shader, or a 2D shadow pass from
+  the roof polygons; then R6 (ending, rain ripples; creek streaks only if time allows), the final
+  rebase checkpoint, then the full matrix (ask the user before the A/B).
+- Gotchas: tier shader variants only compile on their tier; smoke-run `?quality=medium` and `low`
+  after shader edits.
 
 ### 2026-10-04 01:37 EDT Claude (Opus 5.5) lane C, realism R3 (windows, flooded windows go dark)
 - Done: `world/windows.ts` (shader module: pane grid from wall meters, ~3 m columns fitted to the

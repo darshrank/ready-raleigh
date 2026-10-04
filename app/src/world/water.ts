@@ -15,6 +15,7 @@ import { tint, unit, type Tokens } from '../tokens';
 import { CELL_M, type FloodData } from './floodData';
 import { NOISE_GLSL } from './glsl';
 import { SUN_FROM } from './lights';
+import { TIER } from './quality';
 import { frame } from './state';
 
 /** Water depth in meters per step in 3D: the floodway is deepest (as map/flood.ts DEPTH_M). */
@@ -198,13 +199,14 @@ void main(void) {
   vec3 base = mix(reg, deep, deepness);
   vec3 sky = mix(water.skyDay, water.skyNight, water.night);
 
-  // Surface: three octaves of scrolling noise in meters; the fine ones fade out at low zoom.
+  // Surface: up to three octaves of scrolling noise in meters (the quality tier's count); the fine
+  // ones fade out at low zoom.
   float t = calm ? 0.0 : water.time;
   float fine = clamp((water.zoom - 12.5) / 2.5, 0.0, 1.0);
   float finer = clamp((water.zoom - 14.5) / 2.0, 0.0, 1.0);
   vec3 n1 = world_noised(vMeters / 42.0 + t * vec2(0.035, 0.021));
-  vec3 n2 = world_noised(vMeters / 13.0 + t * vec2(-0.06, 0.045)) * fine;
-  vec3 n3 = world_noised(vMeters / 4.2 + t * vec2(0.11, -0.08)) * finer;
+  vec3 n2 = ${TIER.octaves >= 2 ? 'world_noised(vMeters / 13.0 + t * vec2(-0.06, 0.045)) * fine' : 'vec3(0.0)'};
+  vec3 n3 = ${TIER.octaves >= 3 ? 'world_noised(vMeters / 4.2 + t * vec2(0.11, -0.08)) * finer' : 'vec3(0.0)'};
   vec2 grad = n1.yz / 42.0 * 1.6 + n2.yz / 13.0 * 0.9 + n3.yz / 4.2 * 0.35;
   vec3 N = normalize(vec3(-grad * 9.0, 1.0));
   if (vSide > 0.5) N = normalize(vec3(vSideNormal, 0.25));
@@ -218,8 +220,8 @@ void main(void) {
   color = mix(color, water.foam, water.flash * water.night * 0.45);
   if (vSide > 0.5) color *= 0.82;
 
-  // Foam rides just behind the advancing edge, broken up by noise.
-  if (!calm) {
+  // Foam rides just behind the advancing edge, broken up by noise (not on the low tier).
+  if (!calm && ${TIER.foam}) {
     float band = 1.0 - smoothstep(0.0, 0.45, v);
     float froth = smoothstep(0.35, 0.75, world_noise(vMeters / 3.5 + t * 0.2) * 0.6 + world_noise(vMeters / 11.0) * 0.6);
     // Foam is a street-level detail: at the city view it would only speckle the creeks.

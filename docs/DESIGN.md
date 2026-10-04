@@ -58,6 +58,47 @@ Rules:
 - The night palette is the map, not a UI theme. HUD plates stay `--bond` and `--ink` at night,
   like printed stickers on a dark board. No neon, no glow on UI chrome; only water glows.
 
+## The world: realistic city and storm water (realism)
+
+The board stays printed; the **world under it is realistic**: a lit 3D city and living storm water,
+drawn by deck.gl layers in `app/src/world/` (interleaved below road barriers and every label).
+The printed inks are the instruments (HUD, pieces, labels, coverage); the world tokens below are
+the city and the water. The "flat fills only" rule is for the instruments, not the world.
+
+| Token | Hex | Use |
+|---|---|---|
+| `--water-day` / `--water-day-deep` | `#6F6A4C` / `#4F4B36` | murky storm water by day (500-year band / floodway) |
+| `--water-night` / `--water-night-deep` | `#3A4A42` / `#26302C` | the same at night |
+| `--foam` | `#E9E4D2` | foam behind the advancing water, sun highlight, lightning on the water |
+| `--sky-day` / `--sky-night` | `#C9D8E6` / `#2D416B` | what the water reflects at a glancing angle |
+| `--wall-day` / `--wall-night` | `#D9D4C9` / `#2A3550` | 3D building walls (roofs a touch darker) |
+| `--glass-day` / `--glass-night` | `#5D6F80` / `#1A2236` | window panes |
+| `--window-lit` | `#FFD28A` | lit windows at night, the sun's warm key light |
+| `--shadow` | `#1B2333` (about 25%) | ground shadows |
+| `--wet-stain-day` / `--wet-stain-night` | `#8A7F63` / `#232A30` | walls that stood in the water |
+
+- **City:** every OpenFreeMap building in 3D when the camera tilts (sites + 2 km), lit by a warm
+  low sun by day and a dim cool moon at night. Shelter sites stand out in the site tint only while a
+  shelter is being placed.
+- **Water:** creeps out of the creeks, a foam band behind the edge, scrolling noise, sky fresnel, a
+  sun highlight by day, lightning by night; floodway deepest. Tilted, it rises (6 / 3 / 1.5 m by
+  step) and drains when the storm ends, keeping its final extent. Planning keeps the faint `--flood`
+  preview. Flood cities only; an earthquake or a heat wave keeps its printed ground colors.
+- **Stains:** walls that stood in the water stay dark below the highest water line, with a ragged
+  wicking edge and a tide line, after the water drains.
+- **Windows:** a pane grid on every wall; at night a third glow `--window-lit`. When the water
+  reaches a building its lights flicker and go out a few seconds later.
+- **Only uniforms change per frame**: the shaders read the storm clock, the day/night mix and the
+  lightning; no attribute is rebuilt while the storm runs.
+- **Quality tiers** (`world/quality.ts`, `?quality=low|medium|high` to force): high on laptops;
+  medium on phones (two noise octaves, windows fade sooner); low on small or old devices (one
+  octave, no foam, window grid as its average tone, a shorter city, pixel ratio at most 1.25).
+- **Reduced motion:** the water appears per step with no creep, waves, foam or rise; stains appear
+  at their height; lights go out without the flicker; no lightning on the water; the street dashes
+  stop.
+- `?realism=off` keeps the MapLibre buildings and water described in "Water (flood)" (removed
+  once realism passes its final check).
+
 ## Type
 
 | Role | Family | Notes |
@@ -76,6 +117,8 @@ real emergency alerts use it.
 
 Water is drawn as native MapLibre layers from `flood_steps.geojson`, inserted **above roads and
 buildings and below every label**, so street and place names read over the water.
+Under realism the deck.gl water ("The world" above) replaces these layers in the same slot; this
+section describes the `?realism=off` path, and the same rules (steps, growth, preview, results).
 
 - The three steps are disjoint bands (1 floodway, 2 the 100-year band, 3 the 500-year band).
   Each is a semi-transparent blue fill: step 1 `--flood-deep` (it arrives first, deepest), step 2
@@ -249,7 +292,9 @@ Plain, active, sentence case. Name things the way residents would.
 ## Performance floor
 The storm must hold 60 fps on a laptop with every effect on. Rain is one canvas path per frame at
 device pixel ratio 1; lightning is one DOM layer; water animation only touches constant colors,
-feature-state and visibility. If it stutters, drop rain particles first, then the shimmer.
+feature-state and visibility. If it stutters, drop rain particles first, then the shimmer. The
+realistic world changes only shader uniforms per frame; on slower devices its quality tier drops
+noise octaves, foam, window detail and pixel ratio before anything else.
 
 ## What we chose not to do (keep it that way)
 - No cream background with a serif headline and clay accent.

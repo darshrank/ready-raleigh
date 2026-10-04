@@ -89,11 +89,20 @@ export function MapView({
       pitch: useMapUi.getState().tilt ? TILT_PITCH : 0,
       attributionControl: { compact: true },
     });
-    // Fold the attribution to its (i) button. MapLibre unfolds it when the source's attribution
-    // first arrives, which can be after 'load'; by 'idle' it has.
-    map.once('idle', () => {
-      map.getContainer().querySelector('.maplibregl-compact-show')?.classList.remove('maplibregl-compact-show');
+    // Fold the attribution to its (i) button. MapLibre unfolds it once, when the first source
+    // attribution arrives. Waiting for 'idle' was not enough: the water shimmer keeps the map busy,
+    // so on a phone the open box covered "Start the storm". Fold that one automatic opening as it
+    // happens; the player's own click on (i) still opens it.
+    const attrib = map.getContainer().querySelector('.maplibregl-ctrl-attrib');
+    const fold = new MutationObserver(() => {
+      if (!attrib?.classList.contains('maplibregl-compact-show')) return;
+      attrib.classList.remove('maplibregl-compact-show');
+      fold.disconnect();
     });
+    if (attrib) {
+      fold.observe(attrib, { attributes: true, attributeFilter: ['class'] });
+      attrib.addEventListener('click', () => fold.disconnect(), { capture: true, once: true });
+    }
     map.on('zoomend', () => useMapUi.getState().setZoom(map.getZoom()));
     map.on('movestart', (e) => {
       if ('originalEvent' in e && e.originalEvent) userMoved.current = true;
@@ -121,6 +130,7 @@ export function MapView({
     const cleanup = onReadyRef.current?.(map, overlay);
     return () => {
       cleanup?.();
+      fold.disconnect();
       detail();
       flood?.destroy();
       mapRef.current = null;

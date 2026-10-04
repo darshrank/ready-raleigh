@@ -284,6 +284,19 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas: the report needs real plays from at least 5 different people per area; with few
   testers use ?minPlayers=3. A newer GoRaleigh GTFS URL can replace FEEDS[0] in pipeline/transit.py.
 
+### 2026-10-03 20:20 EDT Claude (Opus 5.5) lane C, attribution stays folded (found during the room check)
+- Done: MapView.tsx folds the compact attribution when MapLibre opens it on its own (a
+  MutationObserver on the control, disconnected after that fold or on the player's first click).
+  It used to wait for the first 'idle', which the water shimmer delays: on main it was open at
+  load, and with the semantic-zoom aerial it stayed open; at 390 px it covered "Start the storm".
+- Verified at 390: folded at load and at z17; one click on (i) opens it with "Bus stops: GoRaleigh
+  GTFS | Imagery: NC OneMap, NC Center for Geographic Information and Analysis | OpenFreeMap ©
+  OpenMapTiles Data from OpenStreetMap". typecheck.
+- Next exact step: F2. Refactor pipeline/bus_stops.py and site_buildings.py into
+  `build(data_dir, cache_dir, refresh=False, offline=False)`; add pipeline/detail.py
+  `refresh_detail()` (offline, from cache) called last by build_all.main; tests in
+  pipeline/tests/test_detail.py.
+
 ### 2026-10-03 20:18 EDT Claude (Opus 5.5) lane C, semantic zoom F1 (3D shelters)
 - Context: branch rebased onto group/main 1f8ec6a (P9 rooms, P15 live). Rebase stops resolved per
   the user's rules (DECISIONS both sides in time order; PROGRESS upstream checklist kept, my

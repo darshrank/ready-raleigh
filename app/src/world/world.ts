@@ -9,6 +9,7 @@ import { earcut } from '@math.gl/polygon';
 import { loadMapData } from '../data';
 import { onSiteSolids, type SiteSolid } from '../map/detail';
 import { siteTints } from '../map/basemap';
+import type { Hazard } from '../story';
 import type { Tokens } from '../tokens';
 import { BuildingLayer, buildingMaterial, CityLayer, buildingPaint, buildingsLayer, BUILDINGS_MIN_ZOOM } from './buildings';
 import { CityLightsLayer } from './cityLights';
@@ -98,9 +99,12 @@ export class World {
     this.emit();
   }
 
-  /** The city's lights at night, once the flood worker has built them (every city). */
-  setLights(data: LightsData) {
-    this.cityLights = new CityLightsLayer({ id: 'world-city-lights', lights: data, tokens: this.t, ...{ beforeId: WORLD_BEFORE } });
+  /**
+   * The city's lights at night, once the flood worker has built them (every city); they go dark
+   * as the hazard's zones (`zones`, the same arrival textures as the water) reach them.
+   */
+  setLights(data: LightsData, zones: FloodData, hazard: Hazard) {
+    this.cityLights = new CityLightsLayer({ id: 'world-city-lights', lights: data, flood: zones, hazard, tokens: this.t, ...{ beforeId: WORLD_BEFORE } });
     this.emit();
   }
 

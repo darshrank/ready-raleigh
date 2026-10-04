@@ -90,6 +90,11 @@ the city and the water. The "flat fills only" rule is for the instruments, not t
   (a whiter tint of `--window-lit`, mostly dim, a few bright) and street lights every 60 m along
   the main roads (`--window-lit`), 1.5-3 px, added over the map with a faint flicker. Only in the
   storm's night; gone by day and in planning; they fade out by z15.5, where the windows take over.
+- **Blackout:** the lights follow the city's hazard into the dark. Flood: a light flickers and goes
+  out shortly after the water reaches it; lights within 400 m follow a few seconds later, so
+  neighborhoods go dark in a wave behind the water. Quake: each step's zones cut out almost at
+  once, as if lines snapped; nearby blocks follow within a second or two. Heat: rolling blackouts
+  in the hottest zones (blocks off and on in turns), then each zone dark for good as the grid fails.
 - **Windows:** a pane grid on every wall; at night a third glow `--window-lit`. When the water
   reaches a building its lights flicker and go out a few seconds later.
 - **Only uniforms change per frame**: the shaders read the storm clock, the day/night mix and the

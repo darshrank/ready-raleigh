@@ -778,7 +778,7 @@ export class FloodView {
       if (!this.raf) return; // destroyed while loading
       if (import.meta.env.DEV) Object.assign(window, { __floodWorkerMs: e.data.ms, __lightsMs: e.data.lightsMs, __lightsCount: e.data.lights?.count ?? 0 });
       if (this.realWater) this.world?.setWater(e.data.data);
-      if (e.data.lights) this.world?.setLights(e.data.lights);
+      if (e.data.lights) this.world?.setLights(e.data.lights, e.data.data, currentStory().hazard);
     };
     const request: FloodWorkerRequest = { base: new URL(dataBase(), location.href).href, lights: TIER.lights };
     worker.postMessage(request);

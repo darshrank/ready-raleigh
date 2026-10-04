@@ -7,8 +7,14 @@
 //   (arterials read as strings of light from the storm overview), until the street share of the
 //   budget is used. Smaller cities light every road; Raleigh's 6,000 km fill the share sooner.
 //
+// - Blackout reference (O2): each light's nearest hazard zone cell on the flood worker's grid
+//   (its own cell when it stands in a zone), within NEAR_M, as a texture coordinate and a distance.
+//   The lights' shader reads the arrival textures there, so a light goes dark when its zone's
+//   hazard arrives and the ones near it a little later.
+//
 // Everything is seeded, so a city gets the same lights on every load.
 import { cellToBoundary } from 'h3-js';
+import type { FloodGrid } from './floodData';
 
 /** Most lights a city gets (the low quality tier halves it). */
 export const LIGHTS_BUDGET = 60_000;
@@ -16,6 +22,8 @@ export const LIGHTS_BUDGET = 60_000;
 const STREET_SHARE = 0.45;
 /** Meters between street lights. */
 export const SPACING_M = 60;
+/** Lights this close to a hazard zone follow it into the dark. */
+export const NEAR_M = 400;
 const M_PER_DEG = 111_320;
 
 export interface LightsData {
@@ -24,6 +32,11 @@ export interface LightsData {
   positions64Low: Float32Array;
   /** Per light: kind (0 building, 1 street), seed (0..1). */
   info: Float32Array;
+  /**
+   * Per light: texture coordinate (u, v) of its nearest zone cell and the distance to it in meters
+   * (0 inside a zone); distance -1 with no zone within NEAR_M (it stays lit).
+   */
+  ref: Float32Array;
   count: number;
   streets: number;
 }
@@ -61,7 +74,64 @@ function inside(x: number, y: number, ring: [number, number][]): boolean {
   return hit;
 }
 
-export function buildLights(cells: LightCell[], graph: LightGraph, budget = LIGHTS_BUDGET): LightsData {
+/** The hazard zones on the flood worker's grid (floodData.ts). */
+export interface LightZones {
+  grid: FloodGrid;
+  band: Uint8Array;
+}
+
+/** Cells per side of the coarse "any zone here" blocks that skip most of the nearest search. */
+const BLOCK = 8;
+
+/** Writes each light's nearest zone cell within NEAR_M into `ref` (see LightsData.ref). */
+function nearestZones(lng: number[], lat: number[], z: LightZones | null, ref: Float32Array) {
+  ref.fill(-1);
+  if (!z) return;
+  const G = z.grid;
+  const bw = Math.ceil(G.w / BLOCK);
+  const bh = Math.ceil(G.h / BLOCK);
+  const any = new Uint8Array(bw * bh);
+  for (let y = 0; y < G.h; y++) for (let x = 0; x < G.w; x++) if (z.band[y * G.w + x]) any[((y / BLOCK) | 0) * bw + ((x / BLOCK) | 0)] = 1;
+  // Grid cells are square in meters (floodData.ts): CELL_M = dLat in meters.
+  const cellM = G.dLat * M_PER_DEG;
+  const R = Math.ceil(NEAR_M / cellM);
+  for (let i = 0; i < lng.length; i++) {
+    const fx = (lng[i]! - G.lng0) / G.dLng;
+    const fy = (lat[i]! - G.lat0) / G.dLat;
+    const cx = Math.floor(fx);
+    const cy = Math.floor(fy);
+    let best = Infinity;
+    let bx = 0;
+    let by = 0;
+    if (cx >= 0 && cy >= 0 && cx < G.w && cy < G.h && z.band[cy * G.w + cx]) {
+      [best, bx, by] = [0, cx, cy];
+    } else {
+      const x0 = Math.max(0, cx - R);
+      const x1 = Math.min(G.w - 1, cx + R);
+      const y0 = Math.max(0, cy - R);
+      const y1 = Math.min(G.h - 1, cy + R);
+      if (x0 > x1 || y0 > y1) continue;
+      for (let qy = (y0 / BLOCK) | 0; qy <= ((y1 / BLOCK) | 0); qy++)
+        for (let qx = (x0 / BLOCK) | 0; qx <= ((x1 / BLOCK) | 0); qx++) {
+          if (!any[qy * bw + qx]) continue;
+          for (let y = Math.max(y0, qy * BLOCK); y <= Math.min(y1, qy * BLOCK + BLOCK - 1); y++)
+            for (let x = Math.max(x0, qx * BLOCK); x <= Math.min(x1, qx * BLOCK + BLOCK - 1); x++) {
+              if (!z.band[y * G.w + x]) continue;
+              const d2 = (x + 0.5 - fx) ** 2 + (y + 0.5 - fy) ** 2;
+              if (d2 < best) [best, bx, by] = [d2, x, y];
+            }
+        }
+      if (best === Infinity) continue;
+      best = Math.sqrt(best) * cellM;
+      if (best > NEAR_M) continue;
+    }
+    ref[3 * i] = (bx + 0.5) / G.w;
+    ref[3 * i + 1] = (by + 0.5) / G.h;
+    ref[3 * i + 2] = best;
+  }
+}
+
+export function buildLights(cells: LightCell[], graph: LightGraph, budget = LIGHTS_BUDGET, zones: LightZones | null = null): LightsData {
   const lng: number[] = [];
   const lat: number[] = [];
   const kind: number[] = [];
@@ -136,5 +206,7 @@ export function buildLights(cells: LightCell[], graph: LightGraph, budget = LIGH
     info[2 * i] = kind[i]!;
     info[2 * i + 1] = rand();
   }
-  return { positions, positions64Low, info, count, streets };
+  const ref = new Float32Array(3 * count);
+  nearestZones(lng, lat, zones, ref);
+  return { positions, positions64Low, info, ref, count, streets };
 }

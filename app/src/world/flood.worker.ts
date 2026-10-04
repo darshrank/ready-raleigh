@@ -30,13 +30,13 @@ self.onmessage = async (e: MessageEvent<FloodWorkerRequest>) => {
     try {
       const [cells, graph] = (await Promise.all([json(`${base}/cells.json`), json(`${base}/roads_graph.json`)])) as [LightCell[], LightGraph];
       const t1 = performance.now();
-      lights = buildLights(cells, graph, budget);
+      lights = buildLights(cells, graph, budget, data);
       lightsMs = Math.round(performance.now() - t1);
     } catch (err) {
       console.warn('City lights did not build:', err);
     }
-    const transfer = [data.positions, data.positions64Low, data.info, data.steps, data.indices, data.arrival, data.extent].map((a) => a.buffer);
-    if (lights) transfer.push(lights.positions.buffer, lights.positions64Low.buffer, lights.info.buffer);
+    const transfer = [data.positions, data.positions64Low, data.info, data.steps, data.indices, data.arrival, data.extent, data.band].map((a) => a.buffer);
+    if (lights) transfer.push(lights.positions.buffer, lights.positions64Low.buffer, lights.info.buffer, lights.ref.buffer);
     (self as unknown as Worker).postMessage({ data, lights, ms, lightsMs }, transfer as Transferable[]);
   } catch (err) {
     self.postMessage({ error: String(err) });

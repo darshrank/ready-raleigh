@@ -7,6 +7,7 @@
 //   earlier water of step 1 is its main channels (the fifth of its parts with the most points),
 //   as in map/flood.ts prepareParts. The water shader reveals each fragment at
 //   P * GROW - delay * (GROW - PART), the same formula FloodView applies per part.
+// - Band (CPU only): each grid cell's step, for the city lights' nearest zone (cityLightsData.ts).
 // - Extent texture (RGBA8): signed distance (meters, clamped to +-RANGE_M, 128 = the edge) to the
 //   water of steps <= 1, <= 2 and <= 3, so a building knows if and when it stands in water.
 import { earcut } from '@math.gl/polygon';
@@ -38,6 +39,8 @@ export interface FloodData {
   grid: FloodGrid;
   arrival: Uint8Array;
   extent: Uint8Array;
+  /** Per grid cell: the step whose zone covers it (1..3), 0 outside every zone. */
+  band: Uint8Array;
 }
 
 type Raw = FeatureCollection<Polygon | MultiPolygon, { step: number }>;
@@ -271,6 +274,7 @@ export function buildFlood(raw: Raw): FloodData {
     grid: G,
     arrival,
     extent,
+    band,
   };
 }
 

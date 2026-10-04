@@ -49,7 +49,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - [ ] quiet-machine A/B (waiting for the user), then remove `?realism=off`
 - [~] RO The storm overview (z11-13, 55 deg) made dramatic (Claude, C), all four cities:
   - [x] O1 city lights (building + street points, one additive layer, built in the flood worker)
-  - [ ] O2 blackout wave per hazard (flood: water + 400 m wave; quake: snapped lines; heat: rolling)
+  - [x] O2 blackout wave per hazard (flood: water + 400 m wave; quake: snapped lines; heat: rolling)
   - [ ] O3 flood readable from the overview (deep channel, see-through edges, 1.5 px edge line)
   - [ ] O4 windows unchanged (from z15.5); four-city screenshots at 0/33/66/100%, one 1440 trace
 
@@ -255,6 +255,24 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
     remove them: DELETE FROM placements WHERE play_id IN (SELECT id FROM plays WHERE player_name =
     'Test Mayor'); then DELETE FROM plays WHERE player_name = 'Test Mayor';
 - Next exact step: a weekly board (filter on created_at) if the all-time one fills up.
+
+### 2026-10-04 03:05 EDT Claude (Opus 5.5) lane C, storm overview O2 (blackout per hazard)
+- Done: `cityLightsData.ts` gives every light a reference: its nearest zone cell on the flood
+  worker's grid within 400 m (its own cell inside a zone; coarse 8x8-cell blocks skip most of the
+  search) as a texture coordinate + distance, -1 if none. `floodData.ts` returns the step raster
+  (`band`). `cityLights.ts` `lights_power()` reads the arrival + extent textures at that cell
+  (shared with the water via `floodTextures`) and decides on the storm clock:
+  - flood: out 0-1.5 s after the water arrives (600 ms flicker); within 400 m 2.5-5 s later + 0-1.2 s;
+  - quake: inside at the step's start + 0-250 ms (220 ms flicker); nearby +0.4-1.8 s;
+  - heat: only zone lights; step-1 zones roll (blocks of ~400 m, 3.6 s cycle, a third off) until
+    the grid fails at step 2, then each zone goes dark for good as it spreads (step 3 at step 3);
+  - reduced motion: off when the step's growth is 1 (per step, at once), no flicker, no rolling.
+- Checks: typecheck; vitest 119/119 (+ nearest-zone test); overview shots at 0/33/66/100% in all
+  four cities (Dark map): Raleigh's creeks open dark corridors by 66% that widen by 100%; Miami
+  goes dark behind the surge; San Francisco's quake zones and New York's heat zones go dark per
+  step; REDUCE=1 San Francisco: zones dark per step.
+- Next exact step: O3 flood readable from the overview (water.ts: deep channel, see-through
+  edges from the extent texture, 1.5 px edge line, z11-13 only, the current look from ~z14.5).
 
 ### 2026-10-04 02:50 EDT Claude (Opus 5.5) lane C, storm overview O1 (city lights)
 - Sync first: `git fetch group`, main fast-forwarded 4cdffd8 -> 678870a (Darsh: rooms play Raleigh

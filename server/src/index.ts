@@ -2,6 +2,7 @@ import pg from 'pg';
 import { isCityId, score } from '@shared';
 import { buildServer } from './app';
 import { type GameData, cityLoader, loadGameData } from './data';
+import { APP_DIST, registerWeb } from './web';
 import { MemoryStore, type PlayStore, failSoft } from './db/store';
 import { TigerStore, poolConfig, prepareTiger } from './db/tiger';
 import { startLiveFeeds, studyArea } from './live/job';
@@ -83,7 +84,13 @@ if (game && process.env.LIVE_FEEDS !== 'false') {
   startLiveFeeds({ store: live, bbox, center, log: { info: (m) => app.log.info(m), warn: (o, m) => app.log.warn(o, m) } });
 }
 
-app.listen({ port, host: '0.0.0.0' }).catch((err) => {
-  app.log.error(err);
-  process.exit(1);
-});
+// Production: serve the built app from this server too (one origin for the game, /api and /ws).
+registerWeb(app)
+  .then((web) => {
+    if (web) app.log.info(`serving the app from ${APP_DIST}`);
+    return app.listen({ port, host: '0.0.0.0' });
+  })
+  .catch((err) => {
+    app.log.error(err);
+    process.exit(1);
+  });

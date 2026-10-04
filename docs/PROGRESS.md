@@ -31,7 +31,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 ## Phase 4: bonus challenges
 - [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
 - [x] P13 ElevenLabs broadcast and narration (D): POST /api/tts, narrated briefing, news anchor (V2)
-- [ ] P14 GoDaddy domain and deploy (any)
+- [ ] P14 GoDaddy domain and deploy (any): code ready (Dockerfile, railway.json, server serves app/dist); Railway project, env vars and domain are manual, see docs/DEPLOY.md
 - [~] P15 Live mode: USGS gauges and NWS weather into Tiger Data (D). Server done (Claude, D); title-screen live line (C) next
 - [ ] P16 Solana plan record (D)
 

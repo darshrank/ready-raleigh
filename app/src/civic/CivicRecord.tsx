@@ -28,7 +28,7 @@ export function CivicRecord({ playId, owner }: { playId: string; owner: string |
       if (p) setProof(p);
       if (c) setCards(c.cards);
       // Cards come from the election's end or a signal, within seconds; the anchor can take minutes (solo batches).
-      const waiting = (p?.enabled && p.anchor?.status !== 'confirmed') || c?.cards.some((x) => x.art === 'pending') || (!c?.cards.length && Date.now() - started < 60_000);
+      const waiting = (p?.enabled && (p.anchor?.status !== 'confirmed' || !p.play.memo)) || c?.cards.some((x) => x.art === 'pending') || (!c?.cards.length && Date.now() - started < 60_000);
       if (waiting && Date.now() < until) timer = window.setTimeout(poll, POLL_MS);
     };
     void poll();
@@ -40,16 +40,24 @@ export function CivicRecord({ playId, owner }: { playId: string; owner: string |
 
   if (!proof) return null;
   const anchored = proof.anchor?.status === 'confirmed';
+  const decisions = proof.play.memo?.status === 'confirmed' ? proof.play.memo.explorerUrl : null;
   return (
     <section aria-label="Public record" className="mt-3 border-t-(length:--rule) border-ink pt-3">
       <p className="flex flex-wrap items-baseline gap-x-2 text-15" role="status">
         <span className="font-semibold">Public record</span>
-        {anchored ? (
+        {anchored || decisions ? (
           <>
             <span>· on Solana ✓</span>
-            <a href={proof.anchor!.explorerUrl!} target="_blank" rel="noreferrer" className="underline">
-              Transaction
-            </a>
+            {decisions && (
+              <a href={decisions} target="_blank" rel="noreferrer" className="underline">
+                Your decisions
+              </a>
+            )}
+            {anchored && (
+              <a href={proof.anchor!.explorerUrl!} target="_blank" rel="noreferrer" className="underline">
+                Batch
+              </a>
+            )}
             <a href={`/verify/${playId}`} target="_blank" rel="noreferrer" className="underline">
               Verify
             </a>

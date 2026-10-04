@@ -18,7 +18,11 @@ export interface Anchor {
 export interface ProofView {
   enabled: boolean;
   cluster: string;
-  play: { playId: string; input: PlayFingerprintInput; fingerprint: string; anchorId: string | null; proof: MerkleProof | null };
+  play: {
+    playId: string; input: PlayFingerprintInput; fingerprint: string; anchorId: string | null; proof: MerkleProof | null;
+    /** The play's own memo: its decisions in words on Solana. */
+    memo: { text: string; status: 'confirmed' | 'failed'; signature: string | null; explorerUrl: string | null } | null;
+  };
   anchor: Anchor | null;
 }
 

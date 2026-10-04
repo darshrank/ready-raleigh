@@ -3,13 +3,13 @@
 // one Memo transaction carrying the Merkle root; each play keeps its proof. Fail soft: nothing here
 // ever blocks a game, and a failed transaction leaves the plays for the next batch.
 import { randomUUID } from 'node:crypto';
-import { merkleTree, playFingerprint, playsMemo } from '@shared';
+import { merkleTree, playFingerprint, playMemo, playsMemo } from '@shared';
 import type { PlayRecord } from '../db/store';
 import { type Chain, explorerTx } from './chain';
 import type { Anchor, CivicStore, PlayProof } from './store';
 
-/** Server-scored plays are scored on Raleigh's data (rooms are Raleigh; see SOLANA.md for cities). */
-export const PLAY_CITY = 'raleigh';
+/** The city a play was scored in (Plan.city; older plans have none and are Raleigh). */
+export const playCity = (record: PlayRecord) => record.plan.city ?? 'raleigh';
 const MAX_BATCH = 512;
 
 export interface CivicLog {
@@ -21,11 +21,13 @@ export interface CivicOptions {
   store: CivicStore;
   /** Null when the chain is off: plays still get fingerprints, nothing is anchored. */
   chain: Chain | null;
-  /** The data build the server scores on (meta.json buildDate). */
-  dataBuild: () => string;
+  /** The data build a city's plays are scored on (meta.json buildDate). */
+  dataBuild: (city: string) => string;
   log: CivicLog;
   /** How often waiting solo plays are anchored. */
   batchMs?: number;
+  /** The play's decisions in words, for its own memo (decisions.ts). */
+  describe?: (record: PlayRecord) => string[];
 }
 
 export interface ProofView {
@@ -35,24 +37,45 @@ export interface ProofView {
 
 export const withExplorer = (a: Anchor) => ({ ...a, explorerUrl: a.signature ? explorerTx(a.signature) : null });
 
-export function civicRecord({ store, chain, dataBuild, log, batchMs = 5 * 60_000 }: CivicOptions) {
+export function civicRecord({ store, chain, dataBuild, log, batchMs = 5 * 60_000, describe }: CivicOptions) {
   let flushing: Promise<Anchor | null> = Promise.resolve(null);
   const listeners: ((record: PlayRecord, play: PlayProof) => void)[] = [];
+  let sending: Promise<unknown> = Promise.resolve();
+
+  /** Writes a play's decisions to Solana in its own memo. One at a time; never throws. */
+  function sendPlayMemo(play: PlayProof, record: PlayRecord): Promise<unknown> {
+    if (!chain) return Promise.resolve();
+    const text = playMemo(play.input, play.fingerprint, describe?.(record) ?? []);
+    sending = sending.then(async () => {
+      let memo: NonNullable<PlayProof['memo']>;
+      try {
+        memo = { text, status: 'confirmed', ...(await chain.memo(text)) };
+      } catch (err) {
+        memo = { text, status: 'failed', signature: null, slot: null, error: (err as Error).message.slice(0, 200) };
+        log.warn({ err: memo.error }, `civic: play ${play.playId.slice(0, 8)} decisions not written to Solana`);
+      }
+      // Re-read: the batch may have added the proof meanwhile.
+      const latest = (await store.play(play.playId)) ?? play;
+      await store.savePlay({ ...latest, memo });
+    }).catch((err) => log.warn({ err }, 'civic: play memo failed'));
+    return sending;
+  }
 
   /** Fingerprints a stored play. The anchoring comes later (flush). */
   async function recordPlay(record: PlayRecord): Promise<PlayProof> {
     const input = {
       playId: record.id,
-      city: PLAY_CITY,
+      city: playCity(record),
       mode: record.plan.mode,
       roomCode: record.plan.roomCode,
       createdAt: record.createdAt.toISOString(),
-      dataBuild: dataBuild(),
+      dataBuild: dataBuild(playCity(record)),
       placements: record.plan.placements.map(({ type, cell, siteId, roadId, stopId }) => ({ type, cell, siteId, roadId, stopId })),
       score: record.score.score,
     };
     const play: PlayProof = { playId: record.id, playerId: record.plan.playerId, input, fingerprint: await playFingerprint(input), anchorId: null, proof: null };
     await store.savePlay(play);
+    void sendPlayMemo(play, record);
     for (const fn of listeners) fn(record, play);
     return play;
   }
@@ -76,12 +99,13 @@ export function civicRecord({ store, chain, dataBuild, log, batchMs = 5 * 60_000
     if (!chain) return null;
     const plays = await store.unanchored(MAX_BATCH);
     if (plays.length === 0) return null;
-    const build = plays[0]!.input.dataBuild;
-    const batch = plays.filter((p) => p.input.dataBuild === build);
+    // One batch is one city on one data build (both are in its memo).
+    const { city, dataBuild: build } = plays[0]!.input;
+    const batch = plays.filter((p) => p.input.dataBuild === build && p.input.city === city);
     const { root, proofs } = await merkleTree(batch.map((p) => p.fingerprint));
     const anchor: Anchor = {
-      id: randomUUID(), kind: 'plays', city: PLAY_CITY, createdAt: new Date().toISOString(), root, count: batch.length,
-      memo: playsMemo(PLAY_CITY, root, batch.length, build), status: 'pending', signature: null, slot: null,
+      id: randomUUID(), kind: 'plays', city, createdAt: new Date().toISOString(), root, count: batch.length,
+      memo: playsMemo(city, root, batch.length, build), status: 'pending', signature: null, slot: null,
     };
     try {
       const { signature, slot } = await chain.memo(anchor.memo);
@@ -94,14 +118,29 @@ export function civicRecord({ store, chain, dataBuild, log, batchMs = 5 * 60_000
       return anchor;
     }
     await store.saveAnchor(anchor);
-    await Promise.all(batch.map((p, i) => store.savePlay({ ...p, anchorId: anchor.id, proof: proofs[i]! })));
+    // Re-read each play: its own memo may have landed since the batch was read.
+    await Promise.all(batch.map(async (p, i) => store.savePlay({ ...((await store.play(p.playId)) ?? p), anchorId: anchor.id, proof: proofs[i]! })));
     log.info(`civic: anchored ${batch.length} plays on Solana ${explorerTx(anchor.signature!)}`);
     return anchor;
   }
 
-  /** Anchors every play waiting, one batch at a time (calls queue behind each other). */
+  /**
+   * Anchors every play waiting, one batch (city and data build) at a time; stops at a failure.
+   * Resolves to the last anchor. Calls queue behind each other.
+   */
+  async function anchorAll(): Promise<Anchor | null> {
+    let last: Anchor | null = null;
+    for (let i = 0; i < 8; i++) {
+      const anchor = await anchorWaiting();
+      if (!anchor) break;
+      last = anchor;
+      if (anchor.status !== 'confirmed') break;
+    }
+    return last;
+  }
+
   function flush(): Promise<Anchor | null> {
-    flushing = flushing.catch(() => null).then(anchorWaiting).catch((err) => {
+    flushing = flushing.catch(() => null).then(anchorAll).catch((err) => {
       log.warn({ err }, 'civic: flush failed');
       return null;
     });
@@ -128,6 +167,8 @@ export function civicRecord({ store, chain, dataBuild, log, batchMs = 5 * 60_000
     anchorMemo,
     flush,
     proof,
+    /** Resolves when every play memo queued so far is written (tests, shutdown). */
+    memosSent: () => sending,
     close: () => clearInterval(timer),
   };
 }

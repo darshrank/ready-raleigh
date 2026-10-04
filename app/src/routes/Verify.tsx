@@ -39,6 +39,20 @@ export function Verify({ playId }: { playId: string }) {
       const print = await playFingerprint(v.play.input);
       out.push({ label: 'Fingerprint', ok: print === v.play.fingerprint, detail: `SHA-256 of the play, recomputed here: ${print.slice(0, 16)}…` });
       out.forEach(push);
+      // The play's own memo: its decisions in words, with this fingerprint.
+      if (v.play.memo?.signature) {
+        push({ label: 'Decisions on Solana', ok: null, detail: 'Reading the decisions from a devnet node…' });
+        try {
+          const memo = await memoOnChain(v.play.memo.signature);
+          push({
+            label: 'Decisions on Solana',
+            ok: !!memo && memo.includes(print),
+            detail: memo ? `Memo on chain: ${memo}` : 'The transaction has no memo.',
+          });
+        } catch {
+          push({ label: 'Decisions on Solana', ok: null, detail: 'Could not reach a devnet node from this browser.' });
+        }
+      }
       if (!v.anchor || v.anchor.status !== 'confirmed' || !v.play.proof) {
         push({ label: 'On Solana', ok: null, detail: 'Not anchored yet: plays go on Solana in batches. Check back in a few minutes.' });
         return;
@@ -86,11 +100,18 @@ export function Verify({ playId }: { playId: string }) {
                 </li>
               ))}
             </ol>
-            {v.anchor?.explorerUrl && (
-              <a href={v.anchor.explorerUrl} target="_blank" rel="noreferrer" className="text-15 underline">
-                See the transaction on Solana Explorer
-              </a>
-            )}
+            <p className="flex flex-wrap gap-x-4 text-15">
+              {v.play.memo?.explorerUrl && (
+                <a href={v.play.memo.explorerUrl} target="_blank" rel="noreferrer" className="underline">
+                  The decisions on Solana Explorer
+                </a>
+              )}
+              {v.anchor?.explorerUrl && (
+                <a href={v.anchor.explorerUrl} target="_blank" rel="noreferrer" className="underline">
+                  The batch on Solana Explorer
+                </a>
+              )}
+            </p>
             <p className="text-13">Tamper-evident, not a vote count: it proves the play was recorded and has not changed, not who played it.</p>
           </section>
         )}

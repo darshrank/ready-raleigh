@@ -16,6 +16,7 @@ import { registerNews } from './news';
 import { type CivicRecord, civicRecord } from './solana/civic';
 import { registerCivic } from './solana/routes';
 import { civicSignals } from './solana/signals';
+import { decisionWords } from './solana/decisions';
 import { MemoryCivicStore, type Signal } from './solana/store';
 import { registerVoice, voiceReady } from './voice';
 import { type CityId, isCityId } from '@shared';
@@ -44,7 +45,9 @@ export function buildServer({ store = new MemoryStore(), data = () => null, live
   const record = civic ?? civicRecord({
     store: new MemoryCivicStore(),
     chain: null,
-    dataBuild: () => data()?.bundle.meta?.buildDate ?? 'unknown',
+    dataBuild: (city) => data(isCityId(city) ? city : 'raleigh')?.bundle.meta?.buildDate ?? 'unknown',
+    // Each play's decisions are named from its own city's data.
+    describe: (play) => decisionWords(play.plan.placements, data(isCityId(play.plan.city) ? play.plan.city : 'raleigh')?.bundle ?? null),
     log: { info: (m) => app.log.info(m), warn: (o, m) => app.log.warn(o, m) },
   });
   registerCivic(app, record);

@@ -1,7 +1,7 @@
 // The civic record's API (docs/SOLANA.md). Everything here is public by design: anyone can check
 // a play's proof against the memo on Solana without trusting our database.
 import type { FastifyInstance } from 'fastify';
-import { CLUSTER, explorerAddress } from './chain';
+import { CLUSTER, explorerAddress, explorerTx } from './chain';
 import { type CivicRecord, withExplorer } from './civic';
 
 /** Shown wherever the authority appears: the demo key is not a real government. */
@@ -23,7 +23,8 @@ export function registerCivic(app: FastifyInstance, civic: CivicRecord) {
     if (!view) return reply.code(404).send({ error: 'no such play' });
     // The player id stays private: it only matters for handing a player their own cards.
     const { playerId: _private, ...play } = view.play;
-    return { enabled: civic.enabled, cluster: CLUSTER, play, anchor: view.anchor };
+    const memoUrl = play.memo?.signature ? explorerTx(play.memo.signature) : null;
+    return { enabled: civic.enabled, cluster: CLUSTER, play: { ...play, memo: play.memo ? { ...play.memo, explorerUrl: memoUrl } : null }, anchor: view.anchor };
   });
 
   // Civic signals, newest first, each with the transaction that published it.

@@ -8,7 +8,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AIError, GROUNDED, type Gemini } from '../ai/gemini';
-import { numbersIn } from '@shared';
+import { fitMemo, memoDecisions, numbersIn } from '@shared';
 import type { CivicLog, CivicRecord } from '../solana/civic';
 import type { Card, CardKind, Signal } from '../solana/store';
 import type { Minter } from './mint';
@@ -19,6 +19,10 @@ export const publicBase = () => (process.env.PUBLIC_URL?.trim() || `http://local
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newClaimCode = () => Array.from({ length: 8 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join('');
+
+/** City names for cards (ids as in shared/src/room.ts CITY_IDS). */
+const CITY_NAMES: Record<string, string> = { raleigh: 'Raleigh', miami: 'Miami', 'san-francisco': 'San Francisco', 'new-york': 'New York City' };
+export const cityName = (id: string) => CITY_NAMES[id] ?? id;
 
 export const CARD_NAMES: Record<CardKind, string> = {
   mayor_elect: 'Mayor-elect',
@@ -64,7 +68,7 @@ const WORDS_SCHEMA = {
   required: ['title', 'flavour', 'why'],
 };
 
-const WORDS_SYSTEM = `You write the text of a collectible card in a city-planning game (Mayday Mayor, Raleigh). Residents plan for a flood; real contributions earn cards that a (simulated) local government recognizes.
+const WORDS_SYSTEM = `You write the text of a collectible card in a city-planning game (Mayday Mayor). Residents plan for a disaster in their city; real contributions earn cards that a (simulated) local government recognizes.
 - title: 2 to 4 words, punchy, like a trading-card name. At most 28 characters.
 - flavour: one witty line, at most 90 characters.
 - why: one plain sentence saying what the player did and why it matters for the city, at most 160 characters.
@@ -125,13 +129,13 @@ export function cardService({ civic, gemini, log, minter, art = true }: CardOpti
   const store = civic.store;
   const artPath = (id: string, ext: string) => join(CARD_DIR, `${id}.${ext}`);
 
-  async function words(f: CardFacts): Promise<Words> {
+  async function words(f: CardFacts, city: string): Promise<Words> {
     if (!gemini.ready()) return templateWords(f);
     try {
       const w = await gemini.json<Words>({
         system: WORDS_SYSTEM,
         // The room code is not a place: it stays out of what Gemini sees.
-        prompt: JSON.stringify({ card: CARD_NAMES[f.kind], city: 'Raleigh', spot: f.spot, facts: Object.fromEntries(Object.entries(f.facts).filter(([k]) => k !== 'room')) }),
+        prompt: JSON.stringify({ card: CARD_NAMES[f.kind], city: cityName(city), spot: f.spot, facts: Object.fromEntries(Object.entries(f.facts).filter(([k]) => k !== 'room')) }),
         schema: WORDS_SCHEMA,
         temperature: 1,
         timeoutMs: 12_000,
@@ -165,14 +169,15 @@ export function cardService({ civic, gemini, log, minter, art = true }: CardOpti
     const existing = (await store.cardsForPlay(f.playId)).find((c) => c.kind === f.kind);
     if (existing) return existing;
     const proof = await store.play(f.playId);
-    const w = await words(f);
+    const city = proof?.input.city ?? 'raleigh';
+    const w = await words(f, city);
     const signalAnchor = f.signal?.anchorId ? await store.anchor(f.signal.anchorId) : null;
     const card: Card = {
-      id: randomUUID(), kind: f.kind, playId: f.playId, playerId: f.playerId, city: proof?.input.city ?? 'raleigh',
+      id: randomUUID(), kind: f.kind, playId: f.playId, playerId: f.playerId, city,
       createdAt: new Date().toISOString(), ...w,
       attributes: [
         { key: 'Card', value: CARD_NAMES[f.kind] },
-        { key: 'City', value: 'Raleigh' },
+        { key: 'City', value: cityName(city) },
         ...(f.spot ? [{ key: 'Spot', value: f.spot }] : []),
         ...Object.entries(f.facts).filter(([k]) => k !== 'room').map(([key, value]) => ({ key, value: String(value) })),
         ...(proof ? [{ key: 'Play fingerprint', value: proof.fingerprint.slice(0, 16) }, { key: 'Data build', value: proof.input.dataBuild.slice(0, 10) }] : []),
@@ -222,8 +227,14 @@ export function cardService({ civic, gemini, log, minter, art = true }: CardOpti
     if (card.status === 'minting') throw new ClaimError(409, 'This card is being minted.');
     if (!minter) throw new ClaimError(503, 'Cards cannot be minted yet (no collection set up).');
     await store.saveCard({ ...card, status: 'minting' });
+    // The mint transaction carries the card and the play's decisions in words (a Memo), so Solana
+    // Explorer shows them as text right there. The decisions come from the play's own memo.
+    const play = await store.play(card.playId);
+    const head = `ready-raleigh:v1:card:${CARD_NAMES[card.kind]}:${card.city}:play=${play?.fingerprint.slice(0, 16) ?? card.playId.slice(0, 8)}`;
+    const decisions = play?.memo?.text ? memoDecisions(play.memo.text) : [];
+    const memo = (maxBytes: number) => fitMemo(head, decisions, maxBytes, 'decisions not on record');
     try {
-      const { asset, signature } = await minter.mint({ name: card.title, uri: `${publicBase()}/api/cards/${card.id}/metadata.json`, owner: wallet, attributes: card.attributes });
+      const { asset, signature } = await minter.mint({ name: card.title, uri: `${publicBase()}/api/cards/${card.id}/metadata.json`, owner: wallet, attributes: card.attributes, memo });
       const minted: Card = { ...card, status: 'minted', asset, owner: wallet, mintSignature: signature };
       await store.saveCard(minted);
       log.info(`cards: minted "${card.title}" to ${wallet.slice(0, 6)}… (${asset})`);

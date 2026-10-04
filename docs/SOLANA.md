@@ -49,11 +49,9 @@ against the wrong city. Solana needs the city in every fingerprint, signal and c
 data to score it. Until then, Solana covers Raleigh only.
 
 ### City scope for Solana
-| City | Completeness layer | Signals and cards |
-|---|---|---|
-| Raleigh | Yes | Yes (real flood model, existing shelters and stops, rooms) |
-| Miami | Yes, once plays carry the city | Yes (FEMA flood zones, flood rules) |
-| New York, San Francisco | Yes, once plays carry the city | Not until their hazard models are fixed; labelled "limited model" |
+Plays carry their city (Plan.city, merged from main). Every city gets the completeness layer, its
+own decisions memos and batches, its own civic signals and cards. New York and San Francisco still
+play the flood rules (DECISIONS.md known gap), so their signals describe that simplified model.
 
 ## Two on-chain layers
 

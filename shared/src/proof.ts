@@ -97,3 +97,39 @@ export const playsMemo = (city: string, root: string, count: number, dataBuild: 
 /** The memo written when a civic signal changes state. */
 export const signalMemo = (city: string, type: string, spot: string, state: string, evidenceRoot: string) =>
   `ready-raleigh:v1:signal:${city}:${type}:${spot}:${state}:${evidenceRoot}`;
+
+/** The Memo program's limit is 566 bytes; stay under it with room to spare. */
+export const MEMO_MAX_BYTES = 560;
+const bytes = (s: string) => new TextEncoder().encode(s).length;
+
+/**
+ * `head | item; item; ...` within `maxBytes` (UTF-8). Items that do not fit are counted ("+2 more");
+ * the head always stays whole.
+ */
+export function fitMemo(head: string, items: string[], maxBytes = MEMO_MAX_BYTES, empty = 'no pieces placed'): string {
+  if (items.length === 0) return `${head} | ${empty}`;
+  let memo = `${head} |`;
+  for (const [i, d] of items.entries()) {
+    const rest = items.length - i - 1;
+    const next = `${memo}${i ? ';' : ''} ${d}`;
+    if (bytes(next + (rest ? `; +${rest} more` : '')) > maxBytes) return `${memo}${i ? ';' : ''} +${items.length - i} more`;
+    memo = next;
+  }
+  return memo;
+}
+
+/**
+ * One play's own memo: its decisions in words, readable in Solana Explorer, plus the fingerprint
+ * that ties them to the play. No names of players.
+ *   ready-raleigh:v1:play:raleigh:flood:ABCD:score=58.3:<fingerprint> | Shelter: Enloe High School (Five Points); Protect: Capital Boulevard
+ * Decisions that do not fit are counted ("+2 more"); the fingerprint always fits.
+ */
+export function playMemo(input: Pick<PlayFingerprintInput, 'city' | 'mode' | 'roomCode' | 'score'>, fingerprint: string, decisions: string[]): string {
+  return fitMemo(`ready-raleigh:v1:play:${input.city}:${input.mode}:${input.roomCode}:score=${Math.round(input.score * 10) / 10}:${fingerprint}`, decisions);
+}
+
+/** The decisions part of a play memo ("Shelter: ...; Protect: ..."), as a list. */
+export const memoDecisions = (memo: string): string[] => {
+  const tail = memo.slice(memo.indexOf(' | ') + 3);
+  return memo.includes(' | ') && tail !== 'no pieces placed' ? tail.split('; ').filter((d) => !/^\+\d+ more$/.test(d)) : [];
+};

@@ -5,7 +5,7 @@
 import {
   create, createCollection, fetchAsset, fetchCollection, mplCore,
 } from '@metaplex-foundation/mpl-core';
-import { type Umi, generateSigner, keypairIdentity, publicKey } from '@metaplex-foundation/umi';
+import { type TransactionBuilder, type Umi, generateSigner, keypairIdentity, publicKey } from '@metaplex-foundation/umi';
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
 import { base58 } from '@metaplex-foundation/umi/serializers';
 import type { Keypair } from '@solana/web3.js';
@@ -16,6 +16,25 @@ export interface MintRequest {
   uri: string;
   owner: string;
   attributes: { key: string; value: string }[];
+  /**
+   * A readable memo for the same transaction (the card and the play's decisions in words), so
+   * Solana Explorer shows it as text. Called with a byte budget: the transaction must stay under
+   * Solana's 1,232 bytes, so the minter asks for shorter versions until it fits.
+   */
+  memo?: (maxBytes: number) => string;
+}
+
+const MEMO_PROGRAM = publicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+/** Memo budgets to try, longest first. */
+const MEMO_BUDGETS = [560, 480, 400, 340, 280, 220, 160, 110];
+
+/** `builder` plus a Memo instruction signed by the authority. */
+function withMemo(umi: Umi, builder: TransactionBuilder, text: string): TransactionBuilder {
+  return builder.add({
+    instruction: { programId: MEMO_PROGRAM, keys: [{ pubkey: umi.identity.publicKey, isSigner: true, isWritable: false }], data: new TextEncoder().encode(text) },
+    signers: [umi.identity],
+    bytesCreatedOnChain: 0,
+  });
 }
 
 export interface Minter {
@@ -54,17 +73,27 @@ export function coreMinter(umi: Umi, collectionAddress: string): Minter {
   let collection: Awaited<ReturnType<typeof fetchCollection>> | null = null;
   return {
     collection: collectionAddress,
-    async mint({ name, uri, owner, attributes }) {
+    async mint({ name, uri, owner, attributes, memo }) {
       collection ??= await fetchCollection(umi, collectionAddress);
       const asset = generateSigner(umi);
-      const { signature } = await create(umi, {
+      const mint = create(umi, {
         asset,
         collection,
         name: name.slice(0, 32),
         uri,
         owner: publicKey(owner),
         plugins: [{ type: 'Attributes', attributeList: attributes.map(({ key, value }) => ({ key: key.slice(0, 32), value: value.slice(0, 64) })) }],
-      }).sendAndConfirm(umi);
+      });
+      // The longest readable memo that still fits in one transaction (none if even the shortest does not).
+      let tx = mint;
+      for (const budget of memo ? MEMO_BUDGETS : []) {
+        const candidate = withMemo(umi, mint, memo!(budget));
+        if (candidate.fitsInOneTransaction(umi)) {
+          tx = candidate;
+          break;
+        }
+      }
+      const { signature } = await tx.sendAndConfirm(umi);
       return { asset: asset.publicKey.toString(), signature: base58.deserialize(signature)[0] };
     },
   };

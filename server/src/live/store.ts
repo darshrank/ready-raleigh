@@ -1,6 +1,7 @@
 // Where live readings go: the gauge_readings hypertable on Tiger Data, or memory without a database.
 import type pg from 'pg';
 import type { FloodStages, Gauge, Parameter, Reading } from './sources';
+import type { WeatherStation } from './weather';
 
 export interface HourlyRow {
   bucket: Date;
@@ -19,8 +20,11 @@ export interface LiveStore {
   gauges(): Promise<Gauge[]>;
   /** Upsert readings (USGS revises provisional values; forecasts change). */
   saveReadings(readings: Reading[]): Promise<void>;
-  /** Readings at or after `since`, forecasts included. */
-  recent(since: Date): Promise<Reading[]>;
+  /** Readings at or after `since`, forecasts included; only these sites when given. */
+  recent(since: Date, sites?: string[]): Promise<Reading[]>;
+  /** Upsert a city's weather station and its latest conditions. */
+  saveStation(station: WeatherStation): Promise<void>;
+  stations(): Promise<WeatherStation[]>;
   /** Hourly stats for one site, oldest first. */
   hourly(site: string, since: Date): Promise<HourlyRow[]>;
 }
@@ -31,6 +35,7 @@ export class MemoryLiveStore implements LiveStore {
   readonly kind = 'memory';
   private readonly gaugeMap = new Map<string, Gauge>();
   private readonly readingMap = new Map<string, Reading>();
+  private readonly stationMap = new Map<string, WeatherStation>();
 
   async saveGauges(gauges: Gauge[]) {
     for (const g of gauges) {
@@ -49,8 +54,20 @@ export class MemoryLiveStore implements LiveStore {
     for (const [k, r] of this.readingMap) if (r.time.getTime() < cutoff) this.readingMap.delete(k);
   }
 
-  async recent(since: Date) {
-    return [...this.readingMap.values()].filter((r) => r.time >= since).sort((a, b) => +a.time - +b.time);
+  async recent(since: Date, sites?: string[]) {
+    return [...this.readingMap.values()]
+      .filter((r) => r.time >= since && (!sites || sites.includes(r.site)))
+      .sort((a, b) => +a.time - +b.time);
+  }
+
+  async saveStation(station: WeatherStation) {
+    const old = this.stationMap.get(station.city);
+    this.stationMap.set(station.city, { ...station, conditions: station.conditions ?? old?.conditions ?? null,
+      observedAt: station.observedAt ?? old?.observedAt ?? null });
+  }
+
+  async stations() {
+    return [...this.stationMap.values()];
   }
 
   async hourly(site: string, since: Date) {
@@ -124,10 +141,31 @@ export class TigerLiveStore implements LiveStore {
     }
   }
 
-  async recent(since: Date): Promise<Reading[]> {
+  async recent(since: Date, sites?: string[]): Promise<Reading[]> {
     const { rows } = await this.pool.query<{ time: Date; site_no: string; parameter: Parameter; value: number; unit: string }>(
-      'SELECT time, site_no, parameter, value, unit FROM gauge_readings WHERE time >= $1 ORDER BY time', [since]);
+      `SELECT time, site_no, parameter, value, unit FROM gauge_readings
+       WHERE time >= $1 AND ($2::text[] IS NULL OR site_no = ANY($2)) ORDER BY time`, [since, sites ?? null]);
     return rows.map((r) => ({ time: r.time, site: r.site_no, parameter: r.parameter, value: r.value, unit: r.unit }));
+  }
+
+  async saveStation(s: WeatherStation) {
+    await this.pool.query(
+      `INSERT INTO weather_stations (city, station, name, lon, lat, grid_site, conditions, observed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (city) DO UPDATE SET station = EXCLUDED.station, name = EXCLUDED.name, lon = EXCLUDED.lon,
+         lat = EXCLUDED.lat, grid_site = EXCLUDED.grid_site,
+         conditions = coalesce(EXCLUDED.conditions, weather_stations.conditions),
+         observed_at = coalesce(EXCLUDED.observed_at, weather_stations.observed_at), updated_at = now()`,
+      [s.city, s.station, s.name, s.lon, s.lat, s.gridSite, s.conditions, s.observedAt]);
+  }
+
+  async stations(): Promise<WeatherStation[]> {
+    const { rows } = await this.pool.query<{
+      city: WeatherStation['city']; station: string; name: string; lon: number; lat: number; grid_site: string;
+      conditions: string | null; observed_at: Date | null;
+    }>('SELECT city, station, name, lon, lat, grid_site, conditions, observed_at FROM weather_stations ORDER BY city');
+    return rows.map((r) => ({ city: r.city, station: r.station, name: r.name, lon: r.lon, lat: r.lat, gridSite: r.grid_site,
+      conditions: r.conditions, observedAt: r.observed_at }));
   }
 
   async hourly(site: string, since: Date): Promise<HourlyRow[]> {
@@ -170,7 +208,9 @@ export function failSoftLive(primary: LiveStore, log: Log): LiveStore {
     saveGauges: (g) => write('gauges', () => primary.saveGauges(g), () => mirror.saveGauges(g)),
     saveReadings: (r) => write('readings', () => primary.saveReadings(r), () => mirror.saveReadings(r)),
     gauges: () => read('gauges', () => primary.gauges(), () => mirror.gauges()),
-    recent: (since) => read('recent', () => primary.recent(since), () => mirror.recent(since)),
+    recent: (since, sites) => read('recent', () => primary.recent(since, sites), () => mirror.recent(since, sites)),
+    saveStation: (s) => write('station', () => primary.saveStation(s), () => mirror.saveStation(s)),
+    stations: () => read('stations', () => primary.stations(), () => mirror.stations()),
     hourly: (site, since) => read('hourly', () => primary.hourly(site, since), () => mirror.hourly(site, since)),
   };
 }

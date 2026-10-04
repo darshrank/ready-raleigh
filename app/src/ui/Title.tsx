@@ -11,6 +11,7 @@ import { PLATE, SatelliteButton, SoundButton } from './Hud';
 import { audioRunning, unlockAudio } from './sound';
 import { hush, prefetchSpeech, say } from './voice';
 import { MenuButton } from './Exit';
+import { WeatherNow, useCityWeather } from './WeatherNow';
 
 const ORBIT_PITCH = 60;
 /** Degrees per second: one turn in four minutes. */
@@ -146,6 +147,7 @@ export function Title({
   const appear = (delay: number) =>
     reduce ? {} : { initial: { y: 40, opacity: 0 }, animate: { y: 0, opacity: 1 }, transition: { duration: 0.5, delay, ease: 'easeOut' as const } };
   const story = currentStory();
+  const weather = useCityWeather(story.id);
 
   // Sized by the window's height as well as its width, so the briefing card always fits on screen.
   return (
@@ -156,11 +158,19 @@ export function Title({
           <span className="block text-72 short:text-48 lg:tall:text-120">Mayor</span>
           <span className="mt-2 block border-t-(length:--rule) border-ink pt-2 text-24 leading-none sm:text-32 lg:tall:text-48">{story.name}</span>
         </motion.h1>
-        {/* Wraps under itself beside the big title on a phone. */}
-        <div className="pointer-events-auto flex flex-wrap justify-end gap-2">
-          <MenuButton />
-          <SatelliteButton />
-          <SoundButton />
+        <div className="flex flex-col items-end gap-3">
+          {/* Wraps under itself beside the big title on a phone. */}
+          <div className="pointer-events-auto flex flex-wrap justify-end gap-2">
+            <MenuButton />
+            <SatelliteButton />
+            <SoundButton />
+          </div>
+          {/* Wide screens: the real sky today, in the corner the briefing card leaves open. */}
+          {weather && (
+            <motion.div {...appear(0.7)} className="hidden w-[26rem] lg:block">
+              <WeatherNow w={weather} name={story.name} />
+            </motion.div>
+          )}
         </div>
       </div>
 
@@ -178,38 +188,46 @@ export function Title({
         )}
       </AnimatePresence>
 
-      <motion.section
-        {...appear(0.9)}
-        aria-labelledby="briefing"
-        className={PLATE + ' pointer-events-auto w-full max-w-xl p-5 short:p-4 lg:max-w-2xl lg:p-7 lg:short:p-5'}
-      >
-        <h2 id="briefing" className="font-display text-32 leading-[1.02] font-extrabold sm:text-48 short:text-32">
-          {story.title[0]}
-          <br />
-          {story.title[1]}
-          <br />
-          <span className="bg-signal px-1 box-decoration-clone">
-            You have {money(BUDGET)} and {minutes} minutes.
-          </span>
-        </h2>
-        <p className="mt-3 max-w-xl text-15 short:mt-2 lg:text-18 lg:short:text-15">{story.body}</p>
-        {error ? (
-          <p className="mt-5 text-15">Could not load the map data ({error}). Reload the page to try again.</p>
-        ) : (
-          <button
-            ref={button}
-            type="button"
-            disabled={!ready}
-            onClick={() => {
-              unlockAudio();
-              onStart();
-            }}
-            className="mt-5 w-full border-(length:--rule) border-ink bg-ink px-6 py-3 font-display text-32 leading-none font-extrabold text-signal shadow-piece hover:bg-signal hover:text-ink active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:opacity-60 short:mt-3 sm:w-auto lg:tall:py-4 lg:tall:text-48"
-          >
-            {ready ? 'Start planning' : 'Loading the map'}
-          </button>
+      <div className="flex w-full flex-col gap-3">
+        {/* Phones and narrow windows: the real sky today as one row above the simulated storm's briefing. */}
+        {weather && (
+          <motion.div {...appear(0.7)} className="w-full max-w-xl lg:hidden">
+            <WeatherNow w={weather} name={story.name} compact />
+          </motion.div>
         )}
-      </motion.section>
+        <motion.section
+          {...appear(0.9)}
+          aria-labelledby="briefing"
+          className={PLATE + ' pointer-events-auto w-full max-w-xl p-5 short:p-4 lg:max-w-2xl lg:p-7 lg:short:p-5'}
+        >
+          <h2 id="briefing" className="font-display text-32 leading-[1.02] font-extrabold sm:text-48 short:text-32">
+            {story.title[0]}
+            <br />
+            {story.title[1]}
+            <br />
+            <span className="bg-signal px-1 box-decoration-clone">
+              You have {money(BUDGET)} and {minutes} minutes.
+            </span>
+          </h2>
+          <p className="mt-3 max-w-xl text-15 short:mt-2 lg:text-18 lg:short:text-15">{story.body}</p>
+          {error ? (
+            <p className="mt-5 text-15">Could not load the map data ({error}). Reload the page to try again.</p>
+          ) : (
+            <button
+              ref={button}
+              type="button"
+              disabled={!ready}
+              onClick={() => {
+                unlockAudio();
+                onStart();
+              }}
+              className="mt-5 w-full border-(length:--rule) border-ink bg-ink px-6 py-3 font-display text-32 leading-none font-extrabold text-signal shadow-piece hover:bg-signal hover:text-ink active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:opacity-60 short:mt-3 sm:w-auto lg:tall:py-4 lg:tall:text-48"
+            >
+              {ready ? 'Start planning' : 'Loading the map'}
+            </button>
+          )}
+        </motion.section>
+      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import type { GameData } from './data';
 import { MemoryStore, type PlayStore } from './db/store';
 import { type LiveStore, MemoryLiveStore } from './live/store';
 import { summarize } from './live/summary';
+import { cityWeather } from './live/weather';
 import { busDemand, demandCsv, demandGeoJson } from './demand';
 import { cleanName, rankBoard } from './leaderboard';
 import { rankPlanner } from './planner';
@@ -170,8 +171,35 @@ export function buildServer({ store = new MemoryStore(), data = () => null, live
   // Live feeds: the latest reading per gauge, with trend and flood stage, plus weather.
   app.get('/api/live/gauges', async () => {
     const now = new Date();
-    const [gauges, readings] = await Promise.all([live.gauges(), live.recent(new Date(now.getTime() - 3 * 3600_000))]);
-    return { store: live.kind, ...summarize(gauges, readings, now) };
+    const [gauges, readings, stations] = await Promise.all([live.gauges(), live.recent(new Date(now.getTime() - 3 * 3600_000)), live.stations()]);
+    // The gauges are Raleigh's; so is the weather beside them (other cities' stations are polled too).
+    const raleigh = stations.find((s) => s.city === 'raleigh');
+    const others = new Set(stations.filter((s) => s !== raleigh).flatMap((s) => [`nws:${s.station}`, s.gridSite]));
+    return { store: live.kind, ...summarize(gauges, readings.filter((r) => !others.has(r.site)), now) };
+  });
+
+  // Weather right now in one city (the title screen's report), from Tiger Data: the latest NWS
+  // observation, the rain forecast for the next 24 hours, and a 24-hour trend from gauge_hourly.
+  const weatherCache = new Map<CityId, { at: number; body: Promise<unknown> }>();
+  app.get<{ Querystring: { city?: string } }>('/api/live/weather', async (req, reply) => {
+    const city = req.query.city ?? 'raleigh';
+    if (!isCityId(city)) return reply.code(400).send({ error: 'unknown city' });
+    const hit = weatherCache.get(city);
+    if (hit && Date.now() - hit.at < 60_000) return hit.body;
+    const body = (async () => {
+      const station = (await live.stations()).find((s) => s.city === city);
+      if (!station) return { store: live.kind, city, weather: null };
+      const now = new Date();
+      const since = new Date(now.getTime() - 24 * 3600_000);
+      const [readings, hourly] = await Promise.all([
+        live.recent(since, [`nws:${station.station}`, station.gridSite]),
+        live.hourly(`nws:${station.station}`, since),
+      ]);
+      return { store: live.kind, city, weather: cityWeather(station, readings, hourly, now) };
+    })();
+    weatherCache.set(city, { at: Date.now(), body });
+    body.catch(() => weatherCache.delete(city));
+    return body;
   });
 
   // Hourly history for one gauge (or 'nws:<id>'), from the gauge_hourly continuous aggregate.

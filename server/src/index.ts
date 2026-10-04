@@ -89,8 +89,8 @@ function afterListen() {
 
   // Live river gauges and weather (P15), around the study area. LIVE_FEEDS=false turns them off.
   if (game && process.env.LIVE_FEEDS !== 'false') {
-    const { bbox, center } = studyArea(game.bundle);
-    startLiveFeeds({ store: live, bbox, center, log: { info: (m) => app.log.info(m), warn: (o, m) => app.log.warn(o, m) } });
+    const { bbox } = studyArea(game.bundle);
+    startLiveFeeds({ store: live, bbox, log: { info: (m) => app.log.info(m), warn: (o, m) => app.log.warn(o, m) } });
   }
 
   // Columnstore: compress the chunks the policies are due to (they run on a slow schedule), at start and hourly.

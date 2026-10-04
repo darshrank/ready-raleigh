@@ -15,7 +15,7 @@ export interface Reading {
   unit: string;
 }
 
-export type Parameter = 'stage_ft' | 'flow_cfs' | 'temp_c' | 'rain_mm' | 'rain_forecast_mm';
+export type Parameter = 'stage_ft' | 'flow_cfs' | 'temp_c' | 'rain_mm' | 'rain_forecast_mm' | 'wind_kph' | 'humidity_pct';
 
 export interface FloodStages {
   action: number | null;
@@ -160,14 +160,21 @@ interface NwsPoint {
   properties: { forecastGridData: string; observationStations: string; gridId: string; gridX: number; gridY: number };
 }
 interface NwsStations {
-  features: { properties: { stationIdentifier: string; name: string } }[];
+  features: { geometry?: { coordinates: [number, number] }; properties: { stationIdentifier: string; name: string } }[];
+}
+interface NwsValue {
+  value: number | null;
+  unitCode: string;
 }
 interface NwsObservations {
   features: {
     properties: {
       timestamp: string;
-      temperature?: { value: number | null; unitCode: string };
-      precipitationLastHour?: { value: number | null; unitCode: string };
+      textDescription?: string;
+      temperature?: NwsValue;
+      precipitationLastHour?: NwsValue;
+      windSpeed?: NwsValue;
+      relativeHumidity?: NwsValue;
     };
   }[];
 }
@@ -178,6 +185,9 @@ interface NwsGrid {
 export interface WeatherPoint {
   station: string;
   stationName: string;
+  /** The station's location (the point asked for when NWS does not give one). */
+  lon: number;
+  lat: number;
   gridId: string;
   forecastGridData: string;
 }
@@ -186,19 +196,38 @@ export interface WeatherPoint {
 export async function fetchWeatherPoint(lon: number, lat: number): Promise<WeatherPoint> {
   const point = await getJson<NwsPoint>(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`);
   const stations = await getJson<NwsStations>(point.properties.observationStations);
-  const first = stations.features[0]?.properties;
+  const first = stations.features[0];
   if (!first) throw new Error('api.weather.gov: no observation station');
   const { gridId, gridX, gridY } = point.properties;
-  return { station: first.stationIdentifier, stationName: first.name, gridId: `${gridId}/${gridX},${gridY}`,
-    forecastGridData: point.properties.forecastGridData };
+  const [sLon, sLat] = first.geometry?.coordinates ?? [lon, lat];
+  return { station: first.properties.stationIdentifier, stationName: first.properties.name, lon: sLon, lat: sLat,
+    gridId: `${gridId}/${gridX},${gridY}`, forecastGridData: point.properties.forecastGridData };
 }
 
-export async function fetchWeather(p: WeatherPoint): Promise<Reading[]> {
+/** The station's recent observations and the grid's rain forecast, plus the newest conditions text. */
+export async function fetchWeather(p: WeatherPoint, limit = 12): Promise<{ readings: Reading[]; conditions: Conditions | null }> {
   const [obs, grid] = await Promise.all([
-    getJson<NwsObservations>(`https://api.weather.gov/stations/${p.station}/observations?limit=12`),
+    getJson<NwsObservations>(`https://api.weather.gov/stations/${p.station}/observations?limit=${limit}`),
     getJson<NwsGrid>(p.forecastGridData),
   ]);
-  return [...parseObservations(obs, `nws:${p.station}`), ...parseRainForecast(grid, `nws:${p.gridId}`)];
+  return {
+    readings: [...parseObservations(obs, `nws:${p.station}`), ...parseRainForecast(grid, `nws:${p.gridId}`)],
+    conditions: parseConditions(obs),
+  };
+}
+
+export interface Conditions {
+  text: string;
+  time: Date;
+}
+
+/** The newest observation's words ("Light Rain", "Mostly Cloudy"); NWS lists the newest first. */
+export function parseConditions(body: NwsObservations): Conditions | null {
+  const withText = (body.features ?? [])
+    .map((f) => f.properties)
+    .filter((p) => p.textDescription?.trim())
+    .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))[0];
+  return withText ? { text: withText.textDescription!.trim(), time: new Date(withText.timestamp) } : null;
 }
 
 export function parseObservations(body: NwsObservations, site: string): Reading[] {
@@ -213,6 +242,12 @@ export function parseObservations(body: NwsObservations, site: string): Reading[
       // NWS reports precipitation in mm (wmoUnit:mm); a few stations report metres.
       const mm = p.precipitationLastHour.unitCode.endsWith(':m') ? p.precipitationLastHour.value * 1000 : p.precipitationLastHour.value;
       out.push({ time, site, parameter: 'rain_mm', value: mm, unit: 'mm' });
+    }
+    if (p.windSpeed?.value != null && p.windSpeed.unitCode.endsWith('km_h-1')) {
+      out.push({ time, site, parameter: 'wind_kph', value: p.windSpeed.value, unit: 'km/h' });
+    }
+    if (p.relativeHumidity?.value != null && p.relativeHumidity.unitCode.endsWith('percent')) {
+      out.push({ time, site, parameter: 'humidity_pct', value: p.relativeHumidity.value, unit: '%' });
     }
   }
   return out;

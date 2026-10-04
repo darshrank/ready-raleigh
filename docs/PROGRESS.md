@@ -57,8 +57,8 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 ## Phase 4: bonus challenges
 - [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
 - [x] P13 ElevenLabs broadcast and narration (D): POST /api/tts, narrated briefing, news anchor (V2)
-- [ ] P14 GoDaddy domain and deploy (any): code ready (Dockerfile, railway.json, server serves app/dist); Railway project, env vars and domain are manual, see docs/DEPLOY.md
-- [~] P15 Live mode: USGS gauges and NWS weather into Tiger Data (D). Server done (Claude, D); title-screen live line (C) next
+- [~] P14 GoDaddy domain and deploy (any): Render free service runs (mayday-mayor.onrender.com) with WARMUP=false and LIVE_FEEDS=false; the planner's optimizer is too heavy for its 0.1 CPU (502). Domain not registered yet. See docs/DEPLOY.md
+- [x] P15 Live mode: USGS gauges and NWS weather into Tiger Data (D). Title-screen weather report per city (C) done
 - [ ] P16 Solana plan record (D)
 
 ## Phase 5: demo
@@ -73,6 +73,22 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Next exact step:
 - Gotchas:
 -->
+
+### 2026-10-04 (machine clock) Claude (Opus 5.5) lanes C+D, P15 title weather report per city
+- Done: the server polls NWS weather for all four city centers (live/weather.ts CITY_POINTS; job.ts
+  backfills ~a day of observations on the first poll) into gauge_readings (+ wind_kph, humidity_pct)
+  and the new weather_stations table (conditions words). GET /api/live/weather?city= reads it back
+  from Tiger with a 24 h temperature trend from gauge_hourly (cached 60 s). ui/WeatherNow.tsx: a
+  plate in the title's top-right corner on wide screens, one row above the briefing on phones;
+  hidden when the server is off or the reading is over 3 h old. /api/live/gauges keeps its weather
+  on Raleigh's station now that other cities are polled.
+- Verified: typecheck; live tests (9); real run against Tiger and NWS (KRDU, KMIA, KLGA, SFOC1);
+  browser at 1440x900, 1366x700 and 390 (DOM; the pane does not paint the phone animation).
+- Gotchas: the deployed Render server has LIVE_FEEDS=false, so a local server must poll to keep the
+  report fresh (it hides itself after 3 h). SFOC1 (San Francisco) reports no conditions words.
+  signals.test.ts can time out when the whole suite runs at once; it passes alone.
+- Next: register the domain; precompute the planner's extended optimizer so /api/planner fits the
+  free instance (or a paid instance).
 
 ### 2026-10-04 02:55 (machine clock) Claude (Opus 5.5) for Adit, lane C, Score page without "Where the plan fell short" (branch feat/leaderboard)
 - Done: storm/Results.tsx ScorePage ends at the two protection meters; Meter lost its unit.

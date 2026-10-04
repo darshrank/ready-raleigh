@@ -93,6 +93,33 @@ export async function fetchLeaderboard(city: CityId, asPlayer: string = playerId
   }
 }
 
+/** Real weather now in a city (server: NWS observations stored in Tiger Data). */
+export interface CityWeather {
+  city: CityId;
+  station: string;
+  stationName: string;
+  observedAt: string | null;
+  stale: boolean;
+  conditions: string | null;
+  tempC: number | null;
+  tempF: number | null;
+  windMph: number | null;
+  humidityPct: number | null;
+  rainLastHourMm: number | null;
+  rainNext24hMm: number | null;
+  tempTrend: { hour: string; tempC: number }[];
+}
+
+/** Null when the server is off or has no weather for the city yet; the title then shows none. */
+export async function fetchWeather(city: CityId): Promise<CityWeather | null> {
+  try {
+    const res = await fetch(`/api/live/weather?city=${encodeURIComponent(city)}`, { signal: AbortSignal.timeout(6000) });
+    return res.ok ? (((await res.json()) as { weather: CityWeather | null }).weather ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Sets the player's name here and on the server's boards. False if the server did not take it. */
 export async function renamePlayer(name: string): Promise<boolean> {
   try {

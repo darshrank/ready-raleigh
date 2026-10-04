@@ -71,6 +71,20 @@ CREATE TABLE IF NOT EXISTS gauges (
   updated_at  timestamptz      NOT NULL DEFAULT now()
 );
 
+-- Each city's NWS weather station (the title screen's weather report) and its latest conditions
+-- words; the numbers are in gauge_readings under site 'nws:<station>' and the grid's 'nws:<grid>'.
+CREATE TABLE IF NOT EXISTS weather_stations (
+  city        text PRIMARY KEY,
+  station     text             NOT NULL,
+  name        text             NOT NULL,
+  lon         double precision NOT NULL,
+  lat         double precision NOT NULL,
+  grid_site   text             NOT NULL,
+  conditions  text,
+  observed_at timestamptz,
+  updated_at  timestamptz      NOT NULL DEFAULT now()
+);
+
 -- Hourly gauge and weather stats. Real-time, so the newest readings count at once.
 CREATE MATERIALIZED VIEW IF NOT EXISTS gauge_hourly
 WITH (timescaledb.continuous, timescaledb.materialized_only = false) AS

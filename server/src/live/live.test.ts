@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { buildServer } from '../app';
-import { parseFloodStages, parseObservations, parseRainForecast, parseUsgs, titleCase, type Gauge } from './sources';
+import { parseConditions, parseFloodStages, parseObservations, parseRainForecast, parseUsgs, titleCase, type Gauge } from './sources';
+import { cityWeather, type WeatherStation } from './weather';
 import { MemoryLiveStore } from './store';
 import { categoryOf, summarize } from './summary';
 
@@ -149,5 +150,55 @@ describe('GET /api/live/gauges', () => {
     const hist = (await app.inject({ method: 'GET', url: '/api/live/gauges/02087324?hours=6' })).json();
     expect(hist.rows.some((r: { parameter: string }) => r.parameter === 'stage_ft')).toBe(true);
     expect((await app.inject({ method: 'GET', url: '/api/live/gauges/bad%20site!' })).statusCode).toBe(400);
+  });
+});
+
+describe('weather right now (title screen)', () => {
+  const at = (iso: string) => new Date(iso);
+  const miamiObs = { features: [
+    { properties: { timestamp: '2026-10-03T22:00:00+00:00', textDescription: 'Light Rain',
+      temperature: { value: 28, unitCode: 'wmoUnit:degC' }, windSpeed: { value: 16.09, unitCode: 'wmoUnit:km_h-1' },
+      relativeHumidity: { value: 81.4, unitCode: 'wmoUnit:percent' } } },
+    { properties: { timestamp: '2026-10-03T21:00:00+00:00', textDescription: 'Cloudy',
+      temperature: { value: 29, unitCode: 'wmoUnit:degC' } } },
+  ] };
+  const station: WeatherStation = { city: 'miami', station: 'KMIA', name: 'Miami International Airport', lon: -80.29, lat: 25.79,
+    gridSite: 'nws:MFL/110,50', conditions: 'Light Rain', observedAt: at('2026-10-03T22:00:00Z') };
+
+  it('reads conditions, wind and humidity from NWS', () => {
+    expect(parseConditions(miamiObs)).toEqual({ text: 'Light Rain', time: at('2026-10-03T22:00:00Z') });
+    expect(parseConditions({ features: [] })).toBeNull();
+    const params = parseObservations(miamiObs, 'nws:KMIA').map((r) => r.parameter);
+    expect(params).toEqual(['temp_c', 'wind_kph', 'humidity_pct', 'temp_c']);
+  });
+
+  it('builds a city report in US units with the 24-hour forecast', () => {
+    const readings = [
+      ...parseObservations(miamiObs, 'nws:KMIA'),
+      { time: at('2026-10-03T23:00:00Z'), site: 'nws:MFL/110,50', parameter: 'rain_forecast_mm' as const, value: 4, unit: 'mm/PT6H' },
+      { time: at('2026-10-04T05:00:00Z'), site: 'nws:MFL/110,50', parameter: 'rain_forecast_mm' as const, value: 2.5, unit: 'mm/PT6H' },
+      { time: at('2026-10-06T05:00:00Z'), site: 'nws:MFL/110,50', parameter: 'rain_forecast_mm' as const, value: 9, unit: 'mm/PT6H' },
+    ];
+    const w = cityWeather(station, readings, [], at('2026-10-03T22:30:00Z'));
+    expect(w).toMatchObject({ city: 'miami', station: 'KMIA', conditions: 'Light Rain', tempC: 28, tempF: 82, windMph: 10,
+      humidityPct: 81, rainNext24hMm: 6.5, stale: false, observedAt: '2026-10-03T22:00:00.000Z' });
+    expect(cityWeather(station, readings, [], at('2026-10-04T03:00:00Z')).stale).toBe(true);
+  });
+
+  it('serves each city its own weather, and keeps the gauge summary weather on Raleigh', async () => {
+    const live = new MemoryLiveStore();
+    const app = buildServer({ live });
+    const now = Date.now();
+    const shift = (rs: ReturnType<typeof parseObservations>) => rs.map((r) => ({ ...r, time: new Date(now - 30 * 60_000) }));
+    await live.saveReadings([...shift(parseObservations(miamiObs, 'nws:KMIA')), ...shift(parseObservations(obs, 'nws:KRDU'))]);
+    await live.saveStation({ ...station, observedAt: new Date(now - 30 * 60_000) });
+    await live.saveStation({ ...station, city: 'raleigh', station: 'KRDU', name: 'Raleigh-Durham', gridSite: 'nws:RAH/75,57', conditions: 'Clear' });
+    const miami = (await app.inject({ method: 'GET', url: '/api/live/weather?city=miami' })).json();
+    expect(miami.weather).toMatchObject({ station: 'KMIA', conditions: 'Light Rain', humidityPct: 81 });
+    expect((await app.inject({ method: 'GET', url: '/api/live/weather?city=new-york' })).json().weather).toBeNull();
+    expect((await app.inject({ method: 'GET', url: '/api/live/weather?city=atlantis' })).statusCode).toBe(400);
+    const gauges = (await app.inject({ method: 'GET', url: '/api/live/gauges' })).json();
+    expect(gauges.weather.station).toBe('KRDU');
+    await app.close();
   });
 });

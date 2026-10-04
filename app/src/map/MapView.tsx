@@ -124,7 +124,11 @@ export function MapView({
     });
     if (!keyboard) map.keyboard.disable();
     // Dev only: lets screenshot scripts and the console inspect the map.
-    if (import.meta.env.DEV) (window as unknown as { __map?: MapLibreMap }).__map = map;
+    if (import.meta.env.DEV) {
+      (window as unknown as { __map?: MapLibreMap }).__map = map;
+      // Per-frame change counters and render timings for the trace scripts (app/src/dev/fx.ts).
+      void import('../dev/fx').then((m) => mapRef.current === map && m.installFx(map));
+    }
     mapRef.current = map;
     overlayRef.current = overlay;
     const cleanup = onReadyRef.current?.(map, overlay);
@@ -149,8 +153,11 @@ export function MapView({
     if (!overlay || !frameLayers) return;
     let raf = 0;
     const tick = (now: number) => {
+      const a = performance.now();
       const next = frameLayers(now);
       if (next) overlay.setProps({ layers: next });
+      // Dev: the storm's per-frame layer rebuild (residents), for the trace scripts.
+      if (import.meta.env.DEV) performance.measure('storm-layers', { start: a, end: performance.now() });
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

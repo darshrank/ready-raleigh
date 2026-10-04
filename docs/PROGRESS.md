@@ -31,6 +31,12 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 ## Semantic zoom (branch sakhi/semantic-zoom)
 - [x] SZ Detail by zoom on the planning map (Claude, C + A): S1 places, S2 addresses, S3 GoRaleigh stops, S4 NC OneMap aerial, S5 site buildings, S6 hex fade
 
+## Realism (branch sakhi/realism)
+- [~] RL Game-quality 3D city and living flood water (Claude, C). Order: R0 baseline, R1 deck.gl
+  buildings + tokens, R4 water surface, R5 3D water + stains, R3 windows, R7 tiers + reduced
+  motion + docs, R2 shadows, R6 flow, rain, ending. `?realism=off` keeps the old path until R7.
+  - [x] R0 baseline traces
+
 ## Phase 4: bonus challenges
 - [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
 - [x] P13 ElevenLabs broadcast and narration (D): POST /api/tts, narrated briefing, news anchor (V2)
@@ -269,6 +275,37 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   (catchments use cell indices). score() needs existing_shelters.json in the data folder to match
   the app; fixtures have none (baseline 0).
 
+### 2026-10-03 21:21 EDT Claude (Opus 5.5) lane C, realism R0 (baseline storm traces)
+- Branch `sakhi/realism` from sakhi/semantic-zoom rebased on group/main 1eba02e. Never pushed.
+  The plan (R0-R7, user order R0 R1 R4 R5 R3 R7 R2 R6, R6b dropped) is in the task brief.
+- Done: trace tooling. `app/scripts/drive.mjs` gains `{throttle:N}` (CDP CPU throttling) and
+  `{trace:ms, file}` (Chrome performance trace via CDP Tracing). `app/scripts/trace-stats.mjs`
+  summarizes a trace: per frame, `main` = the renderer main-thread task that ran the
+  animation-frame callbacks, `gpu` = GPU-process GPUTask time until the next frame, `frame` =
+  max(main, gpu); plus presented fps and dev `performance.measure` timings.
+  `app/scripts/storm-trace.mjs <w> <h> [throttle] [query] [file]` opens /solo?skip, places the
+  optimal plan, starts the storm (it tilts to 55 degrees and the helicopter flies) and traces 24 s.
+- Done: `app/src/dev/fx.ts` (dev only, loaded by MapView): per-frame counts of MapLibre
+  setData/setFeatureState/setPaintProperty/setLayoutProperty/setFilter and deck.gl attribute
+  uploads by layer (`window.__fx.summary(sinceStormMs)`), and timings `map-render`,
+  `storm-layers` (MapView's storm rebuild), `flood-frame` (FloodView), `attrs <layer>`.
+- Baseline (GPU=1 headless Chrome, Apple M1, from storm time 1 s to 24 s, ms):
+  | Run | frame avg | p95 | max | fps | map-render avg | residents JS + uploads |
+  |---|---|---|---|---|---|---|
+  | 1440x900 dpr 1 | 8.5 | 12.9 | 39.8 | 59.2 | 6.7 | 0.3 + ~0.5 |
+  | 390x844 dpr 2, CPU 4x | 27.5 | 39.2 | 67.2 | 37.0 | 20.7 | 1.3 + ~1.5 |
+  Runs vary by about 1 ms on the average (a second 1440 run gave 6.8 / 11.1). GPU time is small
+  (2.5 avg) at both sizes; the cost is CPU (MapLibre render + deck draw).
+- Per-frame writes today (390 run, after 1 s): setFeatureState on `flood` 15,888 in the storm,
+  setPaintProperty on water-1..3 and submerged-flow-0..3 every frame, and every storm resident
+  layer (storm-glow, -stranded, -residents, -halos, -trails) re-uploads all its attributes each
+  frame (a new data object per frame). The residents stay as they are (user decision).
+- Next exact step: R1. Add the 15 color tokens to styles.css and tokens.ts; app/src/world/
+  (clock.ts, buildings.ts with a TileLayer + MVTLoader binary wgs84 + BuildingLayer, lights);
+  FloodView swaps buildings-3d for the deck layers when tilted; `?realism=off` keeps the old path.
+- Gotchas: run the traces with `bash` or quote args; zsh does not split `$var` in a for loop (a
+  first attempt traced at a bogus size). Headless Chrome runs at 60 Hz with GPU=1.
+
 ### 2026-10-03 20:55 EDT Claude (Opus 5.5) lanes A+D+C, bus pickup demand report for planners
 - Done: pipeline/transit.py + app/public/data/transit_stops.json (GoRaleigh 2024 feed, flagged
   expired; GoTriangle current). server/src/demand.ts (report, CSV, GeoJSON), store.pickups() on
@@ -283,6 +320,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   "why here?" tap after placing a piece; show planners the crowd ranking from GET /api/planner too.
 - Gotchas: the report needs real plays from at least 5 different people per area; with few
   testers use ?minPlayers=3. A newer GoRaleigh GTFS URL can replace FEEDS[0] in pipeline/transit.py.
+
 
 ### 2026-10-03 20:29 EDT Claude (Opus 5.5) lane C, semantic zoom screenshots and final check
 - Done: docs/screenshots/semantic-zoom/tilted-planning-{1440,390}-z{15,17}.jpg (3D on, pitch

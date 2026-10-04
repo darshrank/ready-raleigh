@@ -745,6 +745,13 @@ export class FloodView {
 
   private frame = (now: number) => {
     this.raf = requestAnimationFrame(this.frame);
+    const a = performance.now();
+    this.paintFrame(now);
+    // Dev: the water's per-frame cost, for the trace scripts.
+    if (import.meta.env.DEV) performance.measure('flood-frame', { start: a, end: performance.now() });
+  };
+
+  private paintFrame(now: number) {
     if (this.reveal) this.writeReveal(this.reveal(now));
 
     const fading = this.fadeMs > 0 && now - this.fadeStart < this.fadeMs;
@@ -784,5 +791,5 @@ export class FloodView {
         this.paint(`submerged-flow-${j}`, 'line-opacity', Math.round(o * 50) / 50);
       }
     }
-  };
+  }
 }

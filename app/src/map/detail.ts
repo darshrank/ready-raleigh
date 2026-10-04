@@ -16,7 +16,8 @@ import type {
 } from 'maplibre-gl';
 import type { FeatureCollection, MultiPolygon, Point, Position } from 'geojson';
 import { loadMapData } from '../data';
-import { dataBase } from '../story';
+import { cityById } from '../cities';
+import { currentCityId, dataBase } from '../story';
 import type { Palette } from './basemap';
 import { TILT_3D } from './flood';
 import { REALISM } from '../world/state';
@@ -289,6 +290,21 @@ function sdfImage(draw: Draw, size = ICON): ImageData {
 // ---------------------------------------------------------------------------------------------
 // Sources and layers.
 
+/**
+ * The detail files built for Raleigh only: GoRaleigh's stops, and OSM care homes and site
+ * footprints in Raleigh's box. Other cities (story.ts) skip them; places, addresses and the 3D city
+ * come from the OpenFreeMap tiles and work everywhere.
+ */
+const raleighData = () => currentCityId() === 'raleigh';
+
+/** NC OneMap's imagery covers North Carolina only. */
+const aerialCovers = () => cityById(currentCityId())?.state === 'North Carolina';
+
+/** The aerial photo shows in North Carolina, unless the Satellite toggle has the whole map's imagery. */
+export function setAerial(map: MapLibreMap, satellite: boolean) {
+  if (map.getLayer(AERIAL)) map.setLayoutProperty(AERIAL, 'visibility', aerialCovers() && !satellite ? 'visible' : 'none');
+}
+
 /** GoRaleigh's GTFS feed (pipeline/bus_stops.py), recorded in meta.json. */
 const BUS_ATTRIBUTION = 'Bus stops: <a href="https://goraleigh.org" target="_blank">GoRaleigh GTFS</a>';
 
@@ -304,13 +320,14 @@ const AERIAL_ATTRIBUTION =
 
 export function detailSources(): Record<string, SourceSpecification> {
   return {
-    [BUS_STOPS]: { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, attribution: BUS_ATTRIBUTION },
+    // Credits only where the data is used (Raleigh's stops, North Carolina's imagery).
+    [BUS_STOPS]: { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, ...(raleighData() ? { attribution: BUS_ATTRIBUTION } : {}) },
     // OpenStreetMap (pipeline/care_homes.py); OSM is already credited by the tiles.
     [CARE_HOMES]: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
     // OpenStreetMap footprints (pipeline/site_buildings.py); OSM is already credited by the tiles.
     [SITE_BUILDINGS]: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
     // minzoom: no tile is ever requested below the zoom where the imagery starts to show.
-    [AERIAL]: { type: 'raster', tiles: [AERIAL_TILES], tileSize: 256, minzoom: AERIAL_ZOOM[0], maxzoom: 20, attribution: AERIAL_ATTRIBUTION },
+    [AERIAL]: { type: 'raster', tiles: [AERIAL_TILES], tileSize: 256, minzoom: AERIAL_ZOOM[0], maxzoom: 20, ...(aerialCovers() ? { attribution: AERIAL_ATTRIBUTION } : {}) },
   };
 }
 
@@ -325,6 +342,8 @@ export function aerialLayer(P: Palette): LayerSpecification {
     type: 'raster',
     source: AERIAL,
     minzoom: AERIAL_ZOOM[0],
+    // Hidden outside North Carolina: no tile is requested for a hidden layer.
+    layout: { visibility: aerialCovers() ? 'visible' : 'none' },
     paint: {
       'raster-opacity': ['interpolate', ['linear'], ['zoom'], AERIAL_ZOOM[0], 0, AERIAL_ZOOM[1], P.aerial.opacity],
       'raster-saturation': P.aerial.saturation,
@@ -524,11 +543,16 @@ export interface SiteBuilding {
   polygons: number[][][][];
 }
 
-let siteBuildings: Promise<SiteBuilding[]> | null = null;
-/** site_buildings.json, fetched once per page load (the map and the site squares both need it). */
+const siteBuildings = new Map<string, Promise<SiteBuilding[]>>();
+/**
+ * site_buildings.json, fetched once per city per page load (the map and the site squares both need
+ * it). Raleigh only: elsewhere every site keeps its square.
+ */
 export function loadSiteBuildings(): Promise<SiteBuilding[]> {
-  siteBuildings ??= getJson<SiteBuilding[]>('site_buildings.json');
-  return siteBuildings;
+  const city = currentCityId();
+  let p = siteBuildings.get(city);
+  if (!p) siteBuildings.set(city, (p = raleighData() ? getJson<SiteBuilding[]>('site_buildings.json') : Promise.resolve([])));
+  return p;
 }
 
 /** What the site card shows: the building under the pointer, where it is on screen. */
@@ -670,6 +694,32 @@ export function onSiteSolids(cb: (s: SiteSolid[]) => void): () => void {
   return () => solidListeners.delete(cb);
 }
 
+/** GoRaleigh's stops and the care homes (Raleigh's files) into their sources. */
+function loadRaleighPoints(map: MapLibreMap, live: () => boolean) {
+  getJson<BusStop[]>('bus_stops.json').then(
+    (stops) => {
+      if (!live()) return;
+      const fc: FeatureCollection<Point, { name: string }> = {
+        type: 'FeatureCollection',
+        features: stops.map((s, i) => ({ type: 'Feature', id: i, properties: { name: s.name }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })),
+      };
+      fill(map, BUS_STOPS, fc);
+    },
+    (e: unknown) => console.warn('Bus stops did not load:', e),
+  );
+
+  getJson<CareHome[]>('care_homes.json').then(
+    (homes) => {
+      if (!live()) return;
+      fill(map, CARE_HOMES, {
+        type: 'FeatureCollection',
+        features: homes.map((h, i) => ({ type: 'Feature', id: i, properties: { name: h.name, kind: h.kind }, geometry: { type: 'Point', coordinates: [h.lon, h.lat] } })),
+      });
+    },
+    (e: unknown) => console.warn('Care homes did not load:', e),
+  );
+}
+
 /**
  * Adds the detail icons to `map` (now, and again if the style ever asks for one it lacks) and loads
  * the detail data files into their sources. A missing file only leaves its layer empty. Returns a
@@ -776,28 +826,7 @@ export function installDetail(map: MapLibreMap, onSite: (card: SiteCardInfo | nu
   map.on('sourcedata', onTiles);
   map.on('moveend', onMoveEnd);
 
-  getJson<BusStop[]>('bus_stops.json').then(
-    (stops) => {
-      if (!live) return;
-      const fc: FeatureCollection<Point, { name: string }> = {
-        type: 'FeatureCollection',
-        features: stops.map((s, i) => ({ type: 'Feature', id: i, properties: { name: s.name }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })),
-      };
-      fill(map, BUS_STOPS, fc);
-    },
-    (e: unknown) => console.warn('Bus stops did not load:', e),
-  );
-
-  getJson<CareHome[]>('care_homes.json').then(
-    (homes) => {
-      if (!live) return;
-      fill(map, CARE_HOMES, {
-        type: 'FeatureCollection',
-        features: homes.map((h, i) => ({ type: 'Feature', id: i, properties: { name: h.name, kind: h.kind }, geometry: { type: 'Point', coordinates: [h.lon, h.lat] } })),
-      });
-    },
-    (e: unknown) => console.warn('Care homes did not load:', e),
-  );
+  if (raleighData()) loadRaleighPoints(map, () => live);
 
   const icons: Record<string, Draw> = { ...PLACE_ICONS, ...BUS_ICON };
   const add = (id: string) => {

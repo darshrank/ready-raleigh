@@ -9,7 +9,7 @@ import type { ExpressionSpecification, LayerSpecification, Map as MapLibreMap, S
 import { rgba, tint, type Tokens } from '../tokens';
 import { TILES } from '../world/tiles';
 import { floodFlatLayers, floodSources, flood3dLayers, closuresLayer } from './flood';
-import { aerialLayer, detailLabelLayers, detailSources, siteBuilding3dLayer, siteBuildingLayers } from './detail';
+import { aerialLayer, detailLabelLayers, detailSources, setAerial, siteBuilding3dLayer, siteBuildingLayers } from './detail';
 
 // The tiles' URL lives with the 3D city's tile workers (world/tiles.ts); the globe reads it here.
 export { TILES };
@@ -401,6 +401,7 @@ export function basemapStyle(t: Tokens): StyleSpecification {
  */
 export function applyPalette(map: MapLibreMap, mood: Mood, t: Tokens, ms: number, satellite = false) {
   map.setLayoutProperty('satellite', 'visibility', satellite ? 'visible' : 'none');
+  setAerial(map, satellite);
   for (const layer of paletteLayers(palette(mood, t, satellite))) {
     if (!('paint' in layer) || !layer.paint) continue;
     for (const [prop, value] of Object.entries(layer.paint)) {

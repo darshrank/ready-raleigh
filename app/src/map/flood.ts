@@ -632,6 +632,11 @@ export class FloodView {
   readonly ready: Promise<void>;
   /** The realistic 3D city (app/src/world/); null with ?realism=off. */
   readonly world: World | null;
+  /**
+   * The realistic water (world/water.ts) draws this city's hazard: floods only. An earthquake or a
+   * heat wave keeps the MapLibre layers in their ground colors (look()), over the same 3D city.
+   */
+  private readonly realWater: boolean;
   private drainFrom = 0;
   private drainTo = 0;
   private drainStart = 0;
@@ -644,11 +649,12 @@ export class FloodView {
   ) {
     views.set(map, this);
     this.world = REALISM ? new World(t) : null;
+    this.realWater = !!this.world && currentStory().hazard === 'flood';
     // Dev only: scripts and the console can inspect the world (lights, layers).
     if (import.meta.env.DEV) (window as unknown as { __world?: World | null }).__world = this.world;
     this.current = this.from = this.to = look('day', 'preview', t);
     if (!map.hasImage(BARRIER)) map.addImage(BARRIER, barrierImage(t), { pixelRatio: 2 });
-    if (this.world) {
+    if (this.realWater) {
       for (const id of MAPLIBRE_WATER) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
       this.loadWater();
     }
@@ -709,7 +715,7 @@ export class FloodView {
   setReveal(fn: RevealFn | null, stepStartsMs?: readonly number[]) {
     this.reveal = fn;
     if (stepStartsMs) this.stepStarts = stepStartsMs;
-    if (!fn && !this.world) this.writeReveal([1, 1, 1]);
+    if (!fn && !this.realWater) this.writeReveal([1, 1, 1]);
   }
 
   /** Show the streets under water up to step `k` (0 hides them), clipped from the loaded tiles. */
@@ -722,7 +728,7 @@ export class FloodView {
       this.map.setFilter(id, filter);
     this.map.setFilter('road-closed', ['==', ['get', 'k'], k]);
     if (k > 0 && was === 0) this.clipSoon(0);
-    this.world?.setSubmerged(k ? this.runs : emptyFc(), k);
+    if (this.realWater) this.world?.setSubmerged(k ? this.runs : emptyFc(), k);
     if (k === 0) {
       this.runs = emptyFc();
       (this.map.getSource(SUBMERGED) as GeoJSONSource | undefined)?.setData(emptyFc());
@@ -752,7 +758,7 @@ export class FloodView {
     this.map.setLayoutProperty('buildings-3d', 'visibility', on && !this.world ? 'visible' : 'none');
     this.world?.setThreeD(on);
     this.map.setLayoutProperty('buildings', 'visibility', on ? 'none' : 'visible');
-    if (!this.world) for (const k of STEPS) this.map.setLayoutProperty(`water-3d-${k}`, 'visibility', vis);
+    if (!this.realWater) for (const k of STEPS) this.map.setLayoutProperty(`water-3d-${k}`, 'visibility', vis);
     this.lastPaint = 0;
   };
 
@@ -794,7 +800,7 @@ export class FloodView {
           closures.features.length,
         ]);
       this.runs = runs;
-      if (this.world) this.world.setSubmerged(runs, this.submergedStep);
+      if (this.realWater) this.world?.setSubmerged(runs, this.submergedStep);
       else (this.map.getSource(SUBMERGED) as GeoJSONSource | undefined)?.setData(runs);
       (this.map.getSource(CLOSURES) as GeoJSONSource | undefined)?.setData(closures);
     }, ms);
@@ -864,7 +870,7 @@ export class FloodView {
 
   private paintFrame(now: number) {
     const shown = this.reveal?.(now);
-    if (shown && !this.world) this.writeReveal(shown);
+    if (shown && !this.realWater) this.writeReveal(shown);
 
     const fading = this.fadeMs > 0 && now - this.fadeStart < this.fadeMs;
     const f = fading ? smooth((now - this.fadeStart) / this.fadeMs) : 1;
@@ -872,7 +878,7 @@ export class FloodView {
     this.night = this.nightFrom + (this.nightTo - this.nightFrom) * f;
     if (this.world) {
       this.worldFrame(now, f, shown);
-      return;
+      if (this.realWater) return;
     }
 
     // Paint at 60 Hz while something moves (the storm), 20 Hz for the idle shimmer.

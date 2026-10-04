@@ -1,7 +1,9 @@
 # Solana: civic audit trail and contribution cards (P16)
 
-Status: agreed plan, not built yet. Branch `solana`, updated for main at e47bc0f (four cities,
-weak spot, news desk, bus demand report). Devnet only, play money (DECISIONS.md).
+Status: MVP built on branch `solana` (2026-10-04): completeness layer, three signals (consensus,
+blind spot, new best), Mayor-elect and signal cards with Gemini words and art, soulbound mint on
+claim, /card/:id and /verify/:playId. Not built yet: the other six signals, a civic signals
+timeline in the planner view, cities other than Raleigh. Devnet only, play money (DECISIONS.md).
 
 ## Why
 

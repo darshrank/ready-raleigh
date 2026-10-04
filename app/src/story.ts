@@ -74,10 +74,10 @@ const STORIES: Record<CityId, Story> = {
     name: 'Raleigh',
     hazard: 'flood',
     orbit: [-78.6405, 35.7775],
-    title: ['Hurricane approaching.', '72 hours of rain.'],
+    title: ['Hurricane stalled overhead.', 'Tonight the creeks peak.'],
     body: 'Open shelters, send buses and protect roads before the creeks leave their banks. Then watch the storm test your plan on real Raleigh data.',
     briefing: (n, s) => [
-      { text: 'Emergency briefing for Raleigh. A slow hurricane will drop seventy-two hours of rain on the city.', stop: null },
+      { text: 'Emergency briefing for Raleigh. A stalled hurricane has rained on the city since Wednesday, and tonight the creeks peak.', stop: null },
       { text: 'Crabtree Creek leaves its banks first, and the roads beside it go under.', stop: s[0] ?? null },
       { text: 'Walnut Creek follows, and neighborhoods south of downtown lose their way out.', stop: s[1] ?? null },
       { text: `${about(n)} live where the water will reach.`, stop: s[2] ?? null },

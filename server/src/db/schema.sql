@@ -24,6 +24,8 @@ SELECT create_hypertable('plays', by_range('created_at', INTERVAL '1 day'), if_n
 CREATE INDEX IF NOT EXISTS plays_room ON plays (room_code, created_at DESC);
 -- Room games (P9): the mayoral candidate portrait the player ran as. Null for solo plays.
 ALTER TABLE plays ADD COLUMN IF NOT EXISTS candidate text;
+-- The city pack a play is for; plays saved before cities existed are Raleigh.
+ALTER TABLE plays ADD COLUMN IF NOT EXISTS city text NOT NULL DEFAULT 'raleigh';
 
 -- One row per piece placed. target is 'site:<id>', 'road:<id>' or 'cell:<index>'.
 CREATE TABLE IF NOT EXISTS placements (
@@ -37,6 +39,7 @@ CREATE TABLE IF NOT EXISTS placements (
 );
 SELECT create_hypertable('placements', by_range('created_at', INTERVAL '1 day'), if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS placements_play ON placements (play_id);
+ALTER TABLE placements ADD COLUMN IF NOT EXISTS city text NOT NULL DEFAULT 'raleigh';
 
 -- Live river gauges and weather (P15). site_no is a USGS site number or 'nws:<station or grid>'.
 -- parameter: stage_ft, flow_cfs, temp_c, rain_mm, rain_forecast_mm. Hypertable on time.
@@ -86,6 +89,17 @@ FROM placements
 GROUP BY bucket, mode, type, target, cell
 WITH NO DATA;
 SELECT add_continuous_aggregate_policy('placements_hourly',
+  start_offset => INTERVAL '30 days', end_offset => INTERVAL '1 hour',
+  schedule_interval => INTERVAL '5 minutes', if_not_exists => TRUE);
+
+-- Crowd picks per spot, hour and city: cell indices only mean something within one city.
+CREATE MATERIALIZED VIEW IF NOT EXISTS crowd_hourly
+WITH (timescaledb.continuous, timescaledb.materialized_only = false) AS
+SELECT time_bucket(INTERVAL '1 hour', created_at) AS bucket, city, mode, type, target, cell, count(*) AS picks
+FROM placements
+GROUP BY bucket, city, mode, type, target, cell
+WITH NO DATA;
+SELECT add_continuous_aggregate_policy('crowd_hourly',
   start_offset => INTERVAL '30 days', end_offset => INTERVAL '1 hour',
   schedule_interval => INTERVAL '5 minutes', if_not_exists => TRUE);
 

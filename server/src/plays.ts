@@ -1,7 +1,7 @@
 // POST /api/plays: check the plan, score it on the server, store it.
 import { randomUUID } from 'node:crypto';
 import {
-  COSTS, type InterventionType, type Placement, type Plan, type ScoreResult, planCost, planProblems, score,
+  type CityId, isCityId, COSTS, type InterventionType, type Placement, type Plan, type ScoreResult, planCost, planProblems, score,
 } from '@shared';
 import type { GameData } from './data';
 import type { PlayRecord } from './db/store';
@@ -47,7 +47,14 @@ export function readPlan(body: unknown): Plan {
     mode: plan.mode as Plan['mode'],
     placements,
     spent: planCost(placements),
+    city: cityOf(body),
   };
+}
+
+/** The city a request's plan is for (unknown or missing: Raleigh). */
+export function cityOf(body: unknown): CityId {
+  const plan = isObj(body) ? body.plan : undefined;
+  return isObj(plan) && isCityId(plan.city) ? plan.city : 'raleigh';
 }
 
 /**

@@ -128,6 +128,8 @@ export function civicSignals({ plays, civic, data, log, onAward }: SignalOptions
   }
 
   async function evaluate(record: PlayRecord) {
+    // Signals are about one city's spots: plays from other city packs do not move them.
+    if ((record.plan.city ?? 'raleigh') !== PLAY_CITY) return;
     const game = data();
     if (!game) return;
     const mode = record.plan.mode;

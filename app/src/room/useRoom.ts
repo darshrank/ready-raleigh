@@ -2,6 +2,7 @@
 // a phone that joined keeps its secret id in localStorage, so a reload resumes the same candidate.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CandidateId, ClientMsg, Placement, RoomState, ServerMsg } from '@shared';
+import type { CityId } from '@shared/room';
 
 const key = (code: string) => `rr.room.${code}`;
 export const savedPlayer = (code: string): string | null => {
@@ -31,6 +32,8 @@ export interface Room {
   start: () => void;
   lock: (placements: Placement[]) => void;
   again: () => void;
+  /** Host, in the lobby: the city of the next election. */
+  city: (city: CityId) => void;
 }
 
 export function useRoom(code: string): Room {
@@ -100,5 +103,6 @@ export function useRoom(code: string): Room {
     start: useCallback(() => send({ t: 'start' }), [send]),
     lock: useCallback((placements) => send({ t: 'lock', placements }), [send]),
     again: useCallback(() => send({ t: 'again' }), [send]),
+    city: useCallback((city: CityId) => send({ t: 'city', city }), [send]),
   };
 }

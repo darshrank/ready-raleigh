@@ -24,7 +24,7 @@ export function publicCard(c: Card) {
 export function registerCards(app: FastifyInstance, cards: CardService) {
   app.get('/api/cards/collection.json', async () => ({
     name: 'Mayday Mayor Civic Cards',
-    description: `Soulbound cards for real contributions to flood planning in Raleigh, on Solana devnet. Issued by: ${AUTHORITY_LABEL}.`,
+    description: `Soulbound cards for real contributions to disaster planning in Mayday Mayor's cities, on Solana devnet. Issued by: ${AUTHORITY_LABEL}.`,
     image: `${publicBase()}/api/cards/collection.svg`,
   }));
   app.get('/api/cards/collection.svg', async (_req, reply) =>

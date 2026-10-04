@@ -7,7 +7,7 @@ import type { BusDemandReport, DemandArea } from '@shared/demand';
 import { withAlpha } from '../map/layers';
 import { tokens } from '../tokens';
 
-const URL = '/api/planner/bus-demand?mode=flood';
+const URL = '/api/planner/bus-demand?mode=flood&city=raleigh';
 const REFRESH_MS = 15_000;
 
 type State = { report: BusDemandReport | null; error: boolean };

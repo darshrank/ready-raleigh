@@ -4,13 +4,13 @@
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { score, type ClientMsg, type Plan, type RoomState, type ServerMsg } from '@shared';
+import { score, type CityId, type ClientMsg, type Plan, type RoomState, type ServerMsg } from '@shared';
 import type { GameData } from './data';
 import type { PlayRecord, PlayStore } from './db/store';
 import { BadPlay, buildPlay } from './plays';
 import type { CivicRecord } from './solana/civic';
 import {
-  RoomError, again, findPlayer, getOrCreateRoom, getRoom, join, lock, pick, presence, publicState,
+  RoomError, again, findPlayer, getOrCreateRoom, getRoom, join, lock, pick, presence, publicState, setCity,
   start, sweep, tick, type Player, type Room,
 } from './rooms';
 
@@ -24,7 +24,8 @@ interface Conn {
 
 export interface RoomServerOptions {
   store: PlayStore;
-  data: () => GameData | null;
+  /** Game data per city (null when a city's data is not loaded). */
+  data: (city?: CityId) => GameData | null;
   log: { warn: (obj: unknown, msg: string) => void };
   /** The civic record (P16): each locked platform is fingerprinted, the election anchored when it ends. */
   civic?: CivicRecord;
@@ -35,11 +36,12 @@ export interface RoomServerOptions {
 export function roomServer({ store, data, log, civic, onFinish }: RoomServerOptions) {
   const wss = new WebSocketServer({ noServer: true });
   const conns = new Map<string, Set<Conn>>();
-  let best: number | null = null;
-  const bestPossible = () => {
-    const game = data();
-    if (best === null && game) best = score(game.optimal('flood'), game.bundle).score;
-    return best;
+  // The optimizer's score per city, for "% of the best plan".
+  const best = new Map<CityId, number>();
+  const bestPossible = (city: CityId) => {
+    const game = data(city);
+    if (!best.has(city) && game) best.set(city, score(game.optimal('flood'), game.bundle).score);
+    return best.get(city) ?? null;
   };
 
   /** Civic records still being written per room, and the elections already handed on. */
@@ -63,7 +65,7 @@ export function roomServer({ store, data, log, civic, onFinish }: RoomServerOpti
     const now = Date.now();
     for (const c of conns.get(room.code) ?? []) {
       const viewer = c.playerId ? room.players.find((p) => p.id === c.playerId) ?? null : null;
-      const state: RoomState = publicState(room, viewer, now, bestPossible());
+      const state: RoomState = publicState(room, viewer, now, bestPossible(room.city));
       send(c.ws, { t: 'state', state });
     }
   };
@@ -84,9 +86,9 @@ export function roomServer({ store, data, log, civic, onFinish }: RoomServerOpti
   const scorer = (room: Room, player: Player) => (plan: Plan) => {
     let record: PlayRecord;
     try {
-      record = buildPlay({ plan }, data());
+      record = buildPlay({ plan }, data(room.city));
     } catch (err) {
-      if (err instanceof BadPlay) throw new RoomError(data() ? `That plan is not valid: ${err.problems[0]}` : 'The game data is not loaded on the server.');
+      if (err instanceof BadPlay) throw new RoomError(data(room.city) ? `That plan is not valid: ${err.problems[0]}` : 'The game data is not loaded on the server.');
       throw err;
     }
     store.savePlay({ ...record, candidate: player.candidate }).catch((e) => log.warn({ err: e, room: room.code }, 'room play not saved'));
@@ -101,7 +103,7 @@ export function roomServer({ store, data, log, civic, onFinish }: RoomServerOpti
   function handle(conn: Conn, msg: ClientMsg) {
     const now = Date.now();
     const room = msg.t === 'join' && msg.create ? getOrCreateRoom(conn.code, now) : getRoom(conn.code);
-    if (msg.t === 'look') return send(conn.ws, { t: 'state', state: publicState(room, null, now, bestPossible()) });
+    if (msg.t === 'look') return send(conn.ws, { t: 'state', state: publicState(room, null, now, bestPossible(room.city)) });
     if (msg.t === 'join') {
       const player = join(room, msg.name, msg.candidate);
       conn.playerId = player.id;
@@ -120,6 +122,7 @@ export function roomServer({ store, data, log, civic, onFinish }: RoomServerOpti
     const player = findPlayer(room, conn.playerId);
     if (msg.t === 'start') start(room, player, now);
     else if (msg.t === 'again') again(room, player);
+    else if (msg.t === 'city') setCity(room, player, msg.city);
     else if (msg.t === 'pick') pick(room, player, msg.candidate);
     else if (msg.t === 'lock') lock(room, player, msg.placements, scorer(room, player), now);
     else throw new RoomError('Unknown message.');

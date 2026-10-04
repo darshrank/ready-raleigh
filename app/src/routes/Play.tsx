@@ -9,6 +9,8 @@ import { savedPlayer, useRoom, type Room } from '../room/useRoom';
 import { Link } from '../router';
 import { PLATE } from '../ui/Hud';
 import { Solo } from './Solo';
+import { CITIES, cityById } from '../cities';
+import { leaveGame } from '../ui/Exit';
 
 const button = 'border-(length:--rule) border-ink px-4 py-3 font-display text-24 font-extrabold';
 
@@ -19,13 +21,17 @@ export function Play({ code }: { code: string }) {
   // Opened from "Host a game": this player creates the room when they join.
   const [hosting] = useState(() => new URLSearchParams(location.search).has('host') && !savedPlayer(code));
   useEffect(() => {
-    if (me && location.search) history.replaceState(null, '', location.pathname);
-  }, [me]);
+    if (me && location.search && !s?.city) history.replaceState(null, '', location.pathname);
+  }, [me, s?.city]);
+  // The game reads its city from ?city= (story.ts): follow the room's city before the game renders.
+  if (s?.city && new URLSearchParams(location.search).get('city') !== s.city) {
+    history.replaceState(null, '', `${location.pathname}?city=${s.city}`);
+  }
 
   if (s && me && s.phase !== 'lobby') {
     return (
       <Solo
-        key={s.round}
+        key={`${s.round}-${s.city}`}
         room={{
           code: s.code,
           endsAt: (s.endsAt ?? Date.now()) - room.offset,
@@ -153,20 +159,21 @@ function Lobby({ state, room, mine, seat, name }: { state: RoomState; room: Room
             />
           ))}
         </div>
+        <CityPicker state={state} room={room} isHost={isHost} />
         {isHost ? (
           <button type="button" data-start onClick={room.start} className={button + ' bg-ink text-signal'}>
-            Start the election
+            Start the election in {cityName(state.city)}
           </button>
         ) : (
           <p className="text-18" role="status">
-            Waiting for {host?.name ?? 'the host'} to start the election.
+            Waiting for {host?.name ?? 'the host'} to start the election in {cityName(state.city)}.
           </p>
         )}
         <button type="button" onClick={() => setChanging((v) => !v)} className="self-start border-(length:--rule) border-ink bg-bond px-3 py-2 text-15 font-semibold">
           {changing ? 'Done' : `Change ${name}'s candidate`}
         </button>
         {changing && (
-          <div className="grid w-full grid-cols-4 gap-2">
+          <div className="grid w-full grid-cols-4 gap-2" aria-label="Candidates">
             {CANDIDATES.map((c) => (
               <button
                 key={c}
@@ -181,8 +188,53 @@ function Lobby({ state, room, mine, seat, name }: { state: RoomState; room: Room
             ))}
           </div>
         )}
+        <LeaveRoom />
       </section>
     </>
+  );
+}
+
+const cityName = (id: string) => cityById(id)?.name ?? id;
+
+/** The city of the next election: the host picks one, everyone else sees it. */
+function CityPicker({ state, room, isHost }: { state: RoomState; room: Room; isHost: boolean }) {
+  const ready = CITIES.filter((c) => c.ready);
+  if (!isHost) {
+    return (
+      <p className="text-15">
+        City: <strong>{cityName(state.city)}</strong>
+      </p>
+    );
+  }
+  return (
+    <fieldset>
+      <legend className="text-15 font-semibold">City of the election</legend>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {ready.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            aria-pressed={state.city === c.id}
+            onClick={() => room.city(c.id)}
+            className={
+              'border-(length:--rule) border-ink px-3 py-2 text-left ' + (state.city === c.id ? 'bg-signal shadow-piece' : 'bg-bond hover:bg-chalk')
+            }
+          >
+            <span className="block font-display text-18 font-extrabold">{c.name}</span>
+            <span className="block text-13">{c.hazard}</span>
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/** Leave the room for the main menu (the room keeps going for the others). */
+function LeaveRoom() {
+  return (
+    <button type="button" onClick={leaveGame} className="self-start border-(length:--rule) border-ink bg-bond px-3 py-2 text-15 font-semibold">
+      Leave room
+    </button>
   );
 }
 
@@ -242,11 +294,33 @@ function Standing({ state, room }: { state: RoomState; room: Room }) {
         ))}
       </ol>
       {state.you === state.hostSeat ? (
-        <button type="button" onClick={room.again} className="mt-3 w-full border-(length:--rule) border-ink bg-ink px-4 py-3 text-left font-display text-24 font-extrabold text-signal">
-          Next election
-        </button>
+        <div className="mt-3 grid gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              room.again();
+              room.start();
+            }}
+            className="w-full border-(length:--rule) border-ink bg-ink px-4 py-3 text-left font-display text-24 font-extrabold text-signal"
+          >
+            Next election in {cityName(state.city)}
+          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={room.again} className="border-(length:--rule) border-ink bg-bond px-3 py-2 text-left text-15 font-semibold hover:bg-chalk">
+              Choose another city
+            </button>
+            <button type="button" onClick={leaveGame} className="border-(length:--rule) border-ink bg-bond px-3 py-2 text-left text-15 font-semibold hover:bg-chalk">
+              Leave room
+            </button>
+          </div>
+        </div>
       ) : (
-        <p className="mt-2 text-15">Waiting for the host to call the next election.</p>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <p className="text-15">Waiting for the host to call the next election.</p>
+          <button type="button" onClick={leaveGame} className="shrink-0 border-(length:--rule) border-ink bg-bond px-3 py-2 text-15 font-semibold hover:bg-chalk">
+            Leave room
+          </button>
+        </div>
       )}
     </div>
   );

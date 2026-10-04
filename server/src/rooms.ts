@@ -5,8 +5,8 @@
 // lobby -> planning -> results -> lobby (next election)
 import { randomUUID } from 'node:crypto';
 import {
-  CANDIDATES, LOCK_GRACE_MS, MAX_PLAYERS, PLANNING_SECONDS,
-  type CandidateId, type Placement, type Plan, type RoomResult, type RoomState, type ScoreResult,
+  CANDIDATES, LOCK_GRACE_MS, MAX_PLAYERS, PLANNING_SECONDS, isCityId,
+  type CandidateId, type CityId, type Placement, type Plan, type RoomResult, type RoomState, type ScoreResult,
 } from '@shared';
 
 const ROOM_TTL_MS = 3 * 60 * 60 * 1000;
@@ -31,6 +31,8 @@ export interface Player {
 export interface Room {
   code: string;
   phase: RoomState['phase'];
+  /** The city of the next (or current) election; the host picks it in the lobby. */
+  city: CityId;
   round: number;
   endsAt: number | null;
   players: Player[];
@@ -49,7 +51,7 @@ export function getOrCreateRoom(code: string, now = Date.now()): Room {
   if (!CODE_RE.test(c)) throw new RoomError('Room codes are 4 letters.');
   let room = rooms.get(c);
   if (!room) {
-    room = { code: c, phase: 'lobby', round: 0, endsAt: null, players: [], results: null, hostSeat: 0, touchedAt: now };
+    room = { code: c, phase: 'lobby', city: 'raleigh', round: 0, endsAt: null, players: [], results: null, hostSeat: 0, touchedAt: now };
     rooms.set(c, room);
   }
   return room;
@@ -113,6 +115,15 @@ const requireHost = (room: Room, player: Player) => {
   if (player.seat !== room.hostSeat) throw new RoomError('Only the host can do that.');
 };
 
+/** The host picks the city of the next election (lobby only). */
+export function setCity(room: Room, player: Player, city: unknown): void {
+  requireHost(room, player);
+  if (room.phase !== 'lobby') throw new RoomError('Pick the city before the election starts.');
+  if (!isCityId(city)) throw new RoomError('That city is not on the map.');
+  room.city = city;
+  touch(room);
+}
+
 /** The host opens the polls: planning starts for every candidate at once. */
 export function start(room: Room, player: Player, now: number): void {
   requireHost(room, player);
@@ -143,6 +154,7 @@ export function lock(room: Room, player: Player, placements: unknown, scorer: Sc
     mode: 'flood',
     placements: placements as Placement[],
     spent: 0, // the scorer recomputes it
+    city: room.city,
   };
   const result = scorer(plan);
   player.placements = plan.placements;
@@ -210,6 +222,7 @@ export function publicState(room: Room, viewer: Player | null, now: number, best
   return {
     code: room.code,
     phase: room.phase,
+    city: room.city,
     round: room.round,
     endsAt: room.endsAt,
     serverNow: now,

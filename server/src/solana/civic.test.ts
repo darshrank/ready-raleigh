@@ -72,6 +72,19 @@ describe('civic record (completeness layer)', () => {
     expect(JSON.stringify(memos)).not.toMatch(/Ana|player-/);
   });
 
+  it('records each play under its own city and anchors each city in its own batch', async () => {
+    const { chain, memos } = fakeChain();
+    const { r } = make(chain);
+    const miami = play(2);
+    miami.plan.city = 'miami';
+    await r.recordPlay(play(1));
+    await r.recordPlay(miami);
+    await r.memosSent();
+    await r.flush();
+    expect(memos.filter((m) => m.startsWith('ready-raleigh:v1:play:miami:'))).toHaveLength(1);
+    expect(memos.filter((m) => m.includes(':plays:')).map((m) => m.split(':')[3]).sort()).toEqual(['miami', 'raleigh']);
+  });
+
   it('keeps plays for the next batch when the transaction fails', async () => {
     const { r, store } = make(fakeChain(true).chain);
     await r.recordPlay(play(1));

@@ -49,6 +49,7 @@ import { currentStory, storyOf, type Hazard } from '../story';
 import { useTheme } from '../theme';
 import { score } from '@shared/engine';
 import { useVoice } from '../ui/voice';
+import { MenuButton } from '../ui/Exit';
 
 /** Phones open on the highest-risk area at street level instead of the whole city. */
 const PHONE = '(max-width: 639px)';
@@ -396,7 +397,10 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
               <TopHud left={left} result={result} compact={compact} />
             </motion.div>
             <motion.div {...enter('top', 0.1)} className="flex flex-col items-end gap-2 justify-self-end">
-              <MapControls phase="planning" />
+              <div className="flex items-start gap-2">
+                <MenuButton />
+                <MapControls phase="planning" />
+              </div>
               {!phone && (
                 <div className={PLATE + ' pointer-events-auto empty:hidden w-80 max-w-full p-4'}>
                   <NeighborhoodCard cells={data.cells} hideEmpty />
@@ -444,6 +448,7 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
                 <MapControls phase="results" />
               ) : (
                 <div className="flex gap-2">
+                  <MenuButton />
                   <SkipStorm />
                   <MapLookButtons />
                   <SoundButton />

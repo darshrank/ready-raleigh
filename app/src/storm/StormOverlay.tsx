@@ -9,6 +9,7 @@ import { usePlan } from '../plan/store';
 import { currentStory } from '../story';
 import { GROW_MS, STORM_MS, TICK_MS, stepAt, stepStart, type Storm, type StormEvent } from './sim';
 import { hush } from '../ui/voice';
+import { leaveGame } from '../ui/Exit';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 const easeOut = (x: number) => 1 - (1 - x) ** 3;
@@ -214,7 +215,7 @@ export function Counters({ storm, stormAt }: { storm: Storm; stormAt: number }) 
   );
 }
 
-/** The end of the storm: score, protected, stranded, and Play again. P8 replaces it with the full results. */
+/** The end of the storm: score, protected, stranded, Play again (same city) and Main menu. P8 replaces it with the full results. */
 /** `footer` replaces "Play again" (rooms: the standing; the TV runs the next election). */
 export function ResultsCard({ storm, result, footer }: { storm: Storm; result: ScoreResult | null; footer?: ReactNode }) {
   const reset = usePlan((s) => s.reset);
@@ -255,14 +256,23 @@ export function ResultsCard({ storm, result, footer }: { storm: Storm; result: S
           : `Your plan reached ${Math.round(prot + strand > 0 ? (100 * prot) / (prot + strand) : 0)}% of the residents ${currentStory().cause} put at risk.`}
       </p>
       {footer ?? (
-        <button
-          ref={button}
-          type="button"
-          onClick={reset}
-          className="mt-4 w-full border-(length:--rule) border-ink bg-ink px-4 py-3 text-left font-display text-24 font-extrabold text-signal hover:bg-bond hover:text-ink"
-        >
-          Play again
-        </button>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button
+            ref={button}
+            type="button"
+            onClick={reset}
+            className="border-(length:--rule) border-ink bg-ink px-4 py-3 text-left font-display text-24 font-extrabold text-signal hover:bg-bond hover:text-ink"
+          >
+            Play again
+          </button>
+          <button
+            type="button"
+            onClick={leaveGame}
+            className="border-(length:--rule) border-ink bg-bond px-4 py-3 text-left font-display text-24 font-extrabold text-ink hover:bg-chalk"
+          >
+            Main menu
+          </button>
+        </div>
       )}
     </motion.section>
   );

@@ -4,7 +4,8 @@
 // - high (desktops and laptops): everything.
 // - medium (phones and tablets): two octaves of water noise, the window grid fades out sooner.
 // - low (small or old devices): one octave, no foam, no window grid (its average tone and glow
-//   stay), a shorter city, and the map drawn at most 1.25 device pixels per CSS pixel.
+//   stay), a shorter city, no ground shadows, and the map drawn at most 1.25 device pixels per
+//   CSS pixel.
 // `?quality=low|medium|high` overrides the guess (frame-time checks, demos).
 
 export type Quality = 'low' | 'medium' | 'high';
@@ -21,12 +22,14 @@ export interface Tier {
   farPx: number;
   /** Cap on the map's pixel ratio (MapLibre and deck.gl share the canvas). */
   maxPixelRatio: number;
+  /** Ground shadows under the 3D buildings (a second, projected pass). */
+  shadows: boolean;
 }
 
 const TIERS: Record<Quality, Tier> = {
-  high: { quality: 'high', octaves: 3, foam: true, windowFade: [0.7, 1.6], farPx: 1800, maxPixelRatio: 3 },
-  medium: { quality: 'medium', octaves: 2, foam: true, windowFade: [0.5, 1.1], farPx: 1500, maxPixelRatio: 2 },
-  low: { quality: 'low', octaves: 1, foam: false, windowFade: null, farPx: 1100, maxPixelRatio: 1.25 },
+  high: { quality: 'high', octaves: 3, foam: true, windowFade: [0.7, 1.6], farPx: 1800, maxPixelRatio: 3, shadows: true },
+  medium: { quality: 'medium', octaves: 2, foam: true, windowFade: [0.5, 1.1], farPx: 1500, maxPixelRatio: 2, shadows: true },
+  low: { quality: 'low', octaves: 1, foam: false, windowFade: null, farPx: 1100, maxPixelRatio: 1.25, shadows: false },
 };
 
 function guess(): Quality {

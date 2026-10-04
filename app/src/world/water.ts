@@ -14,7 +14,7 @@ import { Model } from '@luma.gl/engine';
 import { tint, unit, type Tokens } from '../tokens';
 import { CELL_M, type FloodData } from './floodData';
 import { NOISE_GLSL } from './glsl';
-import { SUN_FROM } from './lights';
+import { sunVector } from './lights';
 import { TIER } from './quality';
 import { frame } from './state';
 
@@ -255,13 +255,6 @@ function paint({ rgb }: Tokens) {
   };
 }
 
-/** The sun's direction (toward the sun), east-north-up, for the highlight. */
-function sunDir(): Vec3 {
-  const a = (SUN_FROM.azimuth * Math.PI) / 180;
-  const e = (SUN_FROM.elevation * Math.PI) / 180;
-  return [Math.sin(a) * Math.cos(e), Math.cos(a) * Math.cos(e), Math.sin(e)];
-}
-
 // The flood textures, shared by the water and the buildings' stains (stains.ts). One set per
 // device: a new map (leaving /solo and coming back) has a new GL context.
 type FloodTextures = { arrival: Texture; extent: Texture };
@@ -362,7 +355,7 @@ export class WaterLayer extends Layer<WaterProps & LayerProps> {
         stepP: frame.stepP,
         stepStart: frame.stepStart,
         depth: [...DEPTH_M],
-        sunDir: sunDir(),
+        sunDir: sunVector(),
         clock: frame.clock,
         time: (frame.now / 1000) % 3600,
         night: frame.night,

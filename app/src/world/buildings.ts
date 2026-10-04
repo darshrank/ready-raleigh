@@ -12,6 +12,7 @@ import { Model } from '@luma.gl/engine';
 import { tint, unit, type RGB, type Tokens } from '../tokens';
 import type { FloodData } from './floodData';
 import type { Solids } from './solids';
+import { sunVector } from './lights';
 import { TIER } from './quality';
 import { frame, WORLD_BEFORE } from './state';
 import { stainBindings, stainModule, stainPaint, stainProps } from './stains';
@@ -27,6 +28,9 @@ export interface BuildingPaint {
   wallNight: Vec3;
   roofDay: Vec3;
   roofNight: Vec3;
+  shadowColor: Vec3;
+  /** The ground shadow's strength by day (--shadow is drawn at about 25%). */
+  shadowAlpha: number;
   stain: ReturnType<typeof stainPaint>;
   windows: ReturnType<typeof windowsPaint>;
 }
@@ -37,6 +41,10 @@ layout(std140) uniform buildingUniforms {
   vec3 wallNight;
   vec3 roofDay;
   vec3 roofNight;
+  vec3 shadowColor;
+  vec3 sunDir;
+  float shadowAlpha;
+  float shadow;
   float night;
   float zoom;
   float minZoom;
@@ -53,6 +61,10 @@ const buildingModule = {
     wallNight: 'vec3<f32>',
     roofDay: 'vec3<f32>',
     roofNight: 'vec3<f32>',
+    shadowColor: 'vec3<f32>',
+    sunDir: 'vec3<f32>',
+    shadowAlpha: 'f32',
+    shadow: 'f32',
     night: 'f32',
     zoom: 'f32',
     minZoom: 'f32',
@@ -85,6 +97,12 @@ void main(void) {
   vec4 posCommon = vec4(project_position(positions, positions64Low), 1.0);
   float distM = length(posCommon.xy) / project.commonUnitsPerMeter.x;
   posCommon.z *= 1.0 - smoothstep(building.farM * 0.7, building.farM, distM);
+  // The shadow pass (R2): every roof and wall point slides down the sun's ray to just above the
+  // ground, so the projected walls and roof cover exactly the building's shadow.
+  if (building.shadow > 0.5) {
+    posCommon.xy -= posCommon.z * building.sunDir.xy / building.sunDir.z;
+    posCommon.z = 0.05 * project.commonUnitsPerMeter.z;
+  }
   gl_Position = project_common_position_to_clipspace(posCommon);
   geometry.position = posCommon;
   vCommon = posCommon.xyz;
@@ -107,6 +125,16 @@ in vec3 vCamera;
 in vec2 vFloodUv;
 out vec4 fragColor;
 void main(void) {
+  if (building.shadow > 0.5) {
+    // Overlapping shadow triangles interpolate depths that differ by rounding noise, so "less"
+    // let some through twice (a darker hatch). Snapped to a coarse step, rounded away from the
+    // camera, they agree, and a shadow never lands in front of a wall's foot.
+    gl_FragDepth = ceil(gl_FragCoord.z * 16384.0) / 16384.0;
+    // Flat --shadow; the moon's is fainter. deck.gl blends premultiplied colors.
+    float a = building.shadowAlpha * (1.0 - 0.7 * building.night);
+    fragColor = vec4(building.shadowColor * a, a);
+    return;
+  }
   vec3 wallColor = mix(building.wallDay, building.wallNight, building.night);
   vec3 roofColor = mix(building.roofDay, building.roofNight, building.night);
   vec3 base = mix(roofColor, wallColor, vSide);
@@ -136,6 +164,8 @@ const BUFFER_LAYOUT = [
   { name: 'normals', format: 'snorm8x4' },
   { name: 'walls', format: 'float32x4' },
 ] as const;
+
+const SUN = sunVector();
 
 /** Buildings sink away beyond about this many screen pixels from the view's center. */
 const FAR_PX = TIER.farPx;
@@ -220,11 +250,31 @@ abstract class SolidsLayer<P> extends Layer<P & SolidsProps & LayerProps> {
       this.state.stainOf = flood;
       model.setBindings(stainBindings(this.context.device, flood));
     }
-    model.shaderInputs.setProps({
-      building: { ...paint, night: frame.night, zoom: this.context.viewport.zoom, minZoom: this.props.minZoom, farM: farMeters(this.context.viewport) },
-      stain: stainProps(flood, stain),
-      windows,
-    });
+    const building = {
+      ...paint,
+      sunDir: SUN,
+      night: frame.night,
+      zoom: this.context.viewport.zoom,
+      minZoom: this.props.minZoom,
+      farM: farMeters(this.context.viewport),
+    };
+    // Ground shadows first (R2): the same triangles projected along the sun, blended at --shadow's
+    // strength with deck.gl's blending. Depth "less" (instead of deck.gl's "less-equal") at one
+    // ground height lets each pixel take one shadow, never two. The model keeps no parameters of
+    // its own: changing them rebuilds its pipeline and replaced deck.gl's blend state.
+    if (TIER.shadows) {
+      const gl = (this.context.device as unknown as { gl: WebGL2RenderingContext }).gl;
+      model.shaderInputs.setProps({ building: { ...building, shadow: 1 }, stain: stainProps(flood, stain), windows });
+      gl.depthFunc(gl.LESS);
+      this.drawAll(model, sets);
+      gl.depthFunc(gl.LEQUAL);
+    }
+    model.shaderInputs.setProps({ building: { ...building, shadow: 0 }, stain: stainProps(flood, stain), windows });
+    this.drawAll(model, sets);
+  }
+
+  /** Draws every set with the model's current uniforms and parameters. */
+  private drawAll(model: Model, sets: Gpu[]) {
     const [first, ...rest] = sets;
     model.setAttributes(first!.attributes);
     model.setIndexBuffer(first!.index);
@@ -387,6 +437,8 @@ export function buildingPaint(t: Tokens, walls?: { day: RGB; night: RGB }): Buil
     wallNight: unit(night),
     roofDay: unit(tint(day, rgb.shadow, 0.06)),
     roofNight: unit(tint(night, rgb.bond, 0.06)),
+    shadowColor: unit(rgb.shadow),
+    shadowAlpha: 0.25,
     stain: stainPaint(t),
     windows: windowsPaint(t),
   };

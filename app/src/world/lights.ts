@@ -22,6 +22,13 @@ function from(azimuth: number, elevation: number): [number, number, number] {
 
 /** The sun: low in the south-west, late afternoon. Also casts the ground shadows (R2). */
 export const SUN_FROM = { azimuth: 235, elevation: 30 };
+
+/** Toward the sun, east-north-up (deck.gl's common space axes): the water's highlight, the shadows. */
+export function sunVector(): [number, number, number] {
+  const a = (SUN_FROM.azimuth * Math.PI) / 180;
+  const e = (SUN_FROM.elevation * Math.PI) / 180;
+  return [Math.sin(a) * Math.cos(e), Math.cos(a) * Math.cos(e), Math.sin(e)];
+}
 const MOON_FROM = { azimuth: 140, elevation: 48 };
 
 function moods({ rgb }: Tokens): [Mood, Mood] {

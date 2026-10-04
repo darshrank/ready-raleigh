@@ -43,7 +43,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - [x] rebase checkpoint after R5: onto main 6434b22, conflicts combined; four-city adaptation
   - [x] R3 windows (+ flooded windows go dark)
   - [x] R7 tiers, reduced motion, docs (kill switch stays until the final check at the end)
-  - [ ] R2 shadows
+  - [x] R2 ground shadows (cheap projected pass)
   - [ ] R6 flow, rain, ending, then final rebase checkpoint and screenshots
 
 ## Phase 4: bonus challenges
@@ -248,6 +248,26 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
     remove them: DELETE FROM placements WHERE play_id IN (SELECT id FROM plays WHERE player_name =
     'Test Mayor'); then DELETE FROM plays WHERE player_name = 'Test Mayor';
 - Next exact step: a weekly board (filter on created_at) if the all-time one fills up.
+
+### 2026-10-04 01:49 EDT Claude (Opus 5.5) lane C, realism R2 (cheap ground shadows)
+- Done: buildings.ts draws a shadow pass before the buildings: the same triangles projected along
+  the sun to the ground (vertex shader, `building.shadow` uniform), --shadow at 25% (fainter at
+  night), premultiplied; depth "less" + depth snapped up to 1/16384 so overlapping shadows never
+  double. `sunVector()` moved to lights.ts (water and shadows share it). Tier: off on low.
+- What went wrong on the way: model.setParameters per pass replaced deck.gl's blending (shadows
+  came out as opaque color over the page) and rebuilt the pipeline; now only gl.depthFunc is
+  switched and restored. Then the shadows were blue: the building passes blend premultiplied
+  (the water does not; both measured by pixel, see DECISIONS).
+- Checks: typecheck; vitest 85/85; Raleigh /solo storm -> results at 1440, no console errors;
+  pixel check downtown: a shaded ground pixel goes from (119,127,139) with shadows off to
+  (96,104,118). One 1440 trace (realism, load ~4): 5.6 avg / 8.0 p95 / 28 max ms, 59.8 fps.
+- Next exact step: R6: the ending (the water lowers and the foam fades as the storm clears: the
+  drain exists, check it reads; consider lowering the flat surface's alpha too) and rain ripples
+  on the water (rings from a hashed grid of drops on the storm clock, in water.ts, uniforms only,
+  off under reduced motion and on the low tier). Creek flow streaks only if everything else is done. Then the
+  final rebase checkpoint and the full matrix (ask the user before the quiet-machine A/B).
+- Gotchas: the building passes blend premultiplied, the water straight; check a new translucent
+  pass by pixel. Never call model.setParameters per frame.
 
 ### 2026-10-04 01:42 EDT Claude (Opus 5.5) lane C, realism R7 (quality tiers, reduced motion, docs)
 - Done: `world/quality.ts` (TIER: high / medium / low, auto from device or `?quality=`); water.ts

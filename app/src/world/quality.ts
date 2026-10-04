@@ -4,9 +4,10 @@
 // - high (desktops and laptops): everything.
 // - medium (phones and tablets): two octaves of water noise, the window grid fades out sooner.
 // - low (small or old devices): one octave, no foam, no window grid (its average tone and glow
-//   stay), a shorter city, no ground shadows or rain ripples, and the map drawn at most 1.25
-//   device pixels per CSS pixel.
+//   stay), a shorter city, no ground shadows or rain ripples, half the city lights, and the map
+//   drawn at most 1.25 device pixels per CSS pixel.
 // `?quality=low|medium|high` overrides the guess (frame-time checks, demos).
+import { LIGHTS_BUDGET } from './cityLightsData';
 
 export type Quality = 'low' | 'medium' | 'high';
 
@@ -26,12 +27,14 @@ export interface Tier {
   shadows: boolean;
   /** Rain ripples on the storm water. */
   ripples: boolean;
+  /** The city's lights at night (world/cityLights.ts): at most this many points. */
+  lights: number;
 }
 
 const TIERS: Record<Quality, Tier> = {
-  high: { quality: 'high', octaves: 3, foam: true, windowFade: [0.7, 1.6], farPx: 1800, maxPixelRatio: 3, shadows: true, ripples: true },
-  medium: { quality: 'medium', octaves: 2, foam: true, windowFade: [0.5, 1.1], farPx: 1500, maxPixelRatio: 2, shadows: true, ripples: true },
-  low: { quality: 'low', octaves: 1, foam: false, windowFade: null, farPx: 1100, maxPixelRatio: 1.25, shadows: false, ripples: false },
+  high: { quality: 'high', octaves: 3, foam: true, windowFade: [0.7, 1.6], farPx: 1800, maxPixelRatio: 3, shadows: true, ripples: true, lights: LIGHTS_BUDGET },
+  medium: { quality: 'medium', octaves: 2, foam: true, windowFade: [0.5, 1.1], farPx: 1500, maxPixelRatio: 2, shadows: true, ripples: true, lights: LIGHTS_BUDGET },
+  low: { quality: 'low', octaves: 1, foam: false, windowFade: null, farPx: 1100, maxPixelRatio: 1.25, shadows: false, ripples: false, lights: LIGHTS_BUDGET / 2 },
 };
 
 function guess(): Quality {

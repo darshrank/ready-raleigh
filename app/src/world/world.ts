@@ -11,6 +11,8 @@ import { onSiteSolids, type SiteSolid } from '../map/detail';
 import { siteTints } from '../map/basemap';
 import type { Tokens } from '../tokens';
 import { BuildingLayer, buildingMaterial, CityLayer, buildingPaint, buildingsLayer, BUILDINGS_MIN_ZOOM } from './buildings';
+import { CityLightsLayer } from './cityLights';
+import type { LightsData } from './cityLightsData';
 import { buildSolids, seedOf, type SolidPart } from './solids';
 import { WorldLights } from './lights';
 import { WORLD_BEFORE } from './state';
@@ -40,6 +42,8 @@ export class World {
   /** The flood worker's data: the water, and the buildings' wet stains. */
   private flood: FloodData | null = null;
   private submerged: Layer[] = [];
+  /** The city's lights at night (cityLights.ts). */
+  private cityLights: Layer | null = null;
   private current: Layer[] = [];
   private listeners = new Set<(layers: Layer[]) => void>();
   private stop: (() => void)[] = [];
@@ -94,6 +98,12 @@ export class World {
     this.emit();
   }
 
+  /** The city's lights at night, once the flood worker has built them (every city). */
+  setLights(data: LightsData) {
+    this.cityLights = new CityLightsLayer({ id: 'world-city-lights', lights: data, tokens: this.t, ...{ beforeId: WORLD_BEFORE } });
+    this.emit();
+  }
+
   /** The streets under water up to step `k`, as clipped from the loaded tiles (not per frame). */
   setSubmerged(runs: FeatureCollection, k: number) {
     this.submerged = submergedLayers(runs, k, this.t);
@@ -126,8 +136,15 @@ export class World {
     // Dev: ?nocity leaves the tiled city out (frame-time comparisons).
     const city = this.threeD && !(import.meta.env.DEV && /[?&]nocity\b/.test(location.search));
     if (this.buildings && this.buildings.props.visible !== city) this.buildings = this.buildings.clone({ visible: city });
-    // Draw order: the water, the streets under it, then the buildings (which hide what is behind them).
-    this.current = [...(this.water ? [this.water] : []), ...this.submerged, ...(this.buildings ? [this.buildings] : []), ...this.sites];
+    // Draw order: the water, the streets under it, then the buildings (which hide what is behind
+    // them), then the lights, added over everything (they glow over the roofs from the overview).
+    this.current = [
+      ...(this.water ? [this.water] : []),
+      ...this.submerged,
+      ...(this.buildings ? [this.buildings] : []),
+      ...this.sites,
+      ...(this.cityLights ? [this.cityLights] : []),
+    ];
     for (const cb of this.listeners) cb(this.current);
   }
 }

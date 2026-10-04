@@ -86,6 +86,10 @@ the city and the water. The "flat fills only" rule is for the instruments, not t
   preview. Flood cities only; an earthquake or a heat wave keeps its printed ground colors.
 - **Stains:** walls that stood in the water stay dark below the highest water line, with a ragged
   wicking edge and a tide line, after the water drains.
+- **City lights:** at night the city is thousands of glowing points: building lights by residents
+  (a whiter tint of `--window-lit`, mostly dim, a few bright) and street lights every 60 m along
+  the main roads (`--window-lit`), 1.5-3 px, added over the map with a faint flicker. Only in the
+  storm's night; gone by day and in planning; they fade out by z15.5, where the windows take over.
 - **Windows:** a pane grid on every wall; at night a third glow `--window-lit`. When the water
   reaches a building its lights flicker and go out a few seconds later.
 - **Only uniforms change per frame**: the shaders read the storm clock, the day/night mix and the

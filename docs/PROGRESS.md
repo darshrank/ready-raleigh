@@ -47,6 +47,11 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - [x] R6 ending (settling waves on the drain) and rain ripples; creek flow streaks not done
   - [x] final rebase checkpoint (main 4cdffd8), full matrix, screenshot set
   - [ ] quiet-machine A/B (waiting for the user), then remove `?realism=off`
+- [~] RO The storm overview (z11-13, 55 deg) made dramatic (Claude, C), all four cities:
+  - [x] O1 city lights (building + street points, one additive layer, built in the flood worker)
+  - [ ] O2 blackout wave per hazard (flood: water + 400 m wave; quake: snapped lines; heat: rolling)
+  - [ ] O3 flood readable from the overview (deep channel, see-through edges, 1.5 px edge line)
+  - [ ] O4 windows unchanged (from z15.5); four-city screenshots at 0/33/66/100%, one 1440 trace
 
 ## Phase 4: bonus challenges
 - [~] P12 Gemini briefing and debrief (D). Debrief done (L2); the briefing is still a template
@@ -250,6 +255,31 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
     remove them: DELETE FROM placements WHERE play_id IN (SELECT id FROM plays WHERE player_name =
     'Test Mayor'); then DELETE FROM plays WHERE player_name = 'Test Mayor';
 - Next exact step: a weekly board (filter on created_at) if the all-time one fills up.
+
+### 2026-10-04 02:50 EDT Claude (Opus 5.5) lane C, storm overview O1 (city lights)
+- Sync first: `git fetch group`, main fast-forwarded 4cdffd8 -> 678870a (Darsh: rooms play Raleigh
+  and Miami only, "Coming soon" for the others; no negative residents when moving a piece).
+  sakhi/realism rebased onto it; only DECISIONS.md conflicted (both kept). Backup at
+  `backup/realism-pre-rebase-3` (local).
+- Done: `world/cityLightsData.ts` (pure: building lights scattered in each H3 cell by residents,
+  street lights every 60 m along the drive graph, fastest roads first, street share <= 45%;
+  seeded) + tests; `world/cityLights.ts` (`CityLightsLayer`: one point-list Model, additive
+  blend, no depth, 1.5-3 CSS px, --window-lit streets and a whiter tint for buildings, mostly dim
+  with a few bright ones, faint flicker on a third, none under reduced motion; brightness =
+  night x level with a storm clock, so zero by day, in planning (also in Dark mode) and with no
+  storm; fades out from z14.5 to z15.5 where the windows take over). The flood worker now runs in
+  every city (the arrival textures for all four; the water and stains stay flood-only) and builds
+  the lights after the flood data (a failure there never blocks the water). `TIER.lights`: 60k,
+  30k on low. World draws the lights last (over the roofs).
+- Counts: Raleigh, Miami, San Francisco 60k (27k street); New York 60k (20.7k street, every road).
+  Worker: lights 40-150 ms after the flood data (Raleigh flood 0.7-0.9 s, New York 65 ms).
+- Checks: typecheck; vitest 118/118; Raleigh and New York storm overview in Dark at 1440 (lights
+  on), Raleigh planning in Dark (no lights), `?realism=off` storm (no world, no worker).
+- Found, not changed (upstream camera): the director's opening tilt to the overview (at 250 ms)
+  does not happen; the camera stays flat at the planning frame until the first helicopter flight
+  (~3.7 s) and reaches the overview (Raleigh z11.2, New York z12.8, pitch 55) only after it.
+  The screenshot script holds the director's own overview camera from 0.3 s.
+- Next exact step: O2 blackout (flood / quake / heat characters, reduced motion per step).
 
 ### 2026-10-04 02:09 EDT Claude (Opus 5.5) lane C, realism final rebase checkpoint and full matrix
 - Rebased sakhi/realism onto main 4cdffd8 (group/main moved: Main menu button, Gemini news desk,

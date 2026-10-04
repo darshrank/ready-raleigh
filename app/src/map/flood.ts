@@ -19,6 +19,9 @@ import type { Mood } from './basemap';
 import { FX_TIMING } from '../dev/timing';
 import { flashAt, frame as worldFrame, REALISM } from '../world/state';
 import type { FloodData } from '../world/floodData';
+import type { LightsData } from '../world/cityLightsData';
+import type { FloodWorkerRequest } from '../world/flood.worker';
+import { TIER } from '../world/quality';
 import { World } from '../world/world';
 
 export const STEPS = [1, 2, 3] as const;
@@ -654,10 +657,8 @@ export class FloodView {
     if (import.meta.env.DEV) (window as unknown as { __world?: World | null }).__world = this.world;
     this.current = this.from = this.to = look('day', 'preview', t);
     if (!map.hasImage(BARRIER)) map.addImage(BARRIER, barrierImage(t), { pixelRatio: 2 });
-    if (this.realWater) {
-      for (const id of MAPLIBRE_WATER) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
-      this.loadWater();
-    }
+    if (this.realWater) for (const id of MAPLIBRE_WATER) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+    if (this.world) this.loadWorld();
     this.ready = fetch(`${dataBase()}/flood_steps.geojson`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`flood_steps.geojson: ${r.status}`))))
       .then((raw: FeatureCollection<Polygon | MultiPolygon, { step: number }>) => {
@@ -762,20 +763,25 @@ export class FloodView {
     this.lastPaint = 0;
   };
 
-  /** The realistic water's geometry and arrival textures, built in a worker (world/flood.worker.ts). */
-  private loadWater() {
+  /**
+   * The hazard's arrival textures (and, for floods, the water's geometry) and the city's lights,
+   * built in a worker (world/flood.worker.ts). Every city: the lights' blackout follows its steps.
+   */
+  private loadWorld() {
     const worker = new Worker(new URL('../world/flood.worker.ts', import.meta.url), { type: 'module' });
-    worker.onmessage = (e: MessageEvent<{ data?: FloodData; ms?: number; error?: string }>) => {
+    worker.onmessage = (e: MessageEvent<{ data?: FloodData; lights?: LightsData | null; ms?: number; lightsMs?: number; error?: string }>) => {
       worker.terminate();
       if (e.data.error || !e.data.data) {
         console.warn('Flood water did not load:', e.data.error);
         return;
       }
       if (!this.raf) return; // destroyed while loading
-      if (import.meta.env.DEV) (window as unknown as { __floodWorkerMs?: number }).__floodWorkerMs = e.data.ms;
-      this.world?.setWater(e.data.data);
+      if (import.meta.env.DEV) Object.assign(window, { __floodWorkerMs: e.data.ms, __lightsMs: e.data.lightsMs, __lightsCount: e.data.lights?.count ?? 0 });
+      if (this.realWater) this.world?.setWater(e.data.data);
+      if (e.data.lights) this.world?.setLights(e.data.lights);
     };
-    worker.postMessage({ url: new URL(`${dataBase()}/flood_steps.geojson`, location.href).href });
+    const request: FloodWorkerRequest = { base: new URL(dataBase(), location.href).href, lights: TIER.lights };
+    worker.postMessage(request);
   }
 
   /** Re-clip when new street tiles arrive while the submerged streets are showing. */

@@ -36,6 +36,9 @@ export function Play({ code }: { code: string }) {
         room={{
           code: s.code,
           endsAt: (s.endsAt ?? Date.now()) - room.offset,
+          briefing: s.phase === 'briefing',
+          host: s.you === s.hostSeat,
+          onSkip: room.start,
           onLock: room.lock,
           stormGo: s.phase === 'results',
           waiting: <Waiting state={s} />,

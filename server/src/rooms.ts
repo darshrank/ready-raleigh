@@ -5,7 +5,7 @@
 // lobby -> planning -> results -> lobby (next election)
 import { randomUUID } from 'node:crypto';
 import {
-  CANDIDATES, LOCK_GRACE_MS, MAX_PLAYERS, PLANNING_SECONDS, ROOM_CITIES, isCityId,
+  BRIEFING_SECONDS, CANDIDATES, LOCK_GRACE_MS, MAX_PLAYERS, PLANNING_SECONDS, ROOM_CITIES, isCityId,
   type CandidateId, type CityId, type Placement, type Plan, type RoomResult, type RoomState, type ScoreResult,
 } from '@shared';
 
@@ -125,14 +125,17 @@ export function setCity(room: Room, player: Player, city: unknown): void {
   touch(room);
 }
 
-/** The host opens the polls: planning starts for every candidate at once. */
+/** The host opens the polls: the briefing plays for every candidate, then planning starts at once. */
 export function start(room: Room, player: Player, now: number): void {
   requireHost(room, player);
+  // During the briefing, the host's start skips the rest of it.
+  if (room.phase === 'briefing') return beginPlanning(room, now);
   if (room.phase !== 'lobby') throw new RoomError('The election already started.');
   if (!room.players.some((p) => p.connected)) throw new RoomError('Waiting for candidates to join.');
-  room.phase = 'planning';
+  // Everyone watches the briefing together; the planning clock starts after it (tick).
+  room.phase = 'briefing';
   room.round += 1;
-  room.endsAt = now + PLANNING_SECONDS * 1000;
+  room.endsAt = now + BRIEFING_SECONDS * 1000;
   room.results = null;
   for (const p of room.players) {
     p.lockedAt = null;
@@ -140,6 +143,13 @@ export function start(room: Room, player: Player, now: number): void {
     p.result = null;
     p.playId = null;
   }
+  touch(room, now);
+}
+
+/** The briefing is over (time, or the host): the planning clock starts for every candidate at once. */
+function beginPlanning(room: Room, now: number): void {
+  room.phase = 'planning';
+  room.endsAt = now + PLANNING_SECONDS * 1000;
   touch(room, now);
 }
 
@@ -212,6 +222,10 @@ export function presence(room: Room, player: Player, connected: boolean): void {
 
 /** Time: planning closes LOCK_GRACE_MS after the clock (phones send their plan at 0:00). */
 export function tick(room: Room, now: number): boolean {
+  if (room.phase === 'briefing' && room.endsAt !== null && now >= room.endsAt) {
+    beginPlanning(room, now);
+    return true;
+  }
   if (room.phase === 'planning' && room.endsAt !== null && now >= room.endsAt + LOCK_GRACE_MS) {
     finish(room);
     return true;

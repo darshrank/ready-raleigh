@@ -127,17 +127,35 @@ export function useBriefingTour(
   }, [map, active, started, phone, lines, onStop, reduce]);
 }
 
+/** Whole seconds until `at` (this device's clock), ticking down; 0 once it has passed. */
+function useSecondsLeft(at: number | null): number {
+  const left = () => (at === null ? 0 : Math.max(0, Math.ceil((at - Date.now()) / 1000)));
+  const [s, setS] = useState(left);
+  useEffect(() => {
+    if (at === null) return;
+    setS(left());
+    const id = setInterval(() => setS(left()), 250);
+    return () => clearInterval(id);
+  }, [at]);
+  return s;
+}
+
+const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+
 export function Title({
   ready,
   error,
   onStart,
   stop = null,
+  room,
 }: {
   ready: boolean;
   error: string | null;
   onStart: () => void;
   /** The tour stop on screen, named on a sticker. */
   stop?: string | null;
+  /** A room's briefing: planning starts for everyone at `startsAt`; only the host can start it sooner. */
+  room?: { startsAt: number; host: boolean; onSkip: () => void };
 }) {
   const reduce = useReducedMotion();
   const button = useRef<HTMLButtonElement>(null);
@@ -148,6 +166,7 @@ export function Title({
     reduce ? {} : { initial: { y: 40, opacity: 0 }, animate: { y: 0, opacity: 1 }, transition: { duration: 0.5, delay, ease: 'easeOut' as const } };
   const story = currentStory();
   const weather = useCityWeather(story.id);
+  const left = useSecondsLeft(room?.startsAt ?? null);
 
   // Sized by the window's height as well as its width, so the briefing card always fits on screen.
   return (
@@ -212,6 +231,10 @@ export function Title({
           <p className="mt-3 max-w-xl text-15 short:mt-2 lg:text-18 lg:short:text-15">{story.body}</p>
           {error ? (
             <p className="mt-5 text-15">Could not load the map data ({error}). Reload the page to try again.</p>
+          ) : room && !room.host ? (
+            <p role="status" className="tabular mt-5 font-display text-32 leading-none font-extrabold short:mt-3 lg:tall:text-48">
+              Planning starts in {clock(left)}
+            </p>
           ) : (
             <button
               ref={button}
@@ -219,11 +242,12 @@ export function Title({
               disabled={!ready}
               onClick={() => {
                 unlockAudio();
-                onStart();
+                if (room) room.onSkip();
+                else onStart();
               }}
               className="mt-5 w-full border-(length:--rule) border-ink bg-ink px-6 py-3 font-display text-32 leading-none font-extrabold text-signal shadow-piece hover:bg-signal hover:text-ink active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:opacity-60 short:mt-3 sm:w-auto lg:tall:py-4 lg:tall:text-48"
             >
-              {ready ? 'Start planning' : 'Loading the map'}
+              {!ready ? 'Loading the map' : room ? `Start planning now (${clock(left)})` : 'Start planning'}
             </button>
           )}
         </motion.section>

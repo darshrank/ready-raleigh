@@ -14,7 +14,9 @@ export const MAX_PLAYERS = 12;
 /** After the planning clock runs out, phones get this long to send their plan. */
 export const LOCK_GRACE_MS = 5_000;
 
-export type RoomPhase = 'lobby' | 'planning' | 'results';
+export type RoomPhase = 'lobby' | 'briefing' | 'planning' | 'results';
+/** The narrated briefing every candidate watches before the planning clock starts (host can skip). */
+export const BRIEFING_SECONDS = 35;
 
 /** The city packs a game can be played in (app/src/cities.ts has their names and art). */
 export const CITY_IDS = ['raleigh', 'miami', 'san-francisco', 'new-york'] as const;

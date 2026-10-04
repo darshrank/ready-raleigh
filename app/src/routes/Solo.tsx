@@ -73,14 +73,20 @@ function useMedia(query: string) {
 }
 
 /**
- * Multiplayer (P9): the same game for one mayoral candidate. No title; planning ends at the room's
- * clock; "Start the storm" (or 0:00) sends the plan and waits; the storm starts on every phone at
- * once when the room says everyone is ready (`stormGo`).
+ * Multiplayer (P9): the same game for one mayoral candidate. The title's briefing plays for
+ * everyone on the room's clock (the host can skip it); planning ends at the room's clock; "Start
+ * the storm" (or 0:00) sends the plan and waits; the storm starts on every phone at once when the
+ * room says everyone is ready (`stormGo`).
  */
 export interface RoomMode {
   code: string;
-  /** Planning deadline on this device's clock (server time corrected). */
+  /** The briefing's end while `briefing`, then the planning deadline (this device's clock, server time corrected). */
   endsAt: number;
+  /** The room is in its briefing: the title plays, and planning starts when the room says so. */
+  briefing: boolean;
+  /** This candidate hosts: they can skip the rest of the briefing. */
+  host: boolean;
+  onSkip: () => void;
   onLock: (placements: Placement[]) => void;
   /** Every candidate is ready (or out of time): start the storm now. */
   stormGo: boolean;
@@ -120,7 +126,8 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
   const [phone] = useState(() => window.matchMedia(PHONE).matches);
   const compact = useMedia(COMPACT);
   // Dev and scripts: /solo?skip opens straight on the planning board.
-  const [skipTitle] = useState(() => !!room || new URLSearchParams(window.location.search).has('skip'));
+  // Rooms open on the briefing; a phone that joins (or reloads) after it goes straight to planning.
+  const [skipTitle] = useState(() => (!!room && !room.briefing) || new URLSearchParams(window.location.search).has('skip'));
   const [mapInst, setMapInst] = useState<MapLibreMap | null>(null);
 
   // Opening /solo always starts at the title (the store outlives the route).
@@ -180,6 +187,13 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
     const s = usePlan.getState();
     if (s.phase === 'intro') s.startPlanning(roomRef.current?.endsAt);
   }, []);
+
+  // Rooms: the briefing is over (its clock, or the host), so every phone flies down to plan together.
+  const inRoom = !!room;
+  const briefing = room?.briefing ?? false;
+  useEffect(() => {
+    if (inRoom && !briefing && usePlan.getState().phase === 'title') usePlan.getState().beginIntro();
+  }, [inRoom, briefing]);
 
   // Rooms: the platform goes to the server the moment planning ends here.
   const lockedPhase = useRef(phase);
@@ -413,7 +427,13 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
           transition={{ duration: reduce ? 0 : 0.35 }}
           style={{ pointerEvents: phase === 'title' ? 'auto' : 'none' }}
         >
-          <Title ready={!!data} error={error} onStart={() => usePlan.getState().beginIntro()} stop={tourStop} />
+          <Title
+            ready={!!data}
+            error={error}
+            onStart={() => usePlan.getState().beginIntro()}
+            stop={tourStop}
+            room={room?.briefing ? { startsAt: room.endsAt, host: room.host, onSkip: room.onSkip } : undefined}
+          />
         </motion.div>
       )}
 

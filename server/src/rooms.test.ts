@@ -1,13 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import WebSocket from 'ws';
-import { CANDIDATES, LOCK_GRACE_MS, PLANNING_SECONDS, type RoomState, type ServerMsg } from '@shared';
+import { BRIEFING_SECONDS, CANDIDATES, LOCK_GRACE_MS, PLANNING_SECONDS, type RoomState, type ServerMsg } from '@shared';
 import { FIXTURES_DIR } from '../../shared/scripts/bundle';
 import { buildServer } from './app';
 import { loadGameData } from './data';
 import { MemoryStore } from './db/store';
 import { RoomError, again, getOrCreateRoom, join, lock, pick, presence, publicState, rooms, setCity, start, tick } from './rooms';
 
+/** Start the election and skip the briefing (the host's second start). */
+const openPolls = (room: Parameters<typeof start>[0], host: Parameters<typeof start>[1], now: number) => {
+  start(room, host, now);
+  start(room, host, now);
+};
 const okScorer = (score: number) => () => ({ score, bestPossible: 90, atRiskWeighted: 1, protectedWeighted: 1, protectedPeople: score * 10, strandedPeople: 5, vulnerable: { protectedPct: 0, everyonePct: 0 }, byHood: [], topMisses: [], baseline: { protectedPeople: 0, protectedWeighted: 0 } });
 
 describe('room state machine', () => {
@@ -31,10 +36,24 @@ describe('room state machine', () => {
     expect(() => pick(room, b, CANDIDATES[0])).toThrow(/taken/);
     pick(room, b, CANDIDATES[2]);
     expect(() => start(room, b, 1000)).toThrow(/Only the host/);
+    // The host can skip the briefing: the clock starts from the skip.
+    const r2 = fresh('WXYZ');
+    const host = join(r2, 'Ana', CANDIDATES[0]);
+    start(r2, host, 0);
+    start(r2, host, 5000);
+    expect(r2.phase).toBe('planning');
+    expect(r2.endsAt).toBe(5000 + PLANNING_SECONDS * 1000);
     start(room, a, 1000);
-    expect(room.phase).toBe('planning');
-    expect(room.endsAt).toBe(1000 + PLANNING_SECONDS * 1000);
+    // Everyone watches the briefing first; the planning clock starts when it ends.
+    expect(room.phase).toBe('briefing');
+    const briefEnd = 1000 + BRIEFING_SECONDS * 1000;
+    expect(room.endsAt).toBe(briefEnd);
     expect(() => join(room, 'Cy', CANDIDATES[3])).toThrow(/under way/);
+    expect(() => lock(room, a, [], okScorer(1), 2000)).toThrow(/over/);
+    expect(tick(room, briefEnd - 1)).toBe(false);
+    expect(tick(room, briefEnd)).toBe(true);
+    expect(room.phase).toBe('planning');
+    expect(room.endsAt).toBe(briefEnd + PLANNING_SECONDS * 1000);
     expect(() => pick(room, a, CANDIDATES[5])).toThrow(RoomError);
   });
 
@@ -48,7 +67,7 @@ describe('room state machine', () => {
     expect(() => setCity(room, a, 'new-york')).toThrow(/coming soon/);
     setCity(room, a, 'miami');
     expect(publicState(room, a, 0, null).city).toBe('miami');
-    start(room, a, 1000);
+    openPolls(room, a, 1000);
     expect(() => setCity(room, a, 'raleigh')).toThrow(/before the election/);
     const cities: (string | undefined)[] = [];
     const scorer = (plan: { city?: string }) => { cities.push(plan.city); return okScorer(50)(); };
@@ -67,7 +86,7 @@ describe('room state machine', () => {
     const a = join(room, 'Ana', CANDIDATES[0]);
     const b = join(room, 'Ben', CANDIDATES[1]);
     const c = join(room, 'Cy', CANDIDATES[2]);
-    start(room, a, 0);
+    openPolls(room, a, 0);
     lock(room, b, [], okScorer(70), 2000);
     lock(room, a, [], okScorer(70), 3000);
     expect(room.phase).toBe('planning');
@@ -88,7 +107,7 @@ describe('room state machine', () => {
     expect(room.hostSeat).toBe(a.seat);
     presence(room, a, false);
     expect(room.hostSeat).toBe(b.seat);
-    start(room, b, 0);
+    openPolls(room, b, 0);
     expect(room.phase).toBe('planning');
   });
 
@@ -96,7 +115,7 @@ describe('room state machine', () => {
     const room = fresh();
     const a = join(room, 'Ana', CANDIDATES[0]);
     const b = join(room, 'Ben', CANDIDATES[1]);
-    start(room, a, 0);
+    openPolls(room, a, 0);
     lock(room, a, [], okScorer(50), 1000);
     presence(room, b, false);
     expect(room.phase).toBe('results');
@@ -104,7 +123,7 @@ describe('room state machine', () => {
 
     const r2 = fresh('WXYZ');
     const solo = join(r2, 'Ana', CANDIDATES[0]);
-    start(r2, solo, 0);
+    openPolls(r2, solo, 0);
     expect(tick(r2, PLANNING_SECONDS * 1000 + LOCK_GRACE_MS - 1)).toBe(false);
     expect(tick(r2, PLANNING_SECONDS * 1000 + LOCK_GRACE_MS)).toBe(true);
     expect(r2.phase).toBe('results');
@@ -159,6 +178,8 @@ describe('/ws/rooms/:code with the real engine and store', () => {
     ben.send({ t: 'start' });
     expect(((await ben.wait((m) => m.t === 'error')) as { message: string }).message).toMatch(/Only the host/);
     ana.send({ t: 'start' });
+    await ben.state((s) => s.phase === 'briefing');
+    ana.send({ t: 'start' }); // the host skips the briefing
     await ben.state((s) => s.phase === 'planning');
 
     // Ana's phone reloads mid-planning and resumes with her stored id.

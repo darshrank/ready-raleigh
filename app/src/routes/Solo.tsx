@@ -48,6 +48,7 @@ import { cityById } from '../cities';
 import { currentStory, storyOf, type Hazard } from '../story';
 import { useTheme } from '../theme';
 import { score } from '@shared/engine';
+import { useVoice } from '../ui/voice';
 
 /** Phones open on the highest-risk area at street level instead of the whole city. */
 const PHONE = '(max-width: 639px)';
@@ -299,7 +300,9 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
     return () => clearTimeout(id);
   }, [phase, stormAt, endStorm]);
 
-  // The broadcast belongs to the storm: it leaves when the sky clears.
+  // The broadcast belongs to the storm: it leaves when the sky clears, except that the anchor may
+  // finish the last report during the clear-up (the desk stays until the line ends).
+  const anchorTalking = useVoice((s) => s.line !== null);
   const [cleared, setCleared] = useState(false);
   useEffect(() => {
     if (stormAt === null) return setCleared(false);
@@ -449,7 +452,7 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
             </div>
           </div>
           <div className="flex min-h-0 flex-1 flex-col items-stretch px-3 pt-14 pb-2 lg:items-start lg:px-6 lg:pt-1">
-            {phase === 'storm' && !cleared && <NewsDesk storm={storm} stormAt={stormAt} />}
+            {phase === 'storm' && (!cleared || anchorTalking) && <NewsDesk storm={storm} stormAt={stormAt} />}
           </div>
           {phase === 'results' ? (
             <div className="flex shrink-0 justify-center px-3 pb-4 lg:justify-start lg:px-8 lg:pb-8">

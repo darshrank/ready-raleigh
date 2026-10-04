@@ -8,6 +8,7 @@ import type { ScoreResult } from '@shared/types';
 import { usePlan } from '../plan/store';
 import { currentStory } from '../story';
 import { GROW_MS, STORM_MS, TICK_MS, stepAt, stepStart, type Storm, type StormEvent } from './sim';
+import { hush } from '../ui/voice';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 const easeOut = (x: number) => 1 - (1 - x) ** 3;
@@ -273,7 +274,10 @@ export function SkipStorm() {
   return (
     <button
       type="button"
-      onClick={() => skip(STORM_MS)}
+      onClick={() => {
+        hush(); // a report cut short; the last one may still finish when the storm ends on its own
+        skip(STORM_MS);
+      }}
       className="pointer-events-auto h-10 border-(length:--rule) border-ink bg-bond px-3 text-15 font-semibold shadow-piece hover:bg-chalk"
     >
       Skip to results

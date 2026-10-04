@@ -1,7 +1,9 @@
 // The storm's news desk: an anchor reads the headlines as the storm unfolds, on the channel the
 // player picks (news.ts): America News in English or Bharat News in Hindi, each in its own
-// ElevenLabs voice. Each report starts as the news helicopter leaves for the place it names, and
-// only if it can finish before the storm ends, so the news never runs past the simulation.
+// ElevenLabs voice. Each report starts as its step begins (the helicopter then flies to the place it
+// names). Earlier lines are spoken only if they end before the last report is due, so the last one
+// always gets its slot; it may run through the clear-up and finish over the results card. A line
+// that cannot finish in its window stays on the feed as a caption (long Hindi lines do not all fit).
 // The anchor is a portrait from app/public/anchors/ when there is one (a second, mouth-open frame
 // makes it talk), else a cartoon in the inks. Either way it moves with the loudness of the voice.
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -13,16 +15,20 @@ import { PLATE } from '../ui/Hud';
 import { buzz, playSiren, playWaterRush } from '../ui/sound';
 import { hush, prefetchSpeech, say, useVoice } from '../ui/voice';
 import { clockLabel, stormHour } from './clock';
-import { GROW_MS, STORM_MS, stepStart, type Storm } from './sim';
+import { GROW_MS, RESULTS_AFTER_MS, STORM_MS, stepStart, type Storm } from './sim';
 
 /** The alert follows the siren in. */
 const ALERT_AT = 1200;
-/** A report starts this long after the helicopter leaves for the place it names. */
-const REPORT_AFTER_FLY_MS = 200;
+/** A report starts this long after its step begins. */
+const REPORT_AFTER_STEP_MS = 300;
 /** A report that cannot start within this long of its moment stays on the feed, unspoken. */
-const MAX_LATE_MS = 2500;
-/** The last word is said at least this long before the storm ends. */
-const END_MARGIN_MS = 250;
+const MAX_LATE_MS = 4500;
+/** The last word is said at least this long before the results card arrives. */
+const END_MARGIN_MS = 150;
+/** The last report may finish over the first moments of the results card (its caption gives way). */
+const OVER_RESULTS_MS = 3000;
+/** Speech may go on through the clear-up and a little into the results card. */
+export const SPEECH_END_MS = STORM_MS + RESULTS_AFTER_MS + OVER_RESULTS_MS - END_MARGIN_MS;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -41,7 +47,7 @@ export function headlines(storm: Storm, story: Story, lang: Lang): Headline[] {
     const stranded = step ? Math.round(step.strandedPeople) : 0;
     const what =
       e.about.kind === 'road' ? book.road(e.about.name) : e.about.kind === 'cut' ? book.cut(e.about.name) : book.area(e.about.name, e.step);
-    out.push({ at: e.fly + REPORT_AFTER_FLY_MS, text: `${what} ${stranded > 0 ? book.stranded(stranded) : book.safe}` });
+    out.push({ at: stepStart(e.step) + REPORT_AFTER_STEP_MS, text: `${what} ${stranded > 0 ? book.stranded(stranded) : book.safe}` });
   }
   return out;
 }
@@ -110,14 +116,18 @@ export function NewsDesk({ storm, stormAt }: { storm: Storm; stormAt: number }) 
         if (t > STORM_MS - 600) return;
         const item: FeedItem = { k, clock: clockLabel(stormHour(h.at)), text: h.text, lang: channel.lang };
         setFeed((f) => [item, ...f.filter((x) => x.k !== k)].slice(0, 3));
-        if (t - h.at <= MAX_LATE_MS) await say(h.text, channel.voice, { until: stormAt + STORM_MS - END_MARGIN_MS });
+        const last = k === lines.length - 1;
+        const until = stormAt + (last ? SPEECH_END_MS : lines[lines.length - 1]!.at);
+        if (t - h.at <= MAX_LATE_MS) await say(h.text, channel.voice, { until });
         if (cancelled) return;
         next.current = k + 1;
       }
     })();
     return () => {
       cancelled = true;
-      hush();
+      // Mid-storm (a channel switch, Skip, leaving): stop talking. Once the storm is over, the last
+      // report is allowed to finish while the results card comes up.
+      if (performance.now() - stormAt < STORM_MS) hush();
     };
   }, [lines, stormAt, channel.voice, channel.lang]);
 

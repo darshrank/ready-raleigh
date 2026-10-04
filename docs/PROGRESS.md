@@ -449,7 +449,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - The automated browser pane stops drawing frames after ~10 s, so flights and animations look
     frozen there; judge motion in a real browser.
 
-### 2026-10-03 21:00 EDT Claude (Opus 5.5) lane C, semantic zoom S6 (hex fade) and final check
+### 2026-10-03 19:14 EDT Claude (Opus 5.5) lane C, semantic zoom S6 (hex fade) and final check
 - Done (S6): layers.ts `hexFade(zoom)`; `cellsLayer(..., opacity)` (only the visible people fill
   fades; the pick target stays) and `hoodLayer(..., opacity)`, fed by useFloodMap from the store's
   zoom. plan/layers.ts `coverageLayer(..., rim)` adds a 1 px ink rim from `COVERAGE_RIM_ZOOM` (15);
@@ -474,7 +474,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   full `build_all` (it drops their meta blocks; caches make it offline). Fixture mode has no detail
   files (the map warns and skips them).
 
-### 2026-10-03 20:40 EDT Claude (Opus 5.5) lanes A+C, semantic zoom S5 (shelter sites as buildings)
+### 2026-10-03 19:08 EDT Claude (Opus 5.5) lanes A+C, semantic zoom S5 (shelter sites as buildings)
 - Done (data): pipeline/site_buildings.py (stdlib; two Overpass queries cached in
   pipeline/cache/site_elements_overpass.json and site_nearby_buildings_overpass.json) wrote
   app/public/data/site_buildings.json `[{id, match, osm, polygons}]` (MultiPolygon coords, 5
@@ -499,7 +499,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas: with 3D on (pitch > 20) the 3D buildings cover the flat site outlines; fine for the storm
   (DESIGN hides sites there), but a tilted planning view shows sites only as place icons.
 
-### 2026-10-03 20:05 EDT Claude (Opus 5.5) lane C, semantic zoom S4 (NC OneMap aerial)
+### 2026-10-03 19:00 EDT Claude (Opus 5.5) lane C, semantic zoom S4 (NC OneMap aerial)
 - Done: detail.ts raster source `aerial` (NC OneMap Orthoimagery_Latest_cached tiles, minzoom 16,
   maxzoom 20, attribution "Imagery: NC OneMap, NC Center for Geographic Information and Analysis")
   and `aerialLayer(P)` (raster-opacity z16 0 -> z17 85% day / 80% night), placed in basemap.ts
@@ -518,7 +518,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   deck.gl square for matched sites at z15+, hover/tap card (name, type, capacity 10,000).
 - Gotchas: raster sources pick tiles by rounded zoom, so z16.5 already loads z17 imagery.
 
-### 2026-10-03 19:45 EDT Claude (Opus 5.5) lanes A+C, semantic zoom S3 (GoRaleigh bus stops)
+### 2026-10-03 18:56 EDT Claude (Opus 5.5) lanes A+C, semantic zoom S3 (GoRaleigh bus stops)
 - Done: pipeline/bus_stops.py (stdlib, cached in pipeline/cache/goraleigh_gtfs.zip + .json) wrote
   app/public/data/bus_stops.json: 1,386 stops, 116,584 bytes, feed S1000098 resolved to
   goraleigh.org/sites/default/files/2026-09/goraleighgtfs_sept062026.zip. meta.json gains
@@ -538,7 +538,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas: in fixture mode (VITE_DATA_BASE=/data/fixtures) bus_stops.json does not exist; the map
   warns and shows no stops. `build_all` drops meta.busStops; rerun `python3 -m pipeline.bus_stops`.
 
-### 2026-10-03 19:25 EDT Claude (Opus 5.5) lane C, semantic zoom S2 (addresses, building names)
+### 2026-10-03 18:52 EDT Claude (Opus 5.5) lane C, semantic zoom S2 (addresses, building names)
 - Done: detail.ts `detailLabelLayers(P)` (replaces placeLayers): `addresses` (housenumber, z16+,
   lowest priority), `building-names` (z16+, `BUILDING_NAMES_FILTER`), then `places`. Palette gains
   `address` (ink 55% / storm-label 60%).
@@ -553,7 +553,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   icon, a `bus-stops` layer z14+ (names z16+), source attribution "GoRaleigh GTFS".
 - Gotchas: tile POIs include their own `bus/bus_stop` points (all agencies); we do not draw those.
 
-### 2026-10-03 19:10 EDT Claude (Opus 5.5) lane C, semantic zoom S1 (places)
+### 2026-10-03 18:50 EDT Claude (Opus 5.5) lane C, semantic zoom S1 (places)
 - Branch `sakhi/semantic-zoom` in wolfhacks/claude, from group/main a7b011c. Never pushed. The plan
   (S1-S6) is in the task brief; research found: OpenFreeMap tiles have `poi` (class, subclass,
   name, rank) and `housenumber`, but the `building` layer carries no names; GoRaleigh GTFS is at

@@ -39,7 +39,8 @@ describe('POST /api/plays', () => {
     await cityApp.inject({ method: 'POST', url: '/api/plays', payload: { plan: { ...plan('Mia', placements), city: 'miami' } } });
     await cityApp.inject({ method: 'POST', url: '/api/plays', payload: { plan: { ...plan('Ral', placements), city: 'atlantis' } } });
     await cityApp.inject({ method: 'POST', url: '/api/plays', payload: { plan: plan('Old', placements) } });
-    expect(asked).toEqual(['miami', 'raleigh', 'raleigh']);
+    // Scoring asks for each plan's city (other callers, like the civic record, may ask for Raleigh's build).
+    expect(asked.filter((c) => c !== undefined)).toEqual(['miami', 'raleigh', 'raleigh']);
     // Crowd data stays per city.
     const res = (await cityApp.inject({ method: 'GET', url: '/api/planner?mode=flood&city=miami' })).json();
     expect(res.city).toBe('miami');

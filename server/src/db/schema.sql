@@ -206,3 +206,13 @@ CREATE TABLE IF NOT EXISTS civic_cards (
   doc        jsonb       NOT NULL
 );
 CREATE INDEX IF NOT EXISTS civic_cards_play ON civic_cards (play_id);
+
+-- Columnstore (compression): older chunks are stored by column, compressed. Readings are segmented
+-- by gauge and parameter (each series compresses as a run of similar numbers); plays by mode. Each
+-- DO block is one line so the statement splitter keeps it whole; it only sets the options once.
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM timescaledb_information.hypertables WHERE hypertable_name = 'gauge_readings' AND compression_enabled) THEN ALTER TABLE gauge_readings SET (timescaledb.enable_columnstore = true, timescaledb.segmentby = 'site_no, parameter', timescaledb.orderby = 'time DESC'); END IF; END $$;
+CALL add_columnstore_policy('gauge_readings', after => INTERVAL '2 days', if_not_exists => true);
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM timescaledb_information.hypertables WHERE hypertable_name = 'plays' AND compression_enabled) THEN ALTER TABLE plays SET (timescaledb.enable_columnstore = true, timescaledb.segmentby = 'mode', timescaledb.orderby = 'created_at DESC'); END IF; END $$;
+CALL add_columnstore_policy('plays', after => INTERVAL '7 days', if_not_exists => true);
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM timescaledb_information.hypertables WHERE hypertable_name = 'placements' AND compression_enabled) THEN ALTER TABLE placements SET (timescaledb.enable_columnstore = true, timescaledb.segmentby = 'mode, type', timescaledb.orderby = 'created_at DESC'); END IF; END $$;
+CALL add_columnstore_policy('placements', after => INTERVAL '7 days', if_not_exists => true);

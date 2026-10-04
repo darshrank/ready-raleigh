@@ -13,7 +13,7 @@ import { fetchDebrief, playerId } from '../api';
 import { CivicRecord } from '../civic/CivicRecord';
 import type { MapData } from '../data';
 import { usePlan } from '../plan/store';
-import type { Story } from '../story';
+import { currentCityId, type Story } from '../story';
 import { leaveGame } from '../ui/Exit';
 import { PLATE } from '../ui/Hud';
 import { playStamp } from '../ui/sound';
@@ -181,6 +181,7 @@ export function ResultsPanel({
               <DebriefPage
                 playId={room ? room.playId : soloPlayId}
                 owner={room ? room.owner : playerId()}
+                story={story}
               />
             )}
           </motion.div>
@@ -287,7 +288,7 @@ function Meter({ label, pct, ink }: { label: string; pct: number; ink: string })
 }
 
 /** The summary, the narrator reading it (once on arrival, again on Listen), and the public record. */
-function DebriefPage({ playId, owner }: { playId: string | null; owner: string | null }) {
+function DebriefPage({ playId, owner, story }: { playId: string | null; owner: string | null; story: Story }) {
   const reduce = useReducedMotion();
   const text = useDebrief((s) => s.text);
   const by = useDebrief((s) => s.by);
@@ -335,6 +336,16 @@ function DebriefPage({ playId, owner }: { playId: string | null; owner: string |
         {speaking ? 'Stop' : 'Listen'}
       </button>
       {playId && <CivicRecord key={playId} playId={playId} owner={owner} />}
+      {/* The demo's last step: from one game to where the city should act, everyone's plans together. */}
+      <a
+        href={currentCityId() === 'raleigh' ? '/planner' : `/planner?city=${currentCityId()}`}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-4 flex items-center justify-between gap-3 border-(length:--rule) border-ink bg-flood px-3 py-2 font-display text-24 font-extrabold text-bond shadow-piece hover:bg-flood-deep"
+      >
+        <span>See where {story.name} should act</span>
+        <span aria-hidden>→</span>
+      </a>
     </div>
   );
 }

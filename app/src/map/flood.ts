@@ -627,13 +627,15 @@ export class FloodView {
   private levelFrom = 0;
   private levelTo = 0;
   private ending = 0;
-  private endingFrom = 0;
-  private endingTo = 0;
   private stepStarts: readonly number[] = [0, 0, 0];
   private runs: FeatureCollection = emptyFc();
   readonly ready: Promise<void>;
   /** The realistic 3D city (app/src/world/); null with ?realism=off. */
   readonly world: World | null;
+  private drainFrom = 0;
+  private drainTo = 0;
+  private drainStart = 0;
+  private drainMs = 0;
 
   constructor(
     private map: MapLibreMap,
@@ -677,6 +679,18 @@ export class FloodView {
   }
 
   /** Day or night water, faint (planning) or full, fading over `ms`. */
+  /**
+   * The storm is over (`on`): the realistic 3D water drains and the foam fades over `ms`, while the
+   * water stays at its final extent. Off for another round. The storm's end calls it (director.ts),
+   * not the light: in Light mode the city's clock brings the day back while the storm still runs.
+   */
+  drain(on: boolean, ms: number) {
+    this.drainFrom = this.ending;
+    this.drainTo = on ? 1 : 0;
+    this.drainStart = performance.now();
+    this.drainMs = this.reduce ? 0 : Math.min(ms, DRAIN_MS);
+  }
+
   setLook(mood: Mood, level: WaterLevel, ms: number) {
     this.from = this.current;
     this.to = look(mood, level, this.t);
@@ -684,9 +698,6 @@ export class FloodView {
     this.nightTo = mood === 'storm' ? 1 : 0;
     this.levelFrom = this.level;
     this.levelTo = level === 'full' ? 1 : 0;
-    // The storm clears (day, full water): the 3D water drains and the foam fades.
-    this.endingFrom = this.ending;
-    this.endingTo = mood === 'day' && level === 'full' ? 1 : 0;
     this.fadeStart = performance.now();
     this.fadeMs = this.reduce ? 0 : ms;
   }
@@ -799,8 +810,8 @@ export class FloodView {
     w.now = now;
     w.night = this.night;
     this.level = this.levelFrom + (this.levelTo - this.levelFrom) * f;
-    const fd = this.fadeMs > 0 ? clamp01((now - this.fadeStart) / Math.min(this.fadeMs, DRAIN_MS)) : 1;
-    this.ending = this.endingFrom + (this.endingTo - this.endingFrom) * smooth(fd);
+    const fd = this.drainMs > 0 ? clamp01((now - this.drainStart) / this.drainMs) : 1;
+    this.ending = this.drainFrom + (this.drainTo - this.drainFrom) * smooth(fd);
     w.level = this.level;
     w.ending = this.ending;
     w.stepP = [clamp01(shown?.[0] ?? 1), clamp01(shown?.[1] ?? 1), clamp01(shown?.[2] ?? 1)];

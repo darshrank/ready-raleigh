@@ -6,7 +6,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 import { FINAL_FLOOD_STEP } from '@shared/config';
 import type { FloodView } from '../map/flood';
 import { cameraForPoints, type Camera, type Pad } from '../map/frame';
-import { BACK_MS, FLY_MS, GROW_MS, HOLD_MS, STORM_MS, TILT_MS, stepStart, type Storm, type StormEvent } from './sim';
+import { BACK_MS, CLEAR_MS, FLY_MS, GROW_MS, HOLD_MS, STORM_MS, TILT_MS, stepStart, type Storm, type StormEvent } from './sim';
 
 /** The storm camera's pitch (DESIGN.md "Map"). */
 export const STORM_PITCH = 55;
@@ -93,6 +93,7 @@ export function directStorm(map: MapLibreMap, flood: FloodView | null, storm: St
   at(STORM_MS, () => {
     o.onEvent(null);
     flood?.showSubmerged(FINAL_FLOOD_STEP);
+    flood?.drain(true, skipped ? 300 : CLEAR_MS);
     if (!userTookOver) over(city, skipped ? 600 : 2200, 0);
   });
 
@@ -107,4 +108,5 @@ export function directStorm(map: MapLibreMap, flood: FloodView | null, storm: St
 export function resetWater(flood: FloodView | null) {
   flood?.setReveal(null);
   flood?.showSubmerged(0);
+  flood?.drain(false, 0);
 }

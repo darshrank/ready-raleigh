@@ -31,6 +31,8 @@ export const ADDRESS_ZOOM = 16;
 export const BUS_STOP_ZOOM = 14;
 
 const BUS_STOPS = 'bus-stops';
+/** Nursing homes and assisted living (care_homes.json, from OSM): the same zoom rules as places. */
+const CARE_HOMES = 'care-homes';
 
 /** Shelter sites draw as their real buildings from this zoom (their squares hide). */
 export const SITE_BUILDING_ZOOM = 15;
@@ -181,6 +183,18 @@ export const PLACE_ICONS: Record<string, Draw> = {
   }),
   // Star badge.
   'place-police': badge(disc, (g) => star(g, 16, 17, 11)),
+  // House with a heart: nursing homes and assisted living.
+  'place-care': badge(
+    disc,
+    (g) => path(g, [16, 5, 27, 14, 27, 26, 5, 26, 5, 14]),
+    (g) => {
+      g.beginPath();
+      g.moveTo(16, 24);
+      g.bezierCurveTo(9.5, 19.5, 10.5, 13.5, 16, 16.5);
+      g.bezierCurveTo(21.5, 13.5, 22.5, 19.5, 16, 24);
+      g.fill();
+    },
+  ),
 };
 
 /** A bus stop: a rounded square (places are round) with the front of a bus. */
@@ -290,6 +304,8 @@ const AERIAL_ATTRIBUTION =
 export function detailSources(): Record<string, SourceSpecification> {
   return {
     [BUS_STOPS]: { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, attribution: BUS_ATTRIBUTION },
+    // OpenStreetMap (pipeline/care_homes.py); OSM is already credited by the tiles.
+    [CARE_HOMES]: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
     // OpenStreetMap footprints (pipeline/site_buildings.py); OSM is already credited by the tiles.
     [SITE_BUILDINGS]: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
     // minzoom: no tile is ever requested below the zoom where the imagery starts to show.
@@ -440,6 +456,33 @@ export function detailLabelLayers(P: Palette): LayerSpecification[] {
       },
     },
     {
+      id: CARE_HOMES,
+      type: 'symbol',
+      source: CARE_HOMES,
+      minzoom: PLACE_ZOOM,
+      layout: {
+        'icon-image': 'place-care',
+        'icon-size': ['interpolate', ['linear'], ['zoom'], PLACE_ZOOM, 0.85, 17, 1.1],
+        'icon-padding': 2,
+        'text-field': ['step', ['zoom'], '', PLACE_NAME_ZOOM, ['coalesce', ['get', 'name'], '']],
+        'text-font': REGULAR,
+        'text-size': 11,
+        'text-max-width': 9,
+        'text-variable-anchor': ['left', 'right', 'top', 'bottom'],
+        'text-radial-offset': 0.95,
+        'text-justify': 'auto',
+        'text-optional': true,
+      },
+      paint: {
+        'icon-color': P.placeIcon,
+        'icon-halo-color': P.halo,
+        'icon-halo-width': 1.2,
+        'text-color': P.placeLabel,
+        'text-halo-color': P.halo,
+        'text-halo-width': 1.5,
+      },
+    },
+    {
       id: 'places',
       type: 'symbol',
       source: 'omt',
@@ -575,6 +618,14 @@ function middle(ring: Position[]): [number, number] {
   return [x / n, y / n];
 }
 
+interface CareHome {
+  id: string;
+  name: string | null;
+  kind: 'nursing_home' | 'assisted_living';
+  lat: number;
+  lon: number;
+}
+
 interface BusStop {
   id: string;
   name: string;
@@ -700,6 +751,17 @@ export function installDetail(map: MapLibreMap, onSite: (card: SiteCardInfo | nu
       fill(map, BUS_STOPS, fc);
     },
     (e: unknown) => console.warn('Bus stops did not load:', e),
+  );
+
+  getJson<CareHome[]>('care_homes.json').then(
+    (homes) => {
+      if (!live) return;
+      fill(map, CARE_HOMES, {
+        type: 'FeatureCollection',
+        features: homes.map((h, i) => ({ type: 'Feature', id: i, properties: { name: h.name, kind: h.kind }, geometry: { type: 'Point', coordinates: [h.lon, h.lat] } })),
+      });
+    },
+    (e: unknown) => console.warn('Care homes did not load:', e),
   );
 
   const icons: Record<string, Draw> = { ...PLACE_ICONS, ...BUS_ICON };

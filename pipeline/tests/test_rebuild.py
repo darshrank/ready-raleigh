@@ -23,7 +23,7 @@ class FullRebuildTests(unittest.TestCase):
                 build_all.finish(False, data, cache)
             meta = json.loads((data / "meta.json").read_text())
             self.assertEqual(steps, ["flood"])
-            for key in ("busStops", "siteBuildings"):
+            for key in ("busStops", "siteBuildings", "careHomes"):
                 self.assertIn(key, meta["sources"], f"meta.json lost sources.{key} in a rebuild")
                 self.assertIn(key, meta, f"meta.json lost its {key} block in a rebuild")
 
@@ -35,6 +35,7 @@ class FullRebuildTests(unittest.TestCase):
             meta = json.loads((data / "meta.json").read_text())
             self.assertIn("busStops", meta["sources"])
             self.assertIn("siteBuildings", meta["sources"])
+            self.assertIn("careHomes", meta["sources"])
 
 
 if __name__ == "__main__":

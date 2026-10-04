@@ -9,6 +9,7 @@ from unittest import mock
 
 from pipeline.bus_stops import feed_info, read_stops
 from pipeline.bus_stops import MissingCache
+from pipeline.care_homes import read_homes
 from pipeline.detail import refresh_detail
 from pipeline.site_buildings import contains, join_rings, match_sites, polygons_of
 
@@ -120,11 +121,30 @@ def fake_rebuild(root):
     (cache / "goraleigh_gtfs.json").write_text(json.dumps({"url": "https://goraleigh.org/gr_gtfs", "resolvedUrl": "https://goraleigh.org/x.zip", "lastModified": None, "downloaded": "2026-10-03T00:00:00+00:00"}))
     (cache / "site_elements_overpass.json").write_text(json.dumps({"elements": [{"type": "node", "id": 1, "lat": 35.7805, "lon": -78.6395, "tags": {"amenity": "school"}}]}))
     (cache / "site_nearby_buildings_overpass.json").write_text(json.dumps({"elements": [way(10, square(-78.64, 35.78, 0.001), building="school")]}))
+    (cache / "care_homes_overpass.json").write_text(json.dumps({"elements": [
+        {"type": "node", "id": 5, "lat": 35.83182, "lon": -78.68136, "tags": {"amenity": "nursing_home", "name": "Hillcrest"}}]}))
     return data, cache
 
 
 def no_network(*args, **kwargs):
     raise AssertionError("an offline rebuild tried to download")
+
+
+class CareHomeTests(unittest.TestCase):
+    def test_kinds_names_and_one_place_mapped_twice(self):
+        elements = [
+            {"type": "node", "id": 1, "lat": 35.776541, "lon": -78.787381, "tags": {"amenity": "social_facility", "social_facility": "assisted_living", "name": "Glenaire"}},
+            {"type": "way", "id": 2, "center": {"lat": 35.7766, "lon": -78.7874}, "tags": {"amenity": "social_facility", "social_facility": "assisted_living", "name": "Glenaire"}},
+            {"type": "way", "id": 3, "center": {"lat": 35.74789, "lon": -78.67602}, "tags": {"amenity": "nursing_home"}},
+            {"type": "node", "id": 4, "lat": 35.8, "lon": -78.6, "tags": {"amenity": "social_facility", "social_facility": "group_home", "name": "Not a care home"}},
+        ]
+        self.assertEqual(
+            read_homes(elements),
+            [
+                {"id": "osm-way-2", "name": "Glenaire", "kind": "assisted_living", "lat": 35.7766, "lon": -78.7874},
+                {"id": "osm-way-3", "name": None, "kind": "nursing_home", "lat": 35.74789, "lon": -78.67602},
+            ],
+        )
 
 
 class RebuildTests(unittest.TestCase):
@@ -135,7 +155,8 @@ class RebuildTests(unittest.TestCase):
             meta = json.loads((data / "meta.json").read_text())
             self.assertEqual(meta["sources"]["busStops"], "https://goraleigh.org/gr_gtfs")
             self.assertEqual(meta["sources"]["siteBuildings"], "https://www.openstreetmap.org/copyright")
-            self.assertEqual((meta["busStops"]["count"], meta["siteBuildings"]["matched"]), (1, 1))
+            self.assertEqual(meta["sources"]["careHomes"], "https://www.openstreetmap.org/copyright")
+            self.assertEqual((meta["busStops"]["count"], meta["siteBuildings"]["matched"], meta["careHomes"]["count"]), (1, 1, 1))
             self.assertEqual(meta["p3"], {})  # the rest of meta.json is left as the rebuild wrote it
             self.assertEqual(len(json.loads((data / "bus_stops.json").read_text())), 1)
             self.assertEqual(json.loads((data / "site_buildings.json").read_text())[0]["osm"], "way/10")

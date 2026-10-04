@@ -284,6 +284,23 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas: the report needs real plays from at least 5 different people per area; with few
   testers use ?minPlayers=3. A newer GoRaleigh GTFS URL can replace FEEDS[0] in pipeline/transit.py.
 
+### 2026-10-03 20:27 EDT Claude (Opus 5.5) lanes A+C, semantic zoom F3 (nursing homes and assisted living)
+- Finding: 182 z14 tiles over the study area hold one care home (`hospital/nursing_home`,
+  Hillcrest); OpenMapTiles drops `amenity=social_facility`, how OSM tags most of them.
+- Done: pipeline/care_homes.py (stdlib; Overpass cached in pipeline/cache/care_homes_overpass.json
+  + .query; `read_homes` keeps nursing_home / assisted_living, drops repeats of one place) wrote
+  app/public/data/care_homes.json: 18 places (13 assisted living, 5 nursing homes), 2,060 bytes;
+  meta.json `sources.careHomes`, `careHomes`. refresh_detail rebuilds it too (offline).
+  `overpass()` takes the script name for its cache messages. App: detail.ts source `care-homes`,
+  pictogram `place-care` (house with a heart), layer `care-homes` (z14 icon, z15 names, places'
+  palette colors), just below `places` in label priority. README, DESIGN row, DECISIONS line.
+- Verified: python3 test_detail 9 OK (care-home kinds, names, the doubly mapped Glenaire), venv
+  suite 33 OK (rebuild tests now also require sources.careHomes), typecheck, 57 TS tests. Shots:
+  z12 0 care homes; z14 2-3 near Crabtree (Hillcrest with its name at z15), day and storm.
+- Next exact step: commit the tilted-planning screenshots (z15, z17 x 1440, 390) under
+  docs/screenshots/semantic-zoom/ as JPEG < 500 KB each; rerun the two-player room check.
+- Gotchas: Overpass answered 504 twice in a row during this run; a later retry worked.
+
 ### 2026-10-03 20:23 EDT Claude (Opus 5.5) lane A, semantic zoom F2 (rebuild keeps the detail sources)
 - Done: bus_stops.py and site_buildings.py refactored to `build(data_dir, cache_dir, refresh=False,
   offline=False)` (main() wraps it); `MissingCache` for offline runs without a cache. New

@@ -48,7 +48,7 @@ def tls_context():
     return context
 
 
-def overpass(query, cache, refresh=False, offline=False):
+def overpass(query, cache, refresh=False, offline=False, script="pipeline.site_buildings"):
     """Overpass's answer to `query`, cached in `cache` with the query beside it (`.query`), so a
     changed sites.json never reuses an answer for other sites. A cache from before the `.query`
     files is adopted once."""
@@ -59,9 +59,9 @@ def overpass(query, cache, refresh=False, offline=False):
         if asked.read_text() == query:
             return json.loads(cache.read_text())
         if offline:
-            raise MissingCache(f"{cache} answers other sites than sites.json now has; run `python3 -m pipeline.site_buildings --refresh` with network.")
+            raise MissingCache(f"{cache} answers other sites than sites.json now has; run `python3 -m {script} --refresh` with network.")
     if offline:
-        raise MissingCache(f"{cache} is not cached; run `python3 -m pipeline.site_buildings` once with network.")
+        raise MissingCache(f"{cache} is not cached; run `python3 -m {script}` once with network.")
     body = urllib.parse.urlencode({"data": query}).encode()
     request = urllib.request.Request(OVERPASS, data=body, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=600, context=tls_context()) as response:

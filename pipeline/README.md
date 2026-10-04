@@ -204,6 +204,7 @@ stale cache stops the rebuild with the command that fills it; it never downloads
 |---|---|---|
 | `python3 -m pipeline.bus_stops` | `bus_stops.json` `[{id, name, lat, lon}]` | GoRaleigh GTFS, https://goraleigh.org/gr_gtfs (stops.txt, boarding stops) |
 | `python3 -m pipeline.site_buildings` | `site_buildings.json` `[{id, match, osm, polygons}]` | OSM building footprints via Overpass (overpass-api.de; needs a User-Agent; `out geom`, not `out tags geom`, or relations lose their members) |
+| `python3 -m pipeline.care_homes` | `care_homes.json` `[{id, name, kind, lat, lon}]` | OSM via Overpass: `amenity=social_facility` + `social_facility=nursing_home\|assisted_living`, `amenity=nursing_home` (the tiles drop these) |
 
 Tests: `python3 -m unittest pipeline.tests.test_detail` (stdlib); `pipeline/tests/test_rebuild.py` (a rebuild keeps both
 sources in meta.json) needs `pipeline/.venv`.

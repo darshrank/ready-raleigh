@@ -3,7 +3,7 @@
 //
 // The geometry (roofs, walls, normals, wall coordinates) is built once per tile in a worker
 // (world/solids.ts, world/tile.worker.ts); BuildingLayer only uploads it and draws it. Colors,
-// the day/night mix, the zoom gate, the windows (windows.ts) and the flood's wet stains
+// the day/night mix, the zoom gate, the windows (windows.ts) and the flooded buildings' power
 // (stains.ts) are uniforms, so nothing is re-uploaded per frame.
 import { Layer, phongMaterial, picking, project32, type DefaultProps, type LayerProps, type UpdateParameters } from '@deck.gl/core';
 import { _Tileset2D as Tileset2D } from '@deck.gl/geo-layers';
@@ -15,7 +15,7 @@ import type { Solids } from './solids';
 import { sunVector } from './lights';
 import { TIER } from './quality';
 import { frame, WORLD_BEFORE } from './state';
-import { stainBindings, stainModule, stainPaint, stainProps } from './stains';
+import { stainBindings, stainModule, stainProps } from './stains';
 import { windowsModule, windowsPaint } from './windows';
 import { loadBuildings, TILE_MAX_ZOOM } from './tiles';
 
@@ -31,7 +31,6 @@ export interface BuildingPaint {
   shadowColor: Vec3;
   /** The ground shadow's strength by day (--shadow is drawn at about 25%). */
   shadowAlpha: number;
-  stain: ReturnType<typeof stainPaint>;
   windows: ReturnType<typeof windowsPaint>;
 }
 
@@ -138,7 +137,6 @@ void main(void) {
   vec3 wallColor = mix(building.wallDay, building.wallNight, building.night);
   vec3 roofColor = mix(building.roofDay, building.roofNight, building.night);
   vec3 base = mix(roofColor, wallColor, vSide);
-  float upAA = max(fwidth(vWall.y), 1e-3);
   // Meters per pixel on the wall, for the window grid's edges and its fade with distance.
   float px = max(max(fwidth(vWall.x), fwidth(vWall.y)), 1e-3);
   float glow = 0.0;
@@ -148,7 +146,6 @@ void main(void) {
     // By day the glass also takes some of the sky's light, so it reads lighter than the token.
     base = mix(base, mix(windows.glassDay, windows.glassNight, building.night), w.x * mix(0.7, 1.0, building.night));
     glow = w.x * w.y * building.night * (1.0 - stain_dark(vFloodUv, vWall.w));
-    base = stain_apply(base, vFloodUv, vWall, building.night, upAA);
   }
   vec3 lit = lighting_getLightColor(base, vCamera, vCommon, normalize(vNormal));
   // Lit windows give their own light: not shaded by the sun or the moon.
@@ -243,7 +240,7 @@ abstract class SolidsLayer<P> extends Layer<P & SolidsProps & LayerProps> {
   protected drawSets(sets: Gpu[]) {
     if (!sets.length) return;
     const model = this.model();
-    const { stain, windows, ...paint } = this.props.paint;
+    const { windows, ...paint } = this.props.paint;
     const flood = this.props.flood;
     // The flood textures, once the flood worker is done (dry land until then).
     if (this.state.stainOf !== flood) {
@@ -264,12 +261,12 @@ abstract class SolidsLayer<P> extends Layer<P & SolidsProps & LayerProps> {
     // its own: changing them rebuilds its pipeline and replaced deck.gl's blend state.
     if (TIER.shadows) {
       const gl = (this.context.device as unknown as { gl: WebGL2RenderingContext }).gl;
-      model.shaderInputs.setProps({ building: { ...building, shadow: 1 }, stain: stainProps(flood, stain), windows });
+      model.shaderInputs.setProps({ building: { ...building, shadow: 1 }, stain: stainProps(flood), windows });
       gl.depthFunc(gl.LESS);
       this.drawAll(model, sets);
       gl.depthFunc(gl.LEQUAL);
     }
-    model.shaderInputs.setProps({ building: { ...building, shadow: 0 }, stain: stainProps(flood, stain), windows });
+    model.shaderInputs.setProps({ building: { ...building, shadow: 0 }, stain: stainProps(flood), windows });
     this.drawAll(model, sets);
   }
 
@@ -439,7 +436,6 @@ export function buildingPaint(t: Tokens, walls?: { day: RGB; night: RGB }): Buil
     roofNight: unit(tint(night, rgb.bond, 0.06)),
     shadowColor: unit(rgb.shadow),
     shadowAlpha: 0.25,
-    stain: stainPaint(t),
     windows: windowsPaint(t),
   };
 }

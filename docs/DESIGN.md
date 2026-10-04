@@ -67,15 +67,14 @@ the city and the water. The "flat fills only" rule is for the instruments, not t
 
 | Token | Hex | Use |
 |---|---|---|
-| `--water-day` / `--water-day-deep` | `#6F6A4C` / `#4F4B36` | murky storm water by day (500-year band / floodway) |
-| `--water-night` / `--water-night-deep` | `#3A4A42` / `#26302C` | the same at night |
+| `--flood` / `--flood-deep` (inks above) | `#0078BF` / `#00508A` | storm water by day (500-year band / floodway), clean blue, never murky |
+| `--storm-water` / `--flood-deep` | `#2A9DEB` / `#00508A` | the same at night |
 | `--foam` | `#E9E4D2` | foam behind the advancing water, sun highlight, lightning on the water |
 | `--sky-day` / `--sky-night` | `#C9D8E6` / `#2D416B` | what the water reflects at a glancing angle |
 | `--wall-day` / `--wall-night` | `#D9D4C9` / `#2A3550` | 3D building walls (roofs a touch darker) |
 | `--glass-day` / `--glass-night` | `#5D6F80` / `#1A2236` | window panes |
 | `--window-lit` | `#FFD28A` | lit windows at night, the sun's warm key light |
 | `--shadow` | `#1B2333` (about 25%) | ground shadows |
-| `--wet-stain-day` / `--wet-stain-night` | `#8A7F63` / `#232A30` | walls that stood in the water |
 
 - **City:** every OpenFreeMap building in 3D when the camera tilts (sites + 2 km), lit by a warm
   low sun by day and a dim cool moon at night. Shelter sites stand out in the site tint only while a
@@ -84,8 +83,6 @@ the city and the water. The "flat fills only" rule is for the instruments, not t
   sun highlight by day, lightning by night; floodway deepest. Tilted, it rises (6 / 3 / 1.5 m by
   step) and drains when the storm ends, keeping its final extent. Planning keeps the faint `--flood`
   preview. Flood cities only; an earthquake or a heat wave keeps its printed ground colors.
-- **Stains:** walls that stood in the water stay dark below the highest water line, with a ragged
-  wicking edge and a tide line, after the water drains.
 - **City lights:** at night the city is thousands of glowing points: building lights by residents
   (a whiter tint of `--window-lit`, mostly dim, a few bright) and street lights every 60 m along
   the main roads (`--window-lit`), 1.5-3 px, added over the map with a faint flicker. Only in the
@@ -102,8 +99,7 @@ the city and the water. The "flat fills only" rule is for the instruments, not t
 - **Quality tiers** (`world/quality.ts`, `?quality=low|medium|high` to force): high on laptops;
   medium on phones (two noise octaves, windows fade sooner); low on small or old devices (one
   octave, no foam, window grid as its average tone, a shorter city, pixel ratio at most 1.25).
-- **Reduced motion:** the water appears per step with no creep, waves, foam or rise; stains appear
-  at their height; lights go out without the flicker; no lightning on the water; the street dashes
+- **Reduced motion:** the water appears per step with no creep, waves, foam or rise; lights go out without the flicker; no lightning on the water; the street dashes
   stop.
 - `?realism=off` keeps the MapLibre buildings and water described in "Water (flood)" (removed
   once realism passes its final check).

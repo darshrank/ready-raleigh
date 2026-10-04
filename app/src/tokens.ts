@@ -19,10 +19,6 @@ const NAMES = [
   'storm-water',
   'storm-glow',
   // The world: realistic city and storm water (3D buildings, shadows, windows, murky water).
-  'water-day',
-  'water-day-deep',
-  'water-night',
-  'water-night-deep',
   'foam',
   'sky-day',
   'sky-night',
@@ -32,8 +28,6 @@ const NAMES = [
   'glass-night',
   'window-lit',
   'shadow',
-  'wet-stain-day',
-  'wet-stain-night',
 ] as const;
 export type TokenName = (typeof NAMES)[number];
 

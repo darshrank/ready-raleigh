@@ -92,7 +92,7 @@ export function submergedLayers(runs: FeatureCollection, k: number, t: Tokens): 
       widthMinPixels: 1.6,
       widthMaxPixels: 18,
       opacity: 0.85,
-      extensions: [new FlowExtension({ day: band(rgb['water-day-deep'], rgb.shadow, 0.35), night: band(rgb['water-night-deep'], rgb.shadow, 0.3), dash: 0 })],
+      extensions: [new FlowExtension({ day: band(rgb['flood-deep'], rgb.shadow, 0.35), night: band(rgb['flood-deep'], rgb.shadow, 0.3), dash: 0 })],
     } as never),
     new PathLayer<Run>({
       ...common,

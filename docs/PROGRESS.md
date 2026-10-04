@@ -50,7 +50,8 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [~] RO The storm overview (z11-13, 55 deg) made dramatic (Claude, C), all four cities:
   - [x] O1 city lights (building + street points, one additive layer, built in the flood worker)
   - [x] O2 blackout wave per hazard (flood: water + 400 m wave; quake: snapped lines; heat: rolling)
-  - [ ] O3 flood readable from the overview (deep channel, see-through edges, 1.5 px edge line)
+  - [x] O3 flood readable from the overview (deep channel, see-through edges, 1.5 px edge line)
+  - [x] murky water and wet stains removed (user request): clean flood blues, no stains
   - [ ] O4 windows unchanged (from z15.5); four-city screenshots at 0/33/66/100%, one 1440 trace
 
 ## Phase 4: bonus challenges
@@ -255,6 +256,22 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
     remove them: DELETE FROM placements WHERE play_id IN (SELECT id FROM plays WHERE player_name =
     'Test Mayor'); then DELETE FROM plays WHERE player_name = 'Test Mayor';
 - Next exact step: a weekly board (filter on created_at) if the all-time one fills up.
+
+### 2026-10-04 03:20 EDT Claude (Opus 5.5) lane C, storm overview O3 + no murky water or stains
+- Done (one commit, both touch water.ts): water.ts overview look at z11-13 (storm only, fading to
+  the street-level look by z14.5): the extent texture's distance to the edge of every begun step
+  makes the channel deep and dark (--flood-deep x 0.7) and the edges lighter and see-through
+  (alpha 0.42 -> 0.94 over 90 m); a bright 1.5 px line (`fwidth` meters per pixel) on that edge and
+  on the advancing front (`v / fwidth(v)`), --foam by day, --storm-glow at night.
+- User request: no murky water and no wet stains. Water colors are now --flood / --flood-deep by
+  day and --storm-water / --flood-deep at night (submerged streets --flood-deep); stain_apply,
+  stain_peak and the stain colors are gone (stains.ts keeps only `stain_dark`, flooded windows
+  going out); tokens --water-day/-night(-deep) and --wet-stain-day/-night deleted; DESIGN and
+  DECISIONS updated.
+- Checks: typecheck only (user: no screenshots or other checks); the user runs it in the browser.
+- Next exact step: the user's look at the overview water; then the four-city screenshot set
+  (0/33/66/100%, Dark map, camera held at the director's overview) into docs/screenshots, one 1440
+  trace (`node app/scripts/storm-trace.mjs 1440 900`), vitest, and O4 (windows unchanged from z15.5).
 
 ### 2026-10-04 03:05 EDT Claude (Opus 5.5) lane C, storm overview O2 (blackout per hazard)
 - Done: `cityLightsData.ts` gives every light a reference: its nearest zone cell on the flood

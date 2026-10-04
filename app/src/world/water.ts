@@ -9,13 +9,18 @@
 // - Rain (R6): rings spread from a drop in every 5 m cell while the storm runs (street zoom only).
 // - Ending (R6): as the storm clears the 3D water drains, the foam and the rain stop, and the
 //   waves settle to a slow, flatter surface.
-// - Colors: step 1 the -deep water tokens, step 3 the regular ones, step 2 between; planning
+// - Colors: the flood inks, clean blue (no murky water): step 1 --flood-deep, step 3 --flood by
+//   day and --storm-water at night, step 2 between; planning
 //   keeps the faint --flood preview. Tilted, the surface rises to its depth after it arrives.
+// - Overview (O3, z11-13, where players watch the storm): the channel deep and dark, lighter and
+//   see-through toward the edges (the extent texture's distance to the edge), and a bright 1.5 px
+//   line on the edge and on the advancing front, sized in screen pixels. From z13 to z14.5 it
+//   hands over to the street-level look above.
 import { Layer, picking, project32, type DefaultProps, type LayerProps, type UpdateParameters } from '@deck.gl/core';
 import { Buffer, type Texture } from '@luma.gl/core';
 import { Model } from '@luma.gl/engine';
 import { tint, unit, type Tokens } from '../tokens';
-import { CELL_M, type FloodData } from './floodData';
+import { CELL_M, RANGE_M, type FloodData } from './floodData';
 import { NOISE_GLSL } from './glsl';
 import { sunVector } from './lights';
 import { TIER } from './quality';
@@ -52,6 +57,8 @@ layout(std140) uniform waterUniforms {
   vec3 previewDeep;
   vec3 preview;
   vec3 previewLight;
+  vec3 glowDay;
+  vec3 glowNight;
   vec3 sunDir;
   float clock;
   float time;
@@ -68,7 +75,7 @@ layout(std140) uniform waterUniforms {
 const waterModule = {
   name: 'water',
   vs: `${uniformBlock}\nuniform sampler2D water_arrival;\n`,
-  fs: `${uniformBlock}\nuniform sampler2D water_arrival;\n${NOISE_GLSL}`,
+  fs: `${uniformBlock}\nuniform sampler2D water_arrival;\nuniform sampler2D water_extent;\n${NOISE_GLSL}`,
   uniformTypes: {
     origin: 'vec2<f32>',
     cellDeg: 'vec2<f32>',
@@ -87,6 +94,8 @@ const waterModule = {
     previewDeep: 'vec3<f32>',
     preview: 'vec3<f32>',
     previewLight: 'vec3<f32>',
+    glowDay: 'vec3<f32>',
+    glowNight: 'vec3<f32>',
     sunDir: 'vec3<f32>',
     clock: 'f32',
     time: 'f32',
@@ -103,7 +112,7 @@ const waterModule = {
 /**
  * GLSL: how far the water has risen at a point, 0..1, over RISE_MS after it arrives on the storm
  * clock (`start` = its step's start, `delay` = its arrival delay). With no storm clock, or with
- * reduced motion, a step is either all there or not yet. The stains (stains.ts) share it.
+ * reduced motion, a step is either all there or not yet.
  */
 export const RISE_GLSL = /* glsl */ `\
 const float GROW_MS = ${GROW_MS.toFixed(1)};
@@ -214,6 +223,12 @@ void main(void) {
   float since = water_since(delay, k, jitter);
   float v = since / PART_MS;
   float aa = max(fwidth(v), 1e-4);
+  // Overview: meters per screen pixel and the distance to the visible water's edge, taken here in
+  // uniform control flow. The edge is the outer edge of every step that has begun (the bands of
+  // steps <= M are one body of water, so the edges between them do not count).
+  float mpp = max(length(fwidth(vMeters)) * 0.7071, 1e-3);
+  vec3 sdv = (texture(water_extent, vUv).rgb * 255.0 - 128.0) / 127.0 * ${RANGE_M.toFixed(1)};
+  float sd = water.stepP.z > 0.0 ? sdv.z : water.stepP.y > 0.0 ? sdv.y : sdv.x;
   float shown = calm ? step(0.0, v) : smoothstep(-aa, aa, v);
   if (shown <= 0.001) discard;
 
@@ -266,6 +281,23 @@ void main(void) {
   float fa = vSide > 0.5 ? 0.78 : 0.88;
   vec3 rgb = mix(pv, color, water.level);
   float a = mix(pa, fa, water.level) * shown;
+
+  // Overview (z11-13, storm only): deep and dark in the channel, lighter and see-through toward
+  // the edges, and a bright 1.5 px line on the edge and on the advancing front.
+  float ov = (1.0 - smoothstep(13.0, 14.5, water.zoom)) * water.level;
+  if (ov > 0.0) {
+    float inward = smoothstep(0.0, 90.0, -sd);
+    vec3 channel = deep * 0.7;
+    vec3 shallow = mix(reg, sky, 0.45);
+    vec3 body = mix(shallow, channel, inward);
+    float bodyA = mix(0.42, 0.94, inward) * shown;
+    float edgePx = sd >= 0.0 ? 0.0 : -sd / mpp;
+    if (!calm && water_pick(water.stepP, k) < 0.999) edgePx = min(edgePx, max(v, 0.0) / aa);
+    float line = 1.0 - smoothstep(1.0, 1.75, edgePx);
+    vec3 glow = mix(water.glowDay, water.glowNight, water.night);
+    rgb = mix(rgb, mix(body, glow, line), ov);
+    a = mix(a, max(bodyA, line * shown), ov);
+  }
   fragColor = vec4(rgb, a);
 }
 `;
@@ -273,20 +305,22 @@ void main(void) {
 /** Every color of the water, from the tokens. */
 function paint({ rgb }: Tokens) {
   return {
-    deepDay: unit(rgb['water-day-deep']),
-    deepNight: unit(rgb['water-night-deep']),
-    waterDay: unit(rgb['water-day']),
-    waterNight: unit(rgb['water-night']),
+    deepDay: unit(rgb['flood-deep']),
+    deepNight: unit(rgb['flood-deep']),
+    waterDay: unit(rgb.flood),
+    waterNight: unit(rgb['storm-water']),
     foam: unit(rgb.foam),
     skyDay: unit(rgb['sky-day']),
     skyNight: unit(rgb['sky-night']),
     previewDeep: unit(rgb['flood-deep']),
     preview: unit(rgb.flood),
     previewLight: unit(tint(rgb.flood, rgb.bond, 0.25)),
+    glowDay: unit(rgb.foam),
+    glowNight: unit(rgb['storm-glow']),
   };
 }
 
-// The flood textures, shared by the water and the buildings' stains (stains.ts). One set per
+// The flood textures, shared by the water, the flooded buildings (stains.ts) and the city lights. One set per
 // device: a new map (leaving /solo and coming back) has a new GL context.
 type FloodTextures = { arrival: Texture; extent: Texture };
 const textures = new WeakMap<object, FloodTextures>();
@@ -360,7 +394,8 @@ export class WaterLayer extends Layer<WaterProps & LayerProps> {
       vertexCount: d.indices.length,
       disableWarnings: true,
     });
-    model.setBindings({ water_arrival: floodTextures(device, d).arrival });
+    const t = floodTextures(device, d);
+    model.setBindings({ water_arrival: t.arrival, water_extent: t.extent });
     this.setState({ model, buffers: [...Object.values(attributes), indexBuffer], paint: paint(this.props.tokens) });
   }
 

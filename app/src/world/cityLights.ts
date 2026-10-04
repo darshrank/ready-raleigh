@@ -253,7 +253,7 @@ export class CityLightsLayer extends Layer<CityLightsProps & LayerProps> {
       vertexCount: d.count,
       disableWarnings: true,
     });
-    // The hazard's arrival textures (shared with the water and stains), or dry land without them.
+    // The hazard's arrival textures (shared with the water and the buildings), or dry land without them.
     const flood = this.props.flood;
     const t = flood ? floodTextures(device, flood) : null;
     const dry = dryTexture(device);

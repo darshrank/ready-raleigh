@@ -40,7 +40,7 @@ export class World {
   private buildings: CityLayer | null = null;
   private sites: BuildingLayer[] = [];
   private water: Layer | null = null;
-  /** The flood worker's data: the water, and the buildings' wet stains. */
+  /** The flood worker's data: the water, and the flooded buildings' power (stains.ts). */
   private flood: FloodData | null = null;
   private submerged: Layer[] = [];
   /** The city's lights at night (cityLights.ts). */
@@ -93,7 +93,7 @@ export class World {
   setWater(data: FloodData) {
     this.flood = data;
     this.water = new WaterLayer({ id: 'world-water', flood: data, tokens: this.t, ...{ beforeId: WORLD_BEFORE } });
-    // Walls that stand in the water keep a wet stain (world/stains.ts).
+    // Buildings the water reaches lose their power (world/stains.ts).
     this.buildings = this.buildings?.clone({ flood: data }) ?? null;
     this.sites = this.sites.map((l) => l.clone({ flood: data }));
     this.emit();

@@ -40,7 +40,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
   - [x] R1 deck.gl 3D city, world tokens, piece outlines
   - [x] R4 water surface (deck.gl WaterLayer, arrival textures, uniforms only)
   - [x] R5 wet stains (3D water rise landed in R4)
-  - [ ] rebase checkpoint after R5 (Step 0 rules, pytest from pipeline/.venv)
+  - [~] rebase checkpoint after R5: stopped on code conflicts with group/main 6434b22 (user decision)
   - [ ] R3 windows (+ flooded windows go dark)
   - [ ] R7 tiers, reduced motion, docs (then remove the kill switch)
   - [ ] R2 shadows
@@ -248,6 +248,21 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
     remove them: DELETE FROM placements WHERE play_id IN (SELECT id FROM plays WHERE player_name =
     'Test Mayor'); then DELETE FROM plays WHERE player_name = 'Test Mayor';
 - Next exact step: a weekly board (filter on created_at) if the all-time one fills up.
+
+### 2026-10-04 00:30 EDT Claude (Opus 5.5) lane C, realism rebase checkpoint after R5 (stopped: code conflicts)
+- `git fetch group`: group/main moved 1eba02e -> 6434b22 (9 commits: bus demand report, existing
+  shelters/stops baseline, four cities + globe landing + news desk merge, Gemini harness, news
+  anchor fix). Local `main` fast-forwarded to 6434b22. sakhi/realism is unchanged at its R5 commit:
+  no rebase was started (previewed with `git merge-tree --write-tree main sakhi/realism`).
+- Code conflicts (hunks / lines in conflict): basemap.ts 7 / 110, useFloodMap.ts 2 / 34,
+  styles.css 1 / 27, Hud.tsx 2 / 22, Weather.tsx 2 / 21, usePlanning.ts 1 / 11, flood.ts 1 / 9,
+  MapView.tsx 1 / 5, Solo.tsx 1 / 5; plus docs (DECISIONS, PROGRESS). Per the Step 0 rules the
+  rebase stops here for the user. The 16 branch commits (semantic zoom S1-F3, R0, R1, R4, R5)
+  are not upstream.
+- Python: `pipeline/.venv/bin/python -m unittest discover -s pipeline/tests`: 33 tests OK
+  (pytest is not installed in the venv or in requirements.txt; the README's command is unittest).
+- Next exact step: the user decides how to resolve the conflicts (or to continue R3 on the current
+  base and rebase later); then R3 windows + flooded windows going dark.
 
 ### 2026-10-04 00:28 EDT Claude (Opus 5.5) lane C, realism R5 (wet stains on walls)
 - Scope (user decision): R5 = wet stains on walls below the water line that stay after the water

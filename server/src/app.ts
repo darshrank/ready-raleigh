@@ -16,6 +16,7 @@ import { registerNews } from './news';
 import { type CivicRecord, civicRecord } from './solana/civic';
 import { registerCivic } from './solana/routes';
 import { civicSignals } from './solana/signals';
+import { decisionWords } from './solana/decisions';
 import { MemoryCivicStore, type Signal } from './solana/store';
 import { registerVoice, voiceReady } from './voice';
 
@@ -44,6 +45,7 @@ export function buildServer({ store = new MemoryStore(), data = () => null, live
     store: new MemoryCivicStore(),
     chain: null,
     dataBuild: () => data()?.bundle.meta?.buildDate ?? 'unknown',
+    describe: (play) => decisionWords(play.plan.placements, data()?.bundle ?? null),
     log: { info: (m) => app.log.info(m), warn: (o, m) => app.log.warn(o, m) },
   });
   registerCivic(app, record);

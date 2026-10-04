@@ -45,16 +45,31 @@ describe('civic record (completeness layer)', () => {
     const { r } = make(chain);
     for (const n of [1, 2, 3]) await r.recordPlay(play(n));
     const anchor = await r.flush();
-    expect(anchor).toMatchObject({ status: 'confirmed', count: 3, signature: 'sig1' });
-    expect(memos).toEqual([`ready-raleigh:v1:plays:raleigh:${anchor!.root}:3:2026-10-03`]);
+    expect(anchor).toMatchObject({ status: 'confirmed', count: 3 });
+    expect(memos.filter((m) => m.includes(':plays:'))).toEqual([`ready-raleigh:v1:plays:raleigh:${anchor!.root}:3:2026-10-03`]);
     for (const n of [1, 2, 3]) {
       const view = (await r.proof(`play-${n}`))!;
       expect(JSON.stringify(view.play.input)).not.toMatch(/Ana|player-/);
       expect(await playFingerprint(view.play.input)).toBe(view.play.fingerprint);
       expect(await verifyProof(view.play.fingerprint, view.play.proof!, view.anchor!.root)).toBe(true);
-      expect(view.anchor!.explorerUrl).toBe('https://explorer.solana.com/tx/sig1?cluster=devnet');
+      expect(view.anchor!.explorerUrl).toBe(`https://explorer.solana.com/tx/${anchor!.signature}?cluster=devnet`);
     }
     expect(await r.flush()).toBeNull(); // nothing left to anchor
+  });
+
+  it('writes each play\'s decisions in words in its own memo, linked from its proof', async () => {
+    const { chain, memos } = fakeChain();
+    const store = new MemoryCivicStore();
+    const r = civicRecord({ store, chain, dataBuild: () => '2026-10-03', log, describe: () => ['Shelter: Enloe High School (Five Points)', 'Protect: Capital Boulevard'] });
+    records.push(r);
+    const play1 = await r.recordPlay(play(1));
+    await r.memosSent();
+    await r.flush();
+    expect(memos[0]).toBe(`ready-raleigh:v1:play:raleigh:flood:SOLO:score=41:${play1.fingerprint} | Shelter: Enloe High School (Five Points); Protect: Capital Boulevard`);
+    const saved = (await store.play('play-1'))!;
+    expect(saved.memo).toMatchObject({ status: 'confirmed', signature: 'sig1' });
+    expect(saved.proof).not.toBeNull(); // the batch kept the memo, and the memo kept the batch
+    expect(JSON.stringify(memos)).not.toMatch(/Ana|player-/);
   });
 
   it('keeps plays for the next batch when the transaction fails', async () => {

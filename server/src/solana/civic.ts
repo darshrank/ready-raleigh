@@ -3,7 +3,7 @@
 // one Memo transaction carrying the Merkle root; each play keeps its proof. Fail soft: nothing here
 // ever blocks a game, and a failed transaction leaves the plays for the next batch.
 import { randomUUID } from 'node:crypto';
-import { merkleTree, playFingerprint, playsMemo } from '@shared';
+import { merkleTree, playFingerprint, playMemo, playsMemo } from '@shared';
 import type { PlayRecord } from '../db/store';
 import { type Chain, explorerTx } from './chain';
 import type { Anchor, CivicStore, PlayProof } from './store';
@@ -26,6 +26,8 @@ export interface CivicOptions {
   log: CivicLog;
   /** How often waiting solo plays are anchored. */
   batchMs?: number;
+  /** The play's decisions in words, for its own memo (decisions.ts). */
+  describe?: (record: PlayRecord) => string[];
 }
 
 export interface ProofView {
@@ -35,9 +37,29 @@ export interface ProofView {
 
 export const withExplorer = (a: Anchor) => ({ ...a, explorerUrl: a.signature ? explorerTx(a.signature) : null });
 
-export function civicRecord({ store, chain, dataBuild, log, batchMs = 5 * 60_000 }: CivicOptions) {
+export function civicRecord({ store, chain, dataBuild, log, batchMs = 5 * 60_000, describe }: CivicOptions) {
   let flushing: Promise<Anchor | null> = Promise.resolve(null);
   const listeners: ((record: PlayRecord, play: PlayProof) => void)[] = [];
+  let sending: Promise<unknown> = Promise.resolve();
+
+  /** Writes a play's decisions to Solana in its own memo. One at a time; never throws. */
+  function sendPlayMemo(play: PlayProof, record: PlayRecord): Promise<unknown> {
+    if (!chain) return Promise.resolve();
+    const text = playMemo(play.input, play.fingerprint, describe?.(record) ?? []);
+    sending = sending.then(async () => {
+      let memo: NonNullable<PlayProof['memo']>;
+      try {
+        memo = { text, status: 'confirmed', ...(await chain.memo(text)) };
+      } catch (err) {
+        memo = { text, status: 'failed', signature: null, slot: null, error: (err as Error).message.slice(0, 200) };
+        log.warn({ err: memo.error }, `civic: play ${play.playId.slice(0, 8)} decisions not written to Solana`);
+      }
+      // Re-read: the batch may have added the proof meanwhile.
+      const latest = (await store.play(play.playId)) ?? play;
+      await store.savePlay({ ...latest, memo });
+    }).catch((err) => log.warn({ err }, 'civic: play memo failed'));
+    return sending;
+  }
 
   /** Fingerprints a stored play. The anchoring comes later (flush). */
   async function recordPlay(record: PlayRecord): Promise<PlayProof> {
@@ -53,6 +75,7 @@ export function civicRecord({ store, chain, dataBuild, log, batchMs = 5 * 60_000
     };
     const play: PlayProof = { playId: record.id, playerId: record.plan.playerId, input, fingerprint: await playFingerprint(input), anchorId: null, proof: null };
     await store.savePlay(play);
+    void sendPlayMemo(play, record);
     for (const fn of listeners) fn(record, play);
     return play;
   }
@@ -94,7 +117,8 @@ export function civicRecord({ store, chain, dataBuild, log, batchMs = 5 * 60_000
       return anchor;
     }
     await store.saveAnchor(anchor);
-    await Promise.all(batch.map((p, i) => store.savePlay({ ...p, anchorId: anchor.id, proof: proofs[i]! })));
+    // Re-read each play: its own memo may have landed since the batch was read.
+    await Promise.all(batch.map(async (p, i) => store.savePlay({ ...((await store.play(p.playId)) ?? p), anchorId: anchor.id, proof: proofs[i]! })));
     log.info(`civic: anchored ${batch.length} plays on Solana ${explorerTx(anchor.signature!)}`);
     return anchor;
   }
@@ -128,6 +152,8 @@ export function civicRecord({ store, chain, dataBuild, log, batchMs = 5 * 60_000
     anchorMemo,
     flush,
     proof,
+    /** Resolves when every play memo queued so far is written (tests, shutdown). */
+    memosSent: () => sending,
     close: () => clearInterval(timer),
   };
 }

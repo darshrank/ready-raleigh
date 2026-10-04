@@ -35,3 +35,16 @@ describe('civic proofs', () => {
     expect(await merkleTree([leaf])).toEqual({ root: leaf, proofs: [[]] });
   });
 });
+
+describe('play memo', () => {
+  it('writes decisions in words after the fingerprint and stays under the memo limit', async () => {
+    const { playMemo, MEMO_MAX_BYTES } = await import('./proof');
+    const fp = 'a'.repeat(64);
+    const memo = playMemo({ city: 'raleigh', mode: 'flood', roomCode: 'ABCD', score: 58.34 }, fp, ['Shelter: Enloe High School (Five Points)', 'Protect: Capital Boulevard']);
+    expect(memo).toBe(`ready-raleigh:v1:play:raleigh:flood:ABCD:score=58.3:${fp} | Shelter: Enloe High School (Five Points); Protect: Capital Boulevard`);
+    const long = playMemo({ city: 'raleigh', mode: 'flood', roomCode: 'ABCD', score: 1 }, fp, Array.from({ length: 30 }, (_, i) => `Bus pickup: a rather long neighborhood name number ${i}`));
+    expect(new TextEncoder().encode(long).length).toBeLessThanOrEqual(MEMO_MAX_BYTES);
+    expect(long).toMatch(/\+\d+ more$/);
+    expect(playMemo({ city: 'raleigh', mode: 'flood', roomCode: 'SOLO', score: 0 }, fp, [])).toMatch(/no pieces placed$/);
+  });
+});

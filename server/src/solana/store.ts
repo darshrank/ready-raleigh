@@ -29,6 +29,8 @@ export interface PlayProof {
   fingerprint: string;
   anchorId: string | null;
   proof: MerkleProof | null;
+  /** The play's own memo: its decisions in words, on Solana (null until sent, or with the chain off). */
+  memo?: { text: string; status: 'confirmed' | 'failed'; signature: string | null; slot: number | null; error?: string } | null;
 }
 
 export type SignalType = 'new_best' | 'consensus' | 'blind_spot';

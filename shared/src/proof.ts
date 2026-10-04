@@ -97,3 +97,27 @@ export const playsMemo = (city: string, root: string, count: number, dataBuild: 
 /** The memo written when a civic signal changes state. */
 export const signalMemo = (city: string, type: string, spot: string, state: string, evidenceRoot: string) =>
   `ready-raleigh:v1:signal:${city}:${type}:${spot}:${state}:${evidenceRoot}`;
+
+/** The Memo program's limit is 566 bytes; stay under it with room to spare. */
+export const MEMO_MAX_BYTES = 560;
+const bytes = (s: string) => new TextEncoder().encode(s).length;
+
+/**
+ * One play's own memo: its decisions in words, readable in Solana Explorer, plus the fingerprint
+ * that ties them to the play. No names of players.
+ *   ready-raleigh:v1:play:raleigh:flood:ABCD:score=58.3:<fingerprint> | Shelter: Enloe High School (Five Points); Protect: Capital Boulevard
+ * Decisions that do not fit are counted ("+2 more"); the fingerprint always fits.
+ */
+export function playMemo(input: Pick<PlayFingerprintInput, 'city' | 'mode' | 'roomCode' | 'score'>, fingerprint: string, decisions: string[]): string {
+  const head = `ready-raleigh:v1:play:${input.city}:${input.mode}:${input.roomCode}:score=${Math.round(input.score * 10) / 10}:${fingerprint}`;
+  if (decisions.length === 0) return `${head} | no pieces placed`;
+  let memo = `${head} |`;
+  for (const [i, d] of decisions.entries()) {
+    const rest = decisions.length - i - 1;
+    const next = `${memo}${i ? ';' : ''} ${d}`;
+    const tail = rest ? `; +${rest} more` : '';
+    if (bytes(next + tail) > MEMO_MAX_BYTES) return `${memo}${i ? ';' : ''} +${decisions.length - i} more`;
+    memo = next;
+  }
+  return memo;
+}

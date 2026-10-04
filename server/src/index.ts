@@ -8,6 +8,7 @@ import { startLiveFeeds, studyArea } from './live/job';
 import { type LiveStore, MemoryLiveStore, TigerLiveStore, failSoftLive } from './live/store';
 import { devnetChain, loadAuthority } from './solana/chain';
 import { civicRecord } from './solana/civic';
+import { decisionWords } from './solana/decisions';
 import { coreMinter, umiFor } from './cards/mint';
 import { type CivicStore, MemoryCivicStore, TigerCivicStore } from './solana/store';
 
@@ -50,6 +51,8 @@ const civic = civicRecord({
   store: civicStore,
   chain,
   dataBuild: () => game?.bundle.meta?.buildDate ?? 'unknown',
+  // Each play's decisions go on Solana in words, in their own memo.
+  describe: (play) => decisionWords(play.plan.placements, game?.bundle ?? null),
   log: { info: (m) => app.log.info(m), warn: (o, m) => app.log.warn(o, m) },
 });
 // Cards are minted into the soulbound collection (npm run sol:collection -w server creates it).

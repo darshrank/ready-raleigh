@@ -1,6 +1,7 @@
 // The planning HUD (DESIGN.md "Layouts", planning): plates that float on the full-bleed map.
 // Top center: budget, timer, residents covered. Bottom: the tray of chunky pieces, the placed
-// pieces, Start the storm, and the status line above them. Top right: Tilt, Layers, Sound.
+// pieces, Start the storm, and the status line above them. Top right: Tilt, Satellite, Light or
+// Dark, Layers, Sound.
 import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { BUDGET } from '@shared/config';
 import type { Placement, ScoreResult } from '@shared/types';
@@ -11,6 +12,7 @@ import { targetOf, usePlan } from '../plan/store';
 import { targetLabel } from '../plan/targets';
 import { pieceGain, type Preview } from '../plan/usePlanScore';
 import { useMapUi } from '../store';
+import { useTheme } from '../theme';
 import { tokens } from '../tokens';
 import { clock, money } from './format';
 import { FacilitiesControl, Legend, PeopleLayerControl } from './MapRail';
@@ -359,7 +361,53 @@ export function SoundButton() {
   );
 }
 
-/** Top right: Tilt, Layers (the map's toggles, the legend, the keys) and Sound. */
+/** Light or Dark map (theme.ts). The sun and moon say which one is on. */
+export function ThemeButton() {
+  const dark = useTheme((s) => s.theme === 'dark');
+  const toggle = useTheme((s) => s.toggle);
+  return (
+    <MapButton on={dark} label={dark ? 'Dark map. Switch to light.' : 'Light map. Switch to dark.'} onClick={toggle}>
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden className="fill-current stroke-current">
+        {dark ? (
+          <path d="M12.5 2.5a7.5 7.5 0 1 0 5 12 6.5 6.5 0 0 1-5-12z" strokeWidth="0" />
+        ) : (
+          <>
+            <circle cx="10" cy="10" r="3.6" strokeWidth="0" />
+            <path d="M10 1.5v2.2M10 16.3v2.2M1.5 10h2.2M16.3 10h2.2M4 4l1.6 1.6M14.4 14.4 16 16M4 16l1.6-1.6M14.4 5.6 16 4" fill="none" strokeWidth="1.8" strokeLinecap="round" />
+          </>
+        )}
+      </svg>
+    </MapButton>
+  );
+}
+
+/** Satellite imagery under the streets, names and water instead of the printed land. */
+export function SatelliteButton() {
+  const on = useMapUi((s) => s.satellite);
+  const set = useMapUi((s) => s.setSatellite);
+  return (
+    <MapButton on={on} label={on ? 'Satellite map. Switch to the printed map.' : 'Printed map. Switch to satellite.'} onClick={() => set(!on)}>
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden className="fill-none stroke-current" strokeWidth="1.8" strokeLinejoin="round">
+        <rect x="7.2" y="7.2" width="5.6" height="5.6" transform="rotate(45 10 10)" />
+        <path d="M5.8 5.8 2.5 2.5M14.2 14.2l3.3 3.3M2 6.5 6.5 2M13.5 18 18 13.5" strokeLinecap="round" />
+        <path d="M13 3.5a4.5 4.5 0 0 1 3.5 3.5" strokeLinecap="round" />
+      </svg>
+      <span className="hidden lg:inline">Satellite</span>
+    </MapButton>
+  );
+}
+
+/** The two looks of the map, together wherever the map has controls. */
+export function MapLookButtons() {
+  return (
+    <>
+      <SatelliteButton />
+      <ThemeButton />
+    </>
+  );
+}
+
+/** Top right: Tilt, Satellite, Light or Dark, Layers (toggles, the legend, the keys) and Sound. */
 export function MapControls({ phase }: { phase: 'planning' | 'storm' | 'results' }) {
   const tilt = useMapUi((s) => s.tilt);
   const setTilt = useMapUi((s) => s.setTilt);
@@ -378,6 +426,7 @@ export function MapControls({ phase }: { phase: 'planning' | 'storm' | 'results'
             3D
           </MapButton>
         )}
+        <MapLookButtons />
         <MapButton on={open} label="Layers and legend" onClick={() => setOpen(!open)}>
           Layers
         </MapButton>

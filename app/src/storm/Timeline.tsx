@@ -1,14 +1,15 @@
-// The storm timeline: the clock running from dusk through the night to dawn, a pin for every flood
-// step and every place the news helicopter goes, and a playhead. Like the counters, it animates
-// from the storm clock with its own rAF loop and writes to the DOM directly.
+// The storm timeline: the city's own clock (story.ts), its day, dusk, night and dawn as bands, a
+// pin for every step and every place the news helicopter goes, and a playhead. Like the counters,
+// it animates from the storm clock with its own rAF loop and writes to the DOM directly.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FINAL_FLOOD_STEP } from '@shared/config';
 import { currentStory } from '../story';
 import { PLATE } from '../ui/Hud';
-import { clockLabel, LIGHT_BANDS, lightAt, stormHour, type Light } from './clock';
+import { clockLabel, lightAt, lightBands, stormHour, type Light } from './clock';
 import { STORM_MS, stepStart, type Storm } from './sim';
 
-const BAND_CLASS: Record<Light, string> = { dusk: 'bg-signal/45', night: 'bg-storm-land', dawn: 'bg-signal/45' };
+/** Flat sky inks: a pale day, gold at dusk and dawn, storm blue at night. */
+const BAND_CLASS: Record<Light, string> = { day: 'bg-flood/25', dusk: 'bg-signal/60', night: 'bg-storm-land', dawn: 'bg-signal/60' };
 
 export interface StormPin {
   at: number;
@@ -21,16 +22,17 @@ export function stormPins(storm: Storm): StormPin[] {
   const steps = currentStory().steps;
   for (let k = 1; k <= FINAL_FLOOD_STEP; k++) pins.push({ at: stepStart(k), label: steps[k] ?? `Step ${k}`, kind: 'step' });
   for (const e of storm.events) pins.push({ at: e.hold, label: e.label, kind: 'event' });
-  pins.push({ at: STORM_MS, label: 'The sky clears', kind: 'clear' });
+  pins.push({ at: STORM_MS, label: currentStory().passed, kind: 'clear' });
   return pins.sort((a, b) => a.at - b.at);
 }
 
 export function StormTimeline({ storm, stormAt }: { storm: Storm; stormAt: number }) {
   const pins = useMemo(() => stormPins(storm), [storm]);
+  const bands = useMemo(() => lightBands(), []);
   const headRef = useRef<HTMLDivElement>(null);
   const clockRef = useRef<HTMLSpanElement>(null);
   const [latest, setLatest] = useState<StormPin | null>(null);
-  const [light, setLight] = useState<Light>('dusk');
+  const [light, setLight] = useState<Light>(() => lightAt(stormHour(0)));
 
   useEffect(() => {
     let raf = 0;
@@ -67,12 +69,12 @@ export function StormTimeline({ storm, stormAt }: { storm: Storm; stormAt: numbe
         <span ref={clockRef} className="tabular font-display text-24 leading-none font-extrabold whitespace-nowrap">
           {clockLabel(stormHour(0))}
         </span>
-        <span className="min-w-0 flex-1 truncate text-right text-15 font-semibold">{latest?.label ?? 'The storm arrives'}</span>
+        <span className="min-w-0 flex-1 truncate text-right text-15 font-semibold">{latest?.label ?? currentStory().band[0]}</span>
       </div>
       <div className="relative mt-2 h-4">
         <div className="absolute inset-0 flex overflow-hidden border-(length:--rule) border-ink">
-          {LIGHT_BANDS.map((b) => (
-            <div key={b.light} className={BAND_CLASS[b.light]} style={{ width: `${(b.to - b.from) * 100}%` }} />
+          {bands.map((b) => (
+            <div key={b.from} className={BAND_CLASS[b.light]} style={{ width: `${(b.to - b.from) * 100}%` }} />
           ))}
         </div>
         {pins.map((p) => (
@@ -96,6 +98,13 @@ function SkyIcon({ light }: { light: Light }) {
     return (
       <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden className="shrink-0">
         <path d="M14 3a8 8 0 1 0 5 13A7 7 0 0 1 14 3z" className="fill-ink" />
+      </svg>
+    );
+  if (light === 'day')
+    return (
+      <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden className="shrink-0 stroke-ink" strokeWidth="2" strokeLinecap="round">
+        <circle cx="11" cy="11" r="4.5" className="fill-signal" />
+        <path d="M11 1.5v2.5M11 18v2.5M1.5 11H4M18 11h2.5M4.3 4.3l1.8 1.8M15.9 15.9l1.8 1.8M4.3 17.7l1.8-1.8M15.9 6.1l1.8-1.8" />
       </svg>
     );
   return (

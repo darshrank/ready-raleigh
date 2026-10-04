@@ -21,7 +21,7 @@ export function MapScreen({ title, rail }: { title: string; rail: (data: ReturnT
         <header className="flex items-baseline justify-between gap-3">
           <h1 className="font-display text-24 font-extrabold lg:text-32">{title}</h1>
           <Link to="/" className="text-13 underline">
-            Ready Raleigh
+            Mayday Mayor
           </Link>
         </header>
         {state.error ? (

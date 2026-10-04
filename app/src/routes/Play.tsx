@@ -46,7 +46,7 @@ export function Play({ code }: { code: string }) {
       <div className="mx-auto flex max-w-xl flex-col gap-4">
         <header className={PLATE + ' flex items-baseline justify-between px-4 py-3'}>
           <Link to="/" className="font-display text-24 font-extrabold">
-            Ready Raleigh
+            Mayday Mayor
           </Link>
           <span className="tabular font-display text-24 font-extrabold tracking-widest">{code}</span>
         </header>

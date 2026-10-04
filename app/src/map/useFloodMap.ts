@@ -9,8 +9,9 @@ import { HOSPITAL_LABEL_ZOOM, cellsLayer, hoodLayer, hospitalLayers, sitesLayer 
 /**
  * Layers, framing points and click handling for the flood map, shared by every route that shows it.
  * `layers` is the full stack; routes that add their own layers (the planning phase) take the parts.
+ * `night` names hospitals in the night label colors (the Dark map).
  */
-export function useFloodMap(data: MapData | null, { targetingSites = false } = {}) {
+export function useFloodMap(data: MapData | null, { targetingSites = false, night = false } = {}) {
   const metric = useMapUi((s) => s.metric);
   const showPeople = useMapUi((s) => s.showPeople);
   const showFacilities = useMapUi((s) => s.showFacilities);
@@ -26,8 +27,8 @@ export function useFloodMap(data: MapData | null, { targetingSites = false } = {
     [data, showFacilities, targetingSites],
   );
   const hospitals = useMemo(
-    () => hospitalLayers(data?.hospitals ?? [], showFacilities, labelZoom ? HOSPITAL_LABEL_ZOOM : 0),
-    [data, showFacilities, labelZoom],
+    () => hospitalLayers(data?.hospitals ?? [], showFacilities, labelZoom ? HOSPITAL_LABEL_ZOOM : 0, night),
+    [data, showFacilities, labelZoom, night],
   );
 
   // Order: invisible pick target / people fill, selected neighborhood. The water is part of the

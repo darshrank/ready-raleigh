@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Window height, for screens that must fit without scrolling (the title): `tall` keeps the 120 px
+   display type, `short` (laptops with toolbars, phones) steps down a size. */
+@custom-variant tall (@media (min-height: 900px));
+@custom-variant short (@media (max-height: 699px));
+
 /* Design tokens from docs/DESIGN.md. Defined once here; Tailwind reads them through
    @theme inline below, and deck.gl / MapLibre read them at runtime (src/tokens.ts). */
 :root {
@@ -20,8 +25,9 @@
   --storm-water: #2a9deb;
   --storm-glow: #7ccbff;
 
-  --font-display: "Big Shoulders Display", "Arial Narrow", sans-serif;
-  --font-body: "Public Sans", system-ui, sans-serif;
+  /* Noto Sans Devanagari sets Bharat News' Hindi; Latin names inside it keep the first face. */
+  --font-display: "Big Shoulders Display", "Noto Sans Devanagari", "Arial Narrow", sans-serif;
+  --font-body: "Public Sans", "Noto Sans Devanagari", system-ui, sans-serif;
 
   /* Outline weight for pieces, panels and rules. */
   --rule: 2.5px;

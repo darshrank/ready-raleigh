@@ -65,31 +65,49 @@ export interface Clip {
   ended: Promise<void>;
 }
 
-/** Play encoded speech (mp3) through the game's audio, so the mute toggle applies to it too. */
-export async function playClip(data: ArrayBuffer): Promise<Clip | null> {
+/** Decoded speech, ready to start: its length is known before it plays (the news fits its slot). */
+export interface LoadedClip {
+  /** Seconds. */
+  duration: number;
+  play: () => Clip;
+}
+
+/** Decode encoded speech (mp3) for the game's audio, so the mute toggle applies to it too. */
+export async function loadClip(data: ArrayBuffer): Promise<LoadedClip | null> {
   const a = audio();
   if (!a) return null;
   const { c, out } = a;
   const buffer = await c.decodeAudioData(data.slice(0));
-  const src = c.createBufferSource();
-  src.buffer = buffer;
-  const analyser = c.createAnalyser();
-  analyser.fftSize = 512;
-  src.connect(analyser).connect(out);
-  const ended = new Promise<void>((resolve) => (src.onended = () => resolve()));
-  src.start();
   return {
-    stop: () => {
-      try {
-        src.stop();
-      } catch {
-        // already stopped
-      }
-    },
     duration: buffer.duration,
-    analyser,
-    ended,
+    play: () => {
+      const src = c.createBufferSource();
+      src.buffer = buffer;
+      const analyser = c.createAnalyser();
+      analyser.fftSize = 512;
+      src.connect(analyser).connect(out);
+      const ended = new Promise<void>((resolve) => (src.onended = () => resolve()));
+      src.start();
+      return {
+        stop: () => {
+          try {
+            src.stop();
+          } catch {
+            // already stopped
+          }
+        },
+        duration: buffer.duration,
+        analyser,
+        ended,
+      };
+    },
   };
+}
+
+/** Play encoded speech (mp3) through the game's audio at once. */
+export async function playClip(data: ArrayBuffer): Promise<Clip | null> {
+  const clip = await loadClip(data);
+  return clip ? clip.play() : null;
 }
 
 function noiseBuffer(c: AudioContext): AudioBuffer {

@@ -3,8 +3,21 @@
 // per page, chosen by ?city= (Raleigh by default).
 import { BUDGET, PLANNING_SECONDS } from '@shared/config';
 import { cityById, type CameraStop, type CityId } from './cities';
+import type { Lang } from './news';
 
 export type Hazard = 'flood' | 'quake' | 'heat';
+
+/**
+ * The storm's clock. Storm time maps linearly from `start` to `end` (hours from midnight of the
+ * first day, so 33 is 9 AM the next day). Sunrise and sunset are local, early October.
+ */
+export interface StormClock {
+  days: [string, string];
+  start: number;
+  end: number;
+  sunrise: number;
+  sunset: number;
+}
 
 export interface BriefingLine {
   text: string;
@@ -28,14 +41,16 @@ export interface Story {
   /** The broadcast band before the first step, and each step's headline. */
   band: string[];
   headline: Record<number, string>;
-  /** The news anchor's first line. */
-  station: string;
-  alert: string;
-  /** A road the step closes: the LIVE caption, and how the anchor says it. */
+  /** The news anchor's first line, on each channel (news.ts). */
+  alert: Record<Lang, string>;
+  /** When the disaster happens: the storm timeline, the news clock and the map's daylight. */
+  clock: StormClock;
+  /** A road the step closes, for the LIVE caption (the anchor's words are in news.ts). */
   road: (name: string) => string;
-  roadNews: (name: string) => string;
-  /** No road closes this step: the neighborhood the disaster reaches with the most people. */
-  area: (hood: string) => string;
+  /** No road closes at `step`: the neighborhood the disaster reaches with the most people. */
+  area: (hood: string, step: number) => string;
+  /** The band's line for the neighborhoods a step reaches: "Water in Five Points, Glenwood". */
+  reaches: (hoods: string, step: number) => string;
   /** "Start the storm", "The storm has passed", "the residents the water put at risk". */
   start: string;
   passed: string;
@@ -72,11 +87,15 @@ const STORIES: Record<CityId, Story> = {
     verb: 'floods',
     band: ['Flood warning for Raleigh', 'Heavy rain over the creeks', 'Stay off flooded roads'],
     headline: { 1: 'Creeks leave their banks', 2: 'Water reaches the 100-year flood line', 3: 'Water reaches the 500-year flood line' },
-    station: 'Ready Raleigh News',
-    alert: 'Ready Raleigh News with an emergency alert. Flash flooding has begun along the creeks.',
+    alert: {
+      en: 'Breaking news from Raleigh. Flash flooding has begun along the creeks.',
+      hi: 'रॉली से बड़ी ख़बर। शहर के नदी-नालों में अचानक बाढ़ आ गई है।',
+    },
+    // Friday afternoon rain into the night; the water peaks before dawn, Saturday morning clears.
+    clock: { days: ['Fri', 'Sat'], start: 15, end: 33, sunrise: 7.2, sunset: 19 },
     road: (r) => `${r} goes under`,
-    roadNews: (r) => `${r} is under water`,
     area: (h) => `Water reaches ${h}`,
+    reaches: (h) => `Water in ${h}`,
     start: 'Start the storm',
     passed: 'The storm has passed',
     cause: 'the water',
@@ -101,11 +120,15 @@ const STORIES: Record<CityId, Story> = {
     verb: 'floods',
     band: ['Hurricane warning for Miami', 'Storm surge on Biscayne Bay', 'Stay off flooded roads'],
     headline: { 1: 'Storm surge reaches the waterfront', 2: 'Water reaches the 100-year flood line', 3: 'Water reaches the 500-year flood line' },
-    station: 'Ready Miami News',
-    alert: 'Ready Miami News with an emergency alert. Storm surge is coming ashore from Biscayne Bay.',
+    alert: {
+      en: 'Breaking news from Miami. Storm surge is coming ashore from Biscayne Bay.',
+      hi: 'मियामी से बड़ी ख़बर। बिस्केन बे से तूफ़ानी लहरें शहर में घुस रही हैं।',
+    },
+    // The surge arrives Sunday afternoon, landfall comes at nightfall, Monday morning clears.
+    clock: { days: ['Sun', 'Mon'], start: 12, end: 32, sunrise: 7.3, sunset: 19.1 },
     road: (r) => `${r} goes under`,
-    roadNews: (r) => `${r} is under water`,
     area: (h) => `Water reaches ${h}`,
+    reaches: (h) => `Water in ${h}`,
     start: 'Start the storm',
     passed: 'The storm has passed',
     cause: 'the water',
@@ -130,11 +153,15 @@ const STORIES: Record<CityId, Story> = {
     verb: 'fails',
     band: ['Earthquake alert for San Francisco', 'Violent shaking citywide', 'Stay off damaged roads'],
     headline: { 1: 'Filled land fails on the bay shore', 2: 'Liquefaction spreads across the flats', 3: 'An aftershock hits the soft ground' },
-    station: 'Ready San Francisco News',
-    alert: 'Ready San Francisco News with an emergency alert. A magnitude 7.8 earthquake has struck on the San Andreas Fault.',
+    alert: {
+      en: 'Breaking news. A magnitude 7.8 earthquake has struck San Francisco.',
+      hi: 'सैन फ़्रांसिस्को से बड़ी ख़बर। 7.8 तीव्रता का भूकंप आया है।',
+    },
+    // The quake strikes in the Tuesday morning rush; the aftershock comes as the day ends.
+    clock: { days: ['Tue', 'Wed'], start: 7.67, end: 22.67, sunrise: 7.15, sunset: 18.85 },
     road: (r) => `${r} buckles`,
-    roadNews: (r) => `${r} has buckled and is closed`,
     area: (h) => `The ground fails in ${h}`,
+    reaches: (h) => `Ground failing in ${h}`,
     start: 'Start the quake',
     passed: 'The shaking has stopped',
     cause: 'the quake',
@@ -159,11 +186,15 @@ const STORIES: Record<CityId, Story> = {
     verb: 'overheats',
     band: ['Heat emergency for New York City', 'Heat index above 105°F', 'Check on older neighbors'],
     headline: { 1: 'The hottest blocks reach dangerous heat', 2: 'The grid fails in the hottest blocks', 3: 'Dangerous heat spreads' },
-    station: 'Ready New York News',
-    alert: 'Ready New York News with a heat emergency. The heat index is above 105 degrees in Harlem and the South Bronx.',
+    alert: {
+      en: 'Breaking news. A heat emergency in Harlem and the South Bronx.',
+      hi: 'न्यूयॉर्क से बड़ी ख़बर। हार्लेम और साउथ ब्रॉन्क्स में भीषण गर्मी की आपात स्थिति।',
+    },
+    // Monday's heat peaks in the afternoon, the grid fails at the evening peak, the night stays hot.
+    clock: { days: ['Mon', 'Tue'], start: 9, end: 33, sunrise: 6.95, sunset: 18.6 },
     road: (r) => `${r} is closed`,
-    roadNews: (r) => `${r} is closed`,
-    area: (h) => `${h} reaches dangerous heat`,
+    area: (h, step) => (step === 2 ? `The grid fails in ${h}` : `${h} reaches dangerous heat`),
+    reaches: (h, step) => (step === 2 ? `Power out in ${h}` : `Dangerous heat in ${h}`),
     start: 'Start the heat wave',
     passed: 'The heat has broken',
     cause: 'the heat',

@@ -16,6 +16,7 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - [~] P7 Simulation: halftone flood, closing roads, trips, counters (C + B). Pass 1 done (Claude, C); pass 2 = road routing
 - [x] V1 Visual overhaul: title and briefing, game HUD, realistic water, night storm with helicopter camera, daylight end (C)
 - [x] V2 Four cities and the broadcast: globe landing, Miami / San Francisco / New York on the same engine, narrated briefing tour, Find the weak spot, storm timeline, news desk with anchor, hazard sound and vibration (C + D, branch feat/new-features-adit)
+- [x] V3 Map looks and two news channels: Satellite toggle, Light / Dark map, each city's own storm clock with daylight on the map, America News (English) and Bharat News (Hindi), news timed to end with the storm (C + D, branch feat/new-features-adit). Anchor portraits in (V3.1)
 - [ ] P8 Results screen with score breakdown and optimal plan side by side (C)
 - [~] P9 Rooms: (aum) done: lobby + QR, mayoral candidates, any player hosts, shared clock, storm starts together, ranked results stored in Tiger Data. Open: crowd heatmap, perception gap
 
@@ -72,6 +73,81 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Next exact step:
 - Gotchas:
 -->
+
+### 2026-10-03 23:00 (machine clock) Claude (Opus 5.5) for Adit, lanes C + D, V3.1 name, portraits, voices (branch feat/new-features-adit)
+- Done:
+  - The game is called Mayday Mayor: browser title, landing, title screen ("Mayday / Mayor" over
+    the city), planning header ("Mayday Mayor", then "Raleigh · Flood, solo"), room lobby, planner.
+    The repo, AGENTS.md and localStorage keys keep ready-raleigh.
+  - City cards: the names lost `truncate` (overflow hidden + line-height 1 cut the g and y);
+    cards still match in height because Play sits at the bottom.
+  - Anchor portraits from Adit (two TV-frame images): cropped to the anchor, 480 x 360 JPEG, in
+    app/public/anchors/america.jpg and bharat.jpg. The crops keep each image's LIVE badge and leave
+    out its "Floods Devastate Raleigh" lower third and Raleigh sign, so they work for every city.
+    The desk hides its own LIVE tag over a portrait, finds .jpg, .png or .webp, and Solo looks the
+    portraits up on mount so the storm opens on them. Anchor box w-32 / sm:w-44 / lg:w-64, desk
+    lg:w-[38rem]. One frame each: the portrait leans in with the voice (no talk frame yet).
+  - Voices: America News is a woman (default Sarah), Bharat News a man (default George, Hindi).
+    `america` no longer falls back to ELEVENLABS_VOICE_BROADCAST. Checked from the TTS cache: the
+    storm's English reports were read by Sarah, the Hindi ones by George, on the model the .env
+    names (eleven_multilingual_v2, so no language_code is sent; Hindi still comes out Hindi).
+- Verified: typecheck; npm test 63/63; browser 1440 x 860 (landing names, title, America and
+  Bharat portraits on the desk, Hindi reports, results) and 390 x 844 (desk with portrait).
+- Next exact step: a mouth-closed frame per anchor (america-talk.jpg is the open one) would make
+  them talk; otherwise done.
+- Later (23:07): the title screen fits the window at 100% zoom. Two height variants in styles.css
+  (`tall` 900 px and up, `short` under 700 px): Mayday Mayor is 120 px only on tall desktops,
+  72 px otherwise, 48 px on short screens; the briefing card is wider on desktop (max-w-2xl) so
+  "You have $10M and 3 minutes." is one line. Measured: the card ends on screen at 1440x900,
+  1440x785, 1536x730, 1280x650, 1024x600, 390x844, 390x664 and 375x560. "Hear the briefing" is
+  gone: the narrated tour starts at once from the globe (audio already on), and on the first tap
+  or key when /solo is opened directly.
+
+### 2026-10-03 22:45 (machine clock) Claude (Opus 5.5) for Adit, lanes C + D, V3 map looks and news channels (branch feat/new-features-adit)
+- Done:
+  - Storm layout (Solo.tsx): rows, so nothing overprints: the band with Skip, Satellite, Light or
+    Dark and Sound under its right end; the news desk in the room left; then the timeline and the
+    counters (or the results card). The desk is a side-by-side card (anchor | words) everywhere.
+  - City cards (Landing.tsx): equal height, Play pinned to the bottom; New York's question is one
+    line ("Who keeps cool when the grid fails?").
+  - News timing (NewsDesk.tsx, ui/voice.ts, ui/sound.ts loadClip): the alert at 1.2 s, each report
+    as the helicopter leaves (event.fly + 200 ms). A report more than 2.5 s late stays on the feed
+    unspoken; a clip that would still play 250 ms before STORM_MS is not started. Lines are short;
+    the news voices read at speed 1.1. The desk hushes when it leaves (the sky clears or Skip).
+  - Two channels (news.ts): America News (English) and Bharat News (Hindi), tabs on the desk,
+    remembered in localStorage. Each city's alert in both languages (story.ts `alert`); event
+    phrasing per hazard and language (news.ts BOOKS); spoken numbers rounded ("About 230,000",
+    "लगभग 2.3 लाख"). StormEvent `news` (English text) became `about` {kind, name}. Hindi is set in
+    Noto Sans Devanagari (Google Fonts, in both font stacks; downloaded only when Hindi shows).
+  - Server voices (server/src/voice.ts): `america` and `bharat` on POST /api/tts, from
+    ELEVENLABS_VOICE_AMERICA and ELEVENLABS_VOICE_BHARAT; Bharat sends language_code "hi". A voice
+    ElevenLabs refuses (402 for a library voice on the free plan) falls back to the default voice
+    for that slot and is remembered as refused until the server restarts.
+  - Anchor portraits (NewsDesk.tsx Anchor): app/public/anchors/america.png and bharat.png (4:3,
+    top-aligned), optional america-talk.png / bharat-talk.png with the mouth open (flaps with the
+    voice). Without them, each channel has its own cartoon in the inks.
+  - Per-city storm clocks (story.ts `clock`, storm/clock.ts): Raleigh Fri 3 PM to Sat 9 AM, Miami
+    Sun noon to Mon 8 AM, San Francisco Tue 7:40 AM to 10:40 PM, New York Mon 9 AM to Tue 9 AM,
+    with October sunrise and sunset. Timeline bands day / dusk / night / dawn and a sun or moon.
+  - Light / Dark (theme.ts, ThemeButton): Light is the day board, and in the storm the map follows
+    the clock (dark from mid-dusk to mid-dawn); Dark is the night palette everywhere. One place sets
+    the palette and the water look: map/mood.ts useMapMood (director.ts no longer does). Hospital
+    labels, rain streaks and the landing globe follow it. Plates stay bond and ink.
+  - Satellite (basemap.ts, SatelliteButton, useMapUi.satellite, remembered): Esri World Imagery
+    above the printed land and water, below streets, the water steps and labels; green and
+    footprints go clear, streets are faint lines; dimmed and greyed at night. Credited while on.
+- Verified: typecheck; npm test 63/63 (new app/src/storm/clock.test.ts: bands, turns, labels,
+  spoken numbers). POST /api/tts voice bharat (Hindi) and america: 200, 3.9 s and 3.7 s alerts.
+  Browser 1440x800: equal cards, dark globe, dark board, satellite light and dark, New York storm
+  (day at 1:40 PM, night by 9:30 PM, desk 108-355 px, counters from 635 px), Bharat News in Hindi,
+  Miami title in Dark. 390x844: Raleigh storm, no overflow, controls row, desk, timeline.
+- Next exact step: drop Adit's anchor portraits into app/public/anchors/ (names above) and check
+  them on the desk; if he sets ELEVENLABS_VOICE_AMERICA / _BHARAT, restart `npm run dev`.
+- Gotchas:
+  - The automated browser pane stops drawing frames after ~10 s; resizing the viewport by 1 px
+    (Emulation.setDeviceMetricsOverride) forces a fresh frame for a screenshot.
+  - Esri imagery has stair-stepped dark patches over open water at city zooms (its mosaic).
+  - The briefing narrator stays English on both channels.
 
 ### 2026-10-03 21:30 (machine clock) Claude (Opus 5.5) for Adit, lanes C + D, V2 four cities and the broadcast (branch feat/new-features-adit)
 - Done:

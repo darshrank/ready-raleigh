@@ -1,12 +1,12 @@
 // The storm's weather over the map (DESIGN.md "Motion", storm): the wipe into the night, rain, and
 // lightning. All three are off under prefers-reduced-motion and never take pointer input.
 import { useEffect, useRef } from 'react';
-import { tokens, rgba } from '../tokens';
+import { rgba, tint, tokens } from '../tokens';
 import { FINAL_FLOOD_STEP } from '@shared/config';
 import { buzz, playPowerDown, playRumble, playThunder, startRain, stopRain } from '../ui/sound';
 import { CLEAR_MS, STORM_MS, WIPE_MS, stepStart } from './sim';
 
-/** A fast ink wipe across the screen; the map turns to night under it (storm/director.ts). */
+/** A fast ink wipe across the screen; the storm's light lands under it (map/mood.ts). */
 export function Wipe() {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -33,9 +33,14 @@ export function Wipe() {
   );
 }
 
-/** Rain streaks: one canvas path per frame at device pixel ratio 1, so it costs almost nothing. */
-export function Rain({ stormAt }: { stormAt: number }) {
+/**
+ * Rain streaks: one canvas path per frame at device pixel ratio 1, so it costs almost nothing.
+ * Pale on the night map, ink on the day map (`night` says which, at storm time t).
+ */
+export function Rain({ stormAt, night }: { stormAt: number; night: (t: number) => boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const nightRef = useRef(night);
+  nightRef.current = night;
   useEffect(() => {
     const canvas = ref.current;
     const g = canvas?.getContext('2d');
@@ -58,10 +63,12 @@ export function Rain({ stormAt }: { stormAt: number }) {
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
-    g.strokeStyle = rgba(tokens().rgb['storm-label'], 0.38);
+    const { rgb } = tokens();
     g.lineWidth = 1;
     let prev = performance.now();
     let raf = 0;
+    /** 0 on the day map, 1 at night; eases across dusk and dawn with the map. */
+    let dark = nightRef.current(performance.now() - stormAt) ? 1 : 0;
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - prev) / 1000);
       prev = now;
@@ -70,7 +77,8 @@ export function Rain({ stormAt }: { stormAt: number }) {
       const alpha = Math.min(1, t / 1000) * Math.max(0, 1 - (t - STORM_MS) / CLEAR_MS);
       g.clearRect(0, 0, w, h);
       if (alpha <= 0 && t > STORM_MS) return;
-      g.strokeStyle = rgba(tokens().rgb['storm-label'], 0.38 * alpha);
+      dark += ((nightRef.current(t) ? 1 : 0) - dark) * Math.min(1, dt * 2);
+      g.strokeStyle = rgba(tint(rgb.ink, rgb['storm-label'], dark), (0.3 + 0.08 * dark) * alpha);
       g.beginPath();
       for (const d of drops) {
         d.y += d.v * dt;

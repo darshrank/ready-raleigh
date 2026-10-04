@@ -57,8 +57,9 @@ export interface StormEvent {
   title: string;
   /** The same words in sentence case, for the timeline. */
   label: string;
-  /** How the news anchor says it. */
-  news: string;
+  /** What the news anchor reports, phrased per channel (news.ts): a road closing, a neighborhood
+   *  the disaster reaches, or one cut off from every hospital. */
+  about: { kind: 'road' | 'area' | 'cut'; name: string };
   /** What the camera frames. */
   points: LngLat[];
   /** Times, ms after the storm starts. */
@@ -278,7 +279,7 @@ function bandLines(data: MapData, timeline: TimelineStep[], closing: Record<numb
       wet.set(hood, (wet.get(hood) ?? 0) + idx.pop[i]!);
     }
     const hoods = top(wet, 3);
-    if (hoods.length) lines.push(`Water in ${hoods.join(', ')}`);
+    if (hoods.length) lines.push(story.reaches(hoods.join(', '), s.step));
 
     const roads = closing[s.step] ?? [];
     const names = [...new Set(roads.map((r) => named(data, r)).filter((x): x is string => !!x))];
@@ -335,7 +336,7 @@ function stormEvents(data: MapData, closing: Record<number, FloodRoad[]>, held: 
       const best = [...cut.entries()].sort((p, q) => q[1].pop - p[1].pop)[0];
       if (best) {
         const label = `${best[0]} cut off from hospitals`;
-        out.push({ ...at, title: upper(label), label, news: `${best[0]} is cut off from every hospital`, points: best[1].pts });
+        out.push({ ...at, title: upper(label), label, about: { kind: 'cut', name: best[0] }, points: best[1].pts });
         continue;
       }
     }
@@ -346,7 +347,7 @@ function stormEvents(data: MapData, closing: Record<number, FloodRoad[]>, held: 
     if (road) {
       used.add(named(data, road) ?? road.id);
       const name = roadLabel(data, road);
-      out.push({ ...at, title: upper(story.road(name)), label: story.road(name), news: story.roadNews(name), points: roadPoints(road) });
+      out.push({ ...at, title: upper(story.road(name)), label: story.road(name), about: { kind: 'road', name }, points: roadPoints(road) });
       continue;
     }
     // No road closes this step (heat): the neighborhood the step reaches with the most people.
@@ -359,7 +360,10 @@ function stormEvents(data: MapData, closing: Record<number, FloodRoad[]>, held: 
       reached.set(c.hood, e);
     }
     const best = [...reached.entries()].sort((p, q) => q[1].pop - p[1].pop)[0];
-    if (best) out.push({ ...at, title: upper(story.area(best[0])), label: story.area(best[0]), news: story.area(best[0]), points: best[1].pts });
+    if (best) {
+      const label = story.area(best[0], k);
+      out.push({ ...at, title: upper(label), label, about: { kind: 'area', name: best[0] }, points: best[1].pts });
+    }
   }
   return out;
 }

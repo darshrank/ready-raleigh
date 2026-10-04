@@ -11,6 +11,7 @@ import { floodViewOf } from '../map/flood';
 import { riskFocusPoints } from '../map/frame';
 import { MapView } from '../map/MapView';
 import { HOSPITAL_LABEL_ZOOM, hospitalLayers } from '../map/layers';
+import { stormNight, useMapMood } from '../map/mood';
 import { useFloodMap } from '../map/useFloodMap';
 import { AimChip, LandingFx } from '../plan/Juice';
 import {
@@ -32,15 +33,16 @@ import { directStorm, resetWater } from '../storm/director';
 import { stormRenderer, stormWarmLayers } from '../storm/layers';
 import { CLEAR_MS, RESULTS_AFTER_MS, STORM_MS, buildStorm, type StormEvent } from '../storm/sim';
 import { Broadcast, Counters, ResultsCard, SkipStorm } from '../storm/StormOverlay';
-import { NewsDesk, useStormFx } from '../storm/NewsDesk';
+import { NewsDesk, preloadAnchors, useStormFx } from '../storm/NewsDesk';
 import { StormTimeline } from '../storm/Timeline';
 import { Heat, Lightning, Quake, Rain, Wipe } from '../storm/Weather';
-import { MapControls, PLATE, SoundButton, Status, TopHud, Tray } from '../ui/Hud';
+import { MapControls, MapLookButtons, PLATE, SoundButton, Status, TopHud, Tray } from '../ui/Hud';
 import { NeighborhoodCard } from '../ui/MapRail';
 import { playAlert } from '../ui/sound';
 import { Title, useBriefingTour, useTitleOrbit } from '../ui/Title';
 import { cityById } from '../cities';
 import { currentStory, storyOf, type Hazard } from '../story';
+import { useTheme } from '../theme';
 import { score } from '@shared/engine';
 
 /** Phones open on the highest-risk area at street level instead of the whole city. */
@@ -109,10 +111,13 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
     s.setHold(!!roomRef.current);
     if (skipTitle) s.beginIntro();
   }, [skipTitle]);
+  // The news anchors' portraits load while the player plans, so the storm's desk opens on them.
+  useEffect(() => preloadAnchors(), []);
 
+  const theme = useTheme((s) => s.theme);
   const { placements, result, shares, preview, left } = usePlanScore(data);
   const moving = movingId ? placements.find((p) => p.id === movingId) : undefined;
-  const fm = useFloodMap(data, { targetingSites: armed === 'shelter' || moving?.type === 'shelter' });
+  const fm = useFloodMap(data, { targetingSites: armed === 'shelter' || moving?.type === 'shelter', night: theme === 'dark' });
   const { onReady: planningReady, mapRef, selectFromList } = usePlanning(data);
   const onReady = useCallback(
     (m: MapLibreMap) => {
@@ -127,11 +132,13 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
   );
 
   useTitleOrbit(mapInst, phase === 'title', phone);
+  // Light or Dark on the board; in the storm, the city's clock (day, dusk, night, dawn).
+  useMapMood(mapInst, phase, stormAt, reduce);
   // The narrated briefing tour over the creeks (ElevenLabs narrator, fail soft to a silent tour).
   const [tourStop, setTourStop] = useState<string | null>(null);
   const atRisk = useMemo(() => (data ? score(soloPlan([]), data).strandedPeople : 0), [data]);
   const script = useMemo(() => story.briefing(atRisk, cityById(story.id)!.tour), [atRisk, story]);
-  const listen = useBriefingTour(mapInst, phase === 'title' && !!data, phone, script, setTourStop);
+  useBriefingTour(mapInst, phase === 'title' && !!data, phone, script, setTourStop);
 
   // Room the floating plates take, so the framed city is not under them.
   const hudPad = useMemo(
@@ -224,7 +231,7 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
     if (!data || !storm || stormAt === null || !pieces) return null;
     const renderer = stormRenderer(storm, reduce);
     // Shelter sites are planning targets; the storm shows only the plan's pieces and the hospitals,
-    // named in the night label colors until the sky clears.
+    // named in the night label colors while the map is dark (map/mood.ts).
     const night: LayersList = [...hospitalLayers(data.hospitals, true, HOSPITAL_LABEL_ZOOM, true), pieces];
     const day: LayersList = [...hospitalLayers(data.hospitals, true, HOSPITAL_LABEL_ZOOM), pieces];
     let done = false;
@@ -232,9 +239,9 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
       if (done) return null;
       const t = now - stormAt;
       done = renderer.settled(t);
-      return [...fm.under, ...renderer.layers(t), ...(t < STORM_MS + CLEAR_MS / 2 ? night : day)];
+      return [...fm.under, ...renderer.layers(t), ...(stormNight(t, theme) ? night : day)];
     };
-  }, [data, storm, stormAt, reduce, pieces, fm.under]);
+  }, [data, storm, stormAt, reduce, pieces, fm.under, theme]);
 
   // The siren at the outbreak, rushing water and a buzz as each flood step prints.
   useStormFx(phase === 'storm' ? storm : null, stormAt);
@@ -264,7 +271,7 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
       playAlert();
     }
     // Another round: back to the calm board.
-    if (mapInst && phase === 'planning' && (was === 'results' || was === 'storm')) resetWater(mapInst, floodViewOf(mapInst));
+    if (mapInst && phase === 'planning' && (was === 'results' || was === 'storm')) resetWater(floodViewOf(mapInst));
   }, [phase, mapInst]);
 
   useEffect(() => {
@@ -308,7 +315,7 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
         };
 
   return (
-    <div className="relative h-full overflow-hidden bg-chalk">
+    <div className={'relative h-full overflow-hidden ' + (theme === 'dark' ? 'bg-storm-land' : 'bg-chalk')}>
       <MapView
         layers={layers}
         frameLayers={frameLayers}
@@ -333,7 +340,7 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
 
       {phase === 'storm' && stormAt !== null && story.hazard === 'flood' && !reduce && (
         <>
-          <Rain stormAt={stormAt} />
+          <Rain stormAt={stormAt} night={(t) => stormNight(t, theme)} />
           <Lightning stormAt={stormAt} />
         </>
       )}
@@ -348,7 +355,7 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
           transition={{ duration: reduce ? 0 : 0.35 }}
           style={{ pointerEvents: phase === 'title' ? 'auto' : 'none' }}
         >
-          <Title ready={!!data} error={error} onStart={() => usePlan.getState().beginIntro()} stop={tourStop} listen={listen} />
+          <Title ready={!!data} error={error} onStart={() => usePlan.getState().beginIntro()} stop={tourStop} />
         </motion.div>
       )}
 
@@ -357,9 +364,11 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
           <div className="flex flex-col gap-2 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:items-start">
             <motion.p {...enter('top')} className={PLATE + ' pointer-events-auto hidden justify-self-start px-3 py-2 lg:block'}>
               <Link to="/" className="font-display text-24 leading-none font-extrabold">
-                Ready {story.name.replace(/ City$/, '')}
+                Mayday Mayor
               </Link>
-              <span className="block text-13">{room ? `Flood, room ${room.code}` : `${HAZARD_NAME[story.hazard]}, solo`}</span>
+              <span className="block text-13">
+                {story.name} · {room ? `Flood, room ${room.code}` : `${HAZARD_NAME[story.hazard]}, solo`}
+              </span>
             </motion.p>
             <motion.div {...enter('top', 0.05)} className="flex justify-center">
               <TopHud left={left} result={result} compact={compact} />
@@ -397,8 +406,10 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
       )}
 
       {storm && stormAt !== null && (
-        <div className="pointer-events-none absolute inset-0 flex flex-col justify-between overflow-hidden">
-          <div className="relative">
+        // Rows, so nothing overprints: the band (with the controls under its right end), the news
+        // desk in whatever room is left, then the timeline and the counters (or the results card).
+        <div className="pointer-events-none absolute inset-0 flex flex-col overflow-hidden">
+          <div className="relative z-10 shrink-0">
             <AnimatePresence>
               {!cleared && (
                 <motion.div key="band" exit={reduce ? undefined : { y: '-110%' }} transition={{ duration: 0.4, ease: 'easeIn' }}>
@@ -412,26 +423,25 @@ export function Solo({ room }: { room?: RoomMode } = {}) {
               ) : (
                 <div className="flex gap-2">
                   <SkipStorm />
+                  <MapLookButtons />
                   <SoundButton />
                 </div>
               )}
             </div>
           </div>
+          <div className="flex min-h-0 flex-1 flex-col items-stretch px-3 pt-14 pb-2 lg:items-start lg:px-6 lg:pt-1">
+            {phase === 'storm' && !cleared && <NewsDesk storm={storm} stormAt={stormAt} />}
+          </div>
           {phase === 'results' ? (
-            <div className="flex justify-center px-3 pb-4 lg:justify-start lg:px-8 lg:pb-8">
+            <div className="flex shrink-0 justify-center px-3 pb-4 lg:justify-start lg:px-8 lg:pb-8">
               <ResultsCard storm={storm} result={result} footer={room?.footer} />
             </div>
           ) : (
-            <div className="flex flex-col items-center">
+            <div className="flex shrink-0 flex-col items-center">
               <StormTimeline storm={storm} stormAt={stormAt} />
               <div className="w-full">
                 <Counters storm={storm} stormAt={stormAt} />
               </div>
-            </div>
-          )}
-          {phase === 'storm' && !cleared && (
-            <div className="absolute inset-x-3 top-[7.25rem] lg:inset-x-auto lg:top-[30%] lg:left-6">
-              <NewsDesk storm={storm} stormAt={stormAt} />
             </div>
           )}
         </div>

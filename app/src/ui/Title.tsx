@@ -1,6 +1,6 @@
 // The title and briefing (DESIGN.md "Layouts", title): the city slowly orbiting in 3D behind the
 // name, then the scenario as a large type card with one button. The camera then flies down.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { BUDGET, PLANNING_SECONDS } from '@shared/config';
@@ -71,14 +71,22 @@ export function useBriefingTour(
 ) {
   const reduce = useReducedMotion();
   const [started, setStarted] = useState(false);
-  const start = useCallback(() => {
-    unlockAudio();
-    setStarted(true);
-  }, []);
-  // Coming from the globe, audio is already unlocked: start at once.
+  // Coming from the globe, audio is already unlocked: start at once. Opened directly, the first
+  // tap or key on the title unlocks the audio (browsers need a gesture) and starts it.
   useEffect(() => {
-    if (active && audioRunning()) setStarted(true);
-  }, [active]);
+    if (!active || started) return;
+    if (audioRunning()) return setStarted(true);
+    const go = () => {
+      unlockAudio();
+      setStarted(true);
+    };
+    window.addEventListener('pointerdown', go, { once: true });
+    window.addEventListener('keydown', go, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', go);
+      window.removeEventListener('keydown', go);
+    };
+  }, [active, started]);
 
   useEffect(() => {
     if (!map || !active || !started) return;
@@ -115,8 +123,6 @@ export function useBriefingTour(
       onStop(null);
     };
   }, [map, active, started, phone, lines, onStop, reduce]);
-
-  return { started, start };
 }
 
 export function Title({
@@ -124,15 +130,12 @@ export function Title({
   error,
   onStart,
   stop = null,
-  listen,
 }: {
   ready: boolean;
   error: string | null;
   onStart: () => void;
   /** The tour stop on screen, named on a sticker. */
   stop?: string | null;
-  /** Start the narrated tour when audio was not unlocked yet (opened /solo directly). */
-  listen?: { started: boolean; start: () => void };
 }) {
   const reduce = useReducedMotion();
   const button = useRef<HTMLButtonElement>(null);
@@ -143,12 +146,14 @@ export function Title({
     reduce ? {} : { initial: { y: 40, opacity: 0 }, animate: { y: 0, opacity: 1 }, transition: { duration: 0.5, delay, ease: 'easeOut' as const } };
   const story = currentStory();
 
+  // Sized by the window's height as well as its width, so the briefing card always fits on screen.
   return (
-    <div className="pointer-events-none absolute inset-0 flex flex-col justify-between gap-6 p-4 lg:p-10">
+    <div className="pointer-events-none absolute inset-0 flex flex-col justify-between gap-4 p-4 lg:gap-6 lg:p-8 lg:tall:p-10">
       <div className="flex items-start justify-between gap-3">
-        <motion.h1 {...appear(0.1)} className={PLATE + ' px-4 py-3 font-display leading-[0.82] font-extrabold lg:px-6 lg:py-5'}>
-          <span className="block text-72 lg:text-120">Ready</span>
-          <span className="block text-72 lg:text-120">{story.name.replace(/ City$/, '')}</span>
+        <motion.h1 {...appear(0.1)} className={PLATE + ' px-4 py-3 font-display leading-[0.82] font-extrabold lg:px-6 lg:py-4'}>
+          <span className="block text-72 short:text-48 lg:tall:text-120">Mayday</span>
+          <span className="block text-72 short:text-48 lg:tall:text-120">Mayor</span>
+          <span className="mt-2 block border-t-(length:--rule) border-ink pt-2 text-24 leading-none sm:text-32 lg:tall:text-48">{story.name}</span>
         </motion.h1>
         <div className="pointer-events-auto">
           <SoundButton />
@@ -172,9 +177,9 @@ export function Title({
       <motion.section
         {...appear(0.9)}
         aria-labelledby="briefing"
-        className={PLATE + ' pointer-events-auto w-full max-w-xl p-5 lg:p-7'}
+        className={PLATE + ' pointer-events-auto w-full max-w-xl p-5 short:p-4 lg:max-w-2xl lg:p-7 lg:short:p-5'}
       >
-        <h2 id="briefing" className="font-display text-48 leading-[1.02] font-extrabold">
+        <h2 id="briefing" className="font-display text-32 leading-[1.02] font-extrabold sm:text-48 short:text-32">
           {story.title[0]}
           <br />
           {story.title[1]}
@@ -183,19 +188,7 @@ export function Title({
             You have {money(BUDGET)} and {minutes} minutes.
           </span>
         </h2>
-        <p className="mt-3 max-w-lg text-15 lg:text-18">{story.body}</p>
-        {listen && !listen.started && ready && (
-          <button
-            type="button"
-            onClick={listen.start}
-            className="mt-3 inline-flex items-center gap-2 border-(length:--rule) border-ink bg-bond px-3 py-1.5 text-15 font-semibold shadow-piece hover:bg-chalk"
-          >
-            <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden className="fill-ink">
-              <path d="M3 7h3l5-4v14l-5-4H3z" />
-            </svg>
-            Hear the briefing
-          </button>
-        )}
+        <p className="mt-3 max-w-xl text-15 short:mt-2 lg:text-18 lg:short:text-15">{story.body}</p>
         {error ? (
           <p className="mt-5 text-15">Could not load the map data ({error}). Reload the page to try again.</p>
         ) : (
@@ -207,7 +200,7 @@ export function Title({
               unlockAudio();
               onStart();
             }}
-            className="mt-5 w-full border-(length:--rule) border-ink bg-ink px-6 py-3 font-display text-32 leading-none font-extrabold text-signal shadow-piece hover:bg-signal hover:text-ink active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:opacity-60 sm:w-auto lg:py-4 lg:text-48"
+            className="mt-5 w-full border-(length:--rule) border-ink bg-ink px-6 py-3 font-display text-32 leading-none font-extrabold text-signal shadow-piece hover:bg-signal hover:text-ink active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:opacity-60 short:mt-3 sm:w-auto lg:tall:py-4 lg:tall:text-48"
           >
             {ready ? 'Start planning' : 'Loading the map'}
           </button>

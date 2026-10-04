@@ -103,7 +103,7 @@ export const CITIES: City[] = [
     state: 'New York',
     hazard: 'Heat wave and blackouts',
     title: 'Heat grid',
-    question: 'Who loses protection when the city overheats and the grid weakens?',
+    question: 'Who keeps cool when the grid fails?',
     center: [-73.915, 40.832],
     ready: true,
     tour: [

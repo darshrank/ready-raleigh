@@ -11,7 +11,8 @@ import { Link, navigate } from '../router';
 import { storyOf } from '../story';
 import { tokens } from '../tokens';
 import { money } from '../ui/format';
-import { MapButton, PLATE, SoundButton } from '../ui/Hud';
+import { useTheme } from '../theme';
+import { MapButton, PLATE, SoundButton, ThemeButton } from '../ui/Hud';
 import { Skyline } from '../ui/Skyline';
 import { playStamp, unlockAudio } from '../ui/sound';
 import { orbitCamera } from '../ui/Title';
@@ -43,12 +44,16 @@ export function Landing() {
   focusRef.current = focus;
   const markers = useRef(new Map<CityId, HTMLButtonElement>());
 
+  /** Which inks the globe is printed in now. */
+  const printedDark = useRef(false);
+
   // The globe and its markers, made once.
   useEffect(() => {
     if (!container.current) return;
+    printedDark.current = useTheme.getState().theme === 'dark';
     const m = new MapLibreMap({
       container: container.current,
-      style: globeStyle(tokens()),
+      style: globeStyle(tokens(), printedDark.current),
       center: HOME.center,
       zoom: phone ? 1.1 : HOME.zoom,
       minZoom: 0.6,
@@ -81,6 +86,14 @@ export function Landing() {
       m.remove();
     };
   }, [phone]);
+
+  // Light or Dark: the globe re-prints in the other inks (a style diff: only paint values change).
+  const dark = useTheme((s) => s.theme === 'dark');
+  useEffect(() => {
+    if (!map || printedDark.current === dark) return;
+    printedDark.current = dark;
+    map.setStyle(globeStyle(tokens(), dark));
+  }, [map, dark]);
 
   // Spin while idle; any drag, scroll or pinch pauses it for a few seconds.
   useEffect(() => {
@@ -152,13 +165,14 @@ export function Landing() {
       >
         <div className="flex items-start justify-between gap-3">
           <motion.div {...appear(0.1)} className={PLATE + ' pointer-events-auto max-w-md px-4 py-3 lg:px-6 lg:py-5'}>
-            <h1 className="font-display text-48 leading-[0.85] font-extrabold lg:text-72">Ready Raleigh</h1>
+            <h1 className="font-display text-48 leading-[0.85] font-extrabold lg:text-72">Mayday Mayor</h1>
             <p className="mt-2 hidden text-15 sm:block lg:text-18">
               Plan a city's response to a disaster on real data. {money(BUDGET)}, a few minutes, then the disaster tests your plan.
             </p>
           </motion.div>
           <motion.div {...appear(0.2)} className="pointer-events-auto flex flex-col items-end gap-2">
             <div className="flex gap-2">
+              <ThemeButton />
               <SoundButton />
               {map && (
                 <>
@@ -225,7 +239,7 @@ function CityCard({
       onFocus={onFocus}
       onClick={onFocus}
       className={
-        'pointer-events-auto flex min-w-0 flex-col border-(length:--rule) border-ink p-2.5 lg:p-4 ' +
+        'pointer-events-auto flex h-full min-w-0 flex-col border-(length:--rule) border-ink p-2.5 lg:p-4 ' +
         (active ? 'bg-signal shadow-[8px_8px_0_var(--ink)]' : 'bg-bond shadow-plate')
       }
     >
@@ -233,25 +247,28 @@ function CityCard({
         <HazardIcon id={city.id} />
         <span className="truncate">{city.hazard}</span>
       </p>
-      <h3 className={'mt-1 font-display leading-none font-extrabold ' + (compact ? 'truncate text-24' : 'text-32 lg:text-48')}>{city.name}</h3>
-      <p className={'font-display leading-tight font-bold ' + (compact ? 'text-15' : 'text-18 lg:text-24')}>{city.title}</p>
+      <h3 className={'mt-1 font-display leading-none font-extrabold ' + (compact ? 'text-24' : 'text-32 lg:text-48')}>{city.name}</h3>
+      <p className={'truncate font-display leading-tight font-bold ' + (compact ? 'text-15' : 'text-18 lg:text-24')}>{city.title}</p>
       <Skyline shapes={city.skyline} className={compact ? 'mt-1 h-5 w-full' : 'mt-2 h-8 w-full lg:h-12'} />
-      {!compact && <p className="mt-2 text-13">{city.question}</p>}
-      <button
-        type="button"
-        disabled={!city.ready}
-        onClick={(e) => {
-          e.stopPropagation();
-          onPlay();
-        }}
-        className={
-          'w-full border-(length:--rule) border-ink px-3 text-left font-display leading-none font-extrabold ' +
-          (compact ? 'mt-2 py-1.5 text-18 ' : 'mt-3 py-2 text-24 ') +
-          (city.ready ? 'bg-ink text-signal hover:bg-bond hover:text-ink' : 'bg-bond text-ink/50')
-        }
-      >
-        {city.ready ? 'Play' : 'Coming next'}
-      </button>
+      {!compact && <p className="mt-2 line-clamp-2 text-13">{city.question}</p>}
+      {/* Pinned to the bottom, so every card's Play lines up whatever the text above it. */}
+      <div className={'mt-auto ' + (compact ? 'pt-2' : 'pt-3')}>
+        <button
+          type="button"
+          disabled={!city.ready}
+          onClick={(e) => {
+            e.stopPropagation();
+            onPlay();
+          }}
+          className={
+            'w-full border-(length:--rule) border-ink px-3 text-left font-display leading-none font-extrabold ' +
+            (compact ? 'py-1.5 text-18 ' : 'py-2 text-24 ') +
+            (city.ready ? 'bg-ink text-signal hover:bg-bond hover:text-ink' : 'bg-bond text-ink/50')
+          }
+        >
+          {city.ready ? 'Play' : 'Coming next'}
+        </button>
+      </div>
     </motion.article>
   );
 }

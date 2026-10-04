@@ -72,6 +72,23 @@ describe('civic signals on the server', () => {
     expect(listed.signals[0].playIds).toHaveLength(4);
   });
 
+  it('starts from what was published: a restart publishes what changed, not a silent baseline', async () => {
+    // A fresh server sharing the same civic store: its boot state is the published history.
+    const restarted = buildServer({ store: new MemoryStore(), data: () => game, civic });
+    const published = (await civic.store.signals(100)).filter((s) => s.type === 'consensus' && s.city === 'raleigh');
+    const before = memos.length;
+    // The new server's play store is empty, so the spot is no longer consensus there: it must say so.
+    const res = await restarted.inject({
+      method: 'POST', url: '/api/plays',
+      payload: { plan: { roomCode: 'SOLO', playerId: 'dee', playerName: 'dee', mode: 'flood', placements: [], spent: 0 } },
+    });
+    expect(res.statusCode).toBe(201);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(published.some((s) => s.state === 'on')).toBe(true);
+    expect(memos.slice(before).filter((m) => m.includes('raleigh:flood.consensus:') && m.includes(':off:'))).toHaveLength(1);
+    await restarted.close();
+  });
+
   it('runs each city on its own: Miami plays build Miami consensus, published under miami', async () => {
     const before = memos.length;
     const miami = async (player: string) => {

@@ -38,7 +38,7 @@ export const pieceCovers = (p: FloodPiece) =>
 export const cityPieces = (): FloodPiece[] => FLOOD_PIECES.filter((p) => !currentStory().hidePieces?.includes(p));
 
 // Pictograms on a 64 x 64 grid, drawn in `ink` with `face` cut-outs.
-const PICTOGRAM: Record<FloodPiece, (ink: string, face: string) => string> = {
+export const PICTOGRAM: Record<FloodPiece, (ink: string, face: string) => string> = {
   // A house: the building residents go to.
   shelter: (ink, face) =>
     `<path d="M12 31 32 13l20 18v20H12z" fill="${ink}"/>` + `<rect x="27" y="36" width="10" height="15" fill="${face}"/>`,

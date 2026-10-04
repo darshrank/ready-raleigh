@@ -4,6 +4,7 @@ import { buildServer } from './app';
 import { type GameData, cityLoader, loadGameData } from './data';
 import { MemoryStore, type PlayStore, failSoft } from './db/store';
 import { TigerStore, poolConfig, prepareTiger } from './db/tiger';
+import { type LiveStats, compressDue, liveStats } from './db/stats';
 import { startLiveFeeds, studyArea } from './live/job';
 import { type LiveStore, MemoryLiveStore, TigerLiveStore, failSoftLive } from './live/store';
 import { devnetChain, loadAuthority } from './solana/chain';
@@ -26,6 +27,8 @@ try {
 let store: PlayStore = new MemoryStore();
 let live: LiveStore = new MemoryLiveStore();
 let civicStore: CivicStore = new MemoryCivicStore();
+let stats: (() => Promise<LiveStats>) | undefined;
+let compressNow: (() => Promise<number>) | undefined;
 let storeNote = 'DATABASE_URL not set; plays are kept in memory';
 if (process.env.DATABASE_URL) {
   const pool = new pg.Pool(poolConfig(process.env.DATABASE_URL));
@@ -35,6 +38,8 @@ if (process.env.DATABASE_URL) {
     store = new TigerStore(pool);
     live = new TigerLiveStore(pool);
     civicStore = new TigerCivicStore(pool);
+    stats = () => liveStats(pool);
+    compressNow = () => compressDue(pool);
     storeNote = `Tiger Data ready${prepared.seeded ? `, reference data loaded (build ${prepared.build})` : ''}`;
   } catch (err) {
     await pool.end().catch(() => {});
@@ -60,7 +65,7 @@ const civic = civicRecord({
 // Cards are minted into the soulbound collection (npm run sol:collection -w server creates it).
 const collection = process.env.SOLANA_CARD_COLLECTION?.trim();
 const minter = chain && authority.key && collection ? coreMinter(umiFor(authority.key, chain.rpcUrl), collection) : null;
-const app = buildServer({ store: store.kind === 'tiger' ? failSoft(store, log) : store, data: cities, live, civic, minter });
+const app = buildServer({ store: store.kind === 'tiger' ? failSoft(store, log) : store, data: cities, live, civic, minter, liveStats: stats });
 app.log.info(chain ? `Solana devnet record on, authority ${chain.address} (${civicStore.kind})` : `Solana record off: ${authority.reason}`);
 app.log.info(minter ? `cards mint into collection ${collection}` : 'cards are kept unminted until SOLANA_CARD_COLLECTION is set (npm run sol:collection -w server)');
 if (chain) chain.balanceSol().then((sol) => app.log.info(`Solana authority balance: ${sol} SOL (devnet)`), () => {});
@@ -81,6 +86,13 @@ if (game) {
 if (game && process.env.LIVE_FEEDS !== 'false') {
   const { bbox, center } = studyArea(game.bundle);
   startLiveFeeds({ store: live, bbox, center, log: { info: (m) => app.log.info(m), warn: (o, m) => app.log.warn(o, m) } });
+}
+
+// Columnstore: compress the chunks the policies are due to (they run on a slow schedule), at start and hourly.
+if (compressNow) {
+  const compress = () => compressNow!().then((n) => n && app.log.info(`Tiger Data: ${n} chunk(s) moved to the columnstore`), (err) => app.log.warn({ err }, 'columnstore compression failed'));
+  setTimeout(compress, 10_000).unref();
+  setInterval(compress, 3600_000).unref();
 }
 
 app.listen({ port, host: '0.0.0.0' }).catch((err) => {

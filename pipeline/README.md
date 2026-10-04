@@ -193,12 +193,17 @@ weights over a population denominator. Weighted exposure is reported separately.
 ## Semantic-zoom data (standard library only)
 
 These scripts need no virtualenv (`python3` 3.11+). They write small extra files for the map's
-detail layers and record their sources in `meta.json`. `build_all` keeps `meta.sources` but drops
-the extra blocks, so rerun them after a full rebuild (the downloads are cached).
+detail layers and record their sources in `meta.json`. Run each once with network; the downloads
+are cached in `pipeline/cache/` (Overpass answers with their query in a `.query` file).
+
+A full rebuild (`build_all`, also `--p2-only`) runs them last, from the cache only
+(`pipeline/detail.py` `refresh_detail`), because its P2 step rewrites `meta.json`. A missing or
+stale cache stops the rebuild with the command that fills it; it never downloads or drops a source.
 
 | Command | Output | Source |
 |---|---|---|
 | `python3 -m pipeline.bus_stops` | `bus_stops.json` `[{id, name, lat, lon}]` | GoRaleigh GTFS, https://goraleigh.org/gr_gtfs (stops.txt, boarding stops) |
 | `python3 -m pipeline.site_buildings` | `site_buildings.json` `[{id, match, osm, polygons}]` | OSM building footprints via Overpass (overpass-api.de; needs a User-Agent; `out geom`, not `out tags geom`, or relations lose their members) |
 
-Tests: `python3 -m unittest pipeline.tests.test_detail`.
+Tests: `python3 -m unittest pipeline.tests.test_detail` (stdlib); `pipeline/tests/test_rebuild.py` (a rebuild keeps both
+sources in meta.json) needs `pipeline/.venv`.

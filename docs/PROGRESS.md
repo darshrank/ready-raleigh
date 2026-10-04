@@ -284,6 +284,25 @@ for example `[~] (Claude, C)`. Add a handoff entry at the bottom at the end of e
 - Gotchas: the report needs real plays from at least 5 different people per area; with few
   testers use ?minPlayers=3. A newer GoRaleigh GTFS URL can replace FEEDS[0] in pipeline/transit.py.
 
+### 2026-10-03 20:23 EDT Claude (Opus 5.5) lane A, semantic zoom F2 (rebuild keeps the detail sources)
+- Done: bus_stops.py and site_buildings.py refactored to `build(data_dir, cache_dir, refresh=False,
+  offline=False)` (main() wraps it); `MissingCache` for offline runs without a cache. New
+  pipeline/detail.py `refresh_detail()`; build_all.py `finish(p2_only, data_dir, cache_dir)` runs
+  build_flood (unless --p2-only) then refresh_detail, last. Overpass caches now keep their query
+  in `<cache>.query` (stale answers refused; old caches adopted once). meta.siteBuildings has
+  `osmFetched` instead of `built`. README section updated.
+- Tests: test_detail.py +3 (refresh restores sources.busStops / sources.siteBuildings and both
+  blocks; offline + no cache raises and never calls urlopen; changed sites.json refuses the
+  cache). New test_rebuild.py (venv): build_all.finish with a flood stage that rewrites meta.json
+  ends with both sources and blocks; --p2-only path too. With refresh_detail stubbed out both
+  rebuild tests fail ("meta.json lost sources.busStops"). Real offline refresh on
+  app/public/data: data files byte-identical, meta.json only `built` -> `osmFetched`.
+- Verified: python3 test_detail 8 OK; venv suite 32 OK; typecheck; 57 TS tests.
+- Next exact step: F3 care homes. pipeline/care_homes.py (Overpass: amenity=social_facility +
+  social_facility=nursing_home|assisted_living, amenity=nursing_home; study-area bbox
+  35.6978,-78.8311,35.9813,-78.4596) -> app/public/data/care_homes.json + meta; add it to
+  refresh_detail and its tests; app layer `care-homes` (z14 icon `place-care`, z15 names).
+
 ### 2026-10-03 20:20 EDT Claude (Opus 5.5) lane C, attribution stays folded (found during the room check)
 - Done: MapView.tsx folds the compact attribution when MapLibre opens it on its own (a
   MutationObserver on the control, disconnected after that fold or on the player's first click).

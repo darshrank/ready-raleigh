@@ -5,6 +5,8 @@ Run from the repository root (standard library only, any Python 3.11+):
     python3 -m pipeline.bus_stops            # uses the cached feed if there is one
     python3 -m pipeline.bus_stops --refresh  # downloads the feed again
 
+A full rebuild (pipeline.build_all) runs it last from the cache only (pipeline/detail.py).
+
 Writes app/public/data/bus_stops.json as `[{id, name, lat, lon}]` (boarding stops only, 5 decimals)
 and records the source URL, the dated file it resolved to, the feed version and the download date in
 meta.json (`sources.busStops` and `busStops`). Stops come only from the feed; none are made up.
@@ -22,8 +24,8 @@ from datetime import datetime, timezone
 from .config import CACHE, DATA, MAX_FILE_BYTES
 
 FEED_URL = "https://goraleigh.org/gr_gtfs"
-FEED_ZIP = CACHE / "goraleigh_gtfs.zip"
-FEED_INFO = CACHE / "goraleigh_gtfs.json"
+FEED_ZIP = "goraleigh_gtfs.zip"
+FEED_INFO = "goraleigh_gtfs.json"
 USER_AGENT = "ready-raleigh-pipeline/1.0 (WolfHacks 2026)"
 # Wake County with room to spare: a stop outside it means a broken row, not a real stop.
 BOUNDS = {"lat": (35.4, 36.2), "lon": (-79.1, -78.2)}
@@ -44,10 +46,17 @@ def tls_context():
     return context
 
 
-def download(refresh=False):
+class MissingCache(RuntimeError):
+    """An offline build needs a download that is not in the cache."""
+
+
+def download(cache_dir=CACHE, refresh=False, offline=False):
     """The feed zip in the cache, and where and when it came from."""
-    if FEED_ZIP.exists() and FEED_INFO.exists() and not refresh:
-        return json.loads(FEED_INFO.read_text())
+    zip_path, info_path = cache_dir / FEED_ZIP, cache_dir / FEED_INFO
+    if zip_path.exists() and info_path.exists() and not refresh:
+        return json.loads(info_path.read_text())
+    if offline:
+        raise MissingCache(f"{zip_path} is not cached; run `python3 -m pipeline.bus_stops` once with network.")
     request = urllib.request.Request(FEED_URL, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=120, context=tls_context()) as response:
         body = response.read()
@@ -59,9 +68,9 @@ def download(refresh=False):
         }
     if not zipfile.is_zipfile(io.BytesIO(body)):
         raise SystemExit(f"{FEED_URL} did not return a zip ({len(body)} bytes); no stops written.")
-    CACHE.mkdir(parents=True, exist_ok=True)
-    write_atomic(FEED_ZIP, body)
-    write_atomic(FEED_INFO, json.dumps(info, indent=2).encode())
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    write_atomic(zip_path, body)
+    write_atomic(info_path, json.dumps(info, indent=2).encode())
     return info
 
 
@@ -101,25 +110,22 @@ def feed_info(feed: zipfile.ZipFile):
     return {k: v.strip() for k, v in first[0].items()} if first else {}
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--refresh", action="store_true", help="download the feed again")
-    args = parser.parse_args()
-
-    source = download(args.refresh)
-    with zipfile.ZipFile(FEED_ZIP) as feed:
+def build(data_dir=DATA, cache_dir=CACHE, refresh=False, offline=False):
+    """Write bus_stops.json and its meta.json entries into data_dir. offline: cache only."""
+    source = download(cache_dir, refresh, offline)
+    with zipfile.ZipFile(cache_dir / FEED_ZIP) as feed:
         stops = read_stops(feed)
         info = feed_info(feed)
     if not stops:
         raise SystemExit("The feed has no boarding stops; no file written.")
 
-    out = DATA / "bus_stops.json"
+    out = data_dir / "bus_stops.json"
     body = json.dumps(stops, separators=(",", ":"), ensure_ascii=False).encode()
     if len(body) >= MAX_FILE_BYTES:
         raise SystemExit(f"bus_stops.json would be {len(body):,} bytes, over the {MAX_FILE_BYTES:,} budget.")
     write_atomic(out, body)
 
-    meta_path = DATA / "meta.json"
+    meta_path = data_dir / "meta.json"
     meta = json.loads(meta_path.read_text())
     meta.setdefault("sources", {})["busStops"] = FEED_URL
     meta["busStops"] = {
@@ -135,6 +141,12 @@ def main():
     # Same compact form as the rest of the pipeline (sources.write_json).
     write_atomic(meta_path, json.dumps(meta, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode())
     print(f"bus_stops.json: {len(stops):,} stops, {len(body):,} bytes (feed {info.get('feed_version')}, {source['resolvedUrl']})")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--refresh", action="store_true", help="download the feed again")
+    build(refresh=parser.parse_args().refresh)
 
 
 if __name__ == "__main__":

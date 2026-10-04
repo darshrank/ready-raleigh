@@ -162,9 +162,17 @@ def main():
     write_json(DATA / "meta.json", metadata)
     plot_population(cells, area, report)
     print(json.dumps(report, indent=2), flush=True)
-    if not args.p2_only:
+    finish(args.p2_only)
+
+
+def finish(p2_only=False, data_dir=DATA, cache_dir=CACHE):
+    """After the population: the flood stages (unless p2_only), then the map's detail data from the
+    cache, last, so meta.json keeps the bus stop and site building sources (pipeline/detail.py)."""
+    if not p2_only:
         from .build_flood import main as build_flood
         build_flood()
+    from .detail import refresh_detail
+    refresh_detail(data_dir, cache_dir)
 
 
 if __name__ == "__main__":

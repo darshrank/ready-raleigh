@@ -1,9 +1,15 @@
 """Semantic-zoom data scripts (standard library only): python3 -m unittest pipeline.tests.test_detail"""
 import io
+import json
+import tempfile
 import unittest
 import zipfile
+from pathlib import Path
+from unittest import mock
 
 from pipeline.bus_stops import feed_info, read_stops
+from pipeline.bus_stops import MissingCache
+from pipeline.detail import refresh_detail
 from pipeline.site_buildings import contains, join_rings, match_sites, polygons_of
 
 
@@ -94,6 +100,60 @@ class SiteBuildingTests(unittest.TestCase):
         self.assertEqual((out["osm-way-21"]["match"], out["osm-way-21"]["osm"]), ("self", "way/21"))
         self.assertEqual((out["osm-way-20"]["match"], out["osm-way-20"]["osm"]), ("grounds", "way/11"))
         self.assertEqual(out["osm-node-1"]["polygons"][0][0][1], [0.001, 0.0])
+
+
+# A data folder and cache shaped like a real one after build_all's P2/P3 steps, which rewrite
+# meta.json and drop the detail blocks (sources survive there only if they were already in it).
+REBUILT_META = {"buildDate": "2026-10-03T00:00:00+00:00", "task": "P2+P3",
+                "sources": {"osm": "https://www.openstreetmap.org/copyright"}, "p2": {}, "p3": {}}
+
+
+def fake_rebuild(root):
+    data, cache = Path(root, "data"), Path(root, "cache")
+    data.mkdir()
+    cache.mkdir()
+    (data / "meta.json").write_text(json.dumps(REBUILT_META))
+    (data / "sites.json").write_text(json.dumps([{"id": "osm-node-1", "name": "Test School", "kind": "school", "lon": -78.6395, "lat": 35.7805}]))
+    with zipfile.ZipFile(cache / "goraleigh_gtfs.zip", "w") as z:
+        z.writestr("stops.txt", HEADER + '19,1201,"Hillsborough St at Mayo St (EB)",,35.781524,-78.653343,,,,\n')
+        z.writestr("feed_info.txt", "feed_publisher_name,feed_version,feed_start_date,feed_end_date\nGoRaleigh,S1,20260906,20270131\n")
+    (cache / "goraleigh_gtfs.json").write_text(json.dumps({"url": "https://goraleigh.org/gr_gtfs", "resolvedUrl": "https://goraleigh.org/x.zip", "lastModified": None, "downloaded": "2026-10-03T00:00:00+00:00"}))
+    (cache / "site_elements_overpass.json").write_text(json.dumps({"elements": [{"type": "node", "id": 1, "lat": 35.7805, "lon": -78.6395, "tags": {"amenity": "school"}}]}))
+    (cache / "site_nearby_buildings_overpass.json").write_text(json.dumps({"elements": [way(10, square(-78.64, 35.78, 0.001), building="school")]}))
+    return data, cache
+
+
+def no_network(*args, **kwargs):
+    raise AssertionError("an offline rebuild tried to download")
+
+
+class RebuildTests(unittest.TestCase):
+    def test_refresh_puts_both_sources_back_in_meta(self):
+        with tempfile.TemporaryDirectory() as root, mock.patch("urllib.request.urlopen", no_network):
+            data, cache = fake_rebuild(root)
+            refresh_detail(data, cache)
+            meta = json.loads((data / "meta.json").read_text())
+            self.assertEqual(meta["sources"]["busStops"], "https://goraleigh.org/gr_gtfs")
+            self.assertEqual(meta["sources"]["siteBuildings"], "https://www.openstreetmap.org/copyright")
+            self.assertEqual((meta["busStops"]["count"], meta["siteBuildings"]["matched"]), (1, 1))
+            self.assertEqual(meta["p3"], {})  # the rest of meta.json is left as the rebuild wrote it
+            self.assertEqual(len(json.loads((data / "bus_stops.json").read_text())), 1)
+            self.assertEqual(json.loads((data / "site_buildings.json").read_text())[0]["osm"], "way/10")
+
+    def test_offline_with_no_cache_stops_and_never_downloads(self):
+        with tempfile.TemporaryDirectory() as root, mock.patch("urllib.request.urlopen", no_network):
+            data, cache = fake_rebuild(root)
+            (cache / "goraleigh_gtfs.zip").unlink()
+            with self.assertRaises(MissingCache):
+                refresh_detail(data, cache)
+
+    def test_cached_answer_for_other_sites_is_refused(self):
+        with tempfile.TemporaryDirectory() as root, mock.patch("urllib.request.urlopen", no_network):
+            data, cache = fake_rebuild(root)
+            refresh_detail(data, cache)  # adopts the cache: writes the .query files
+            (data / "sites.json").write_text(json.dumps([{"id": "osm-node-2", "name": "Other", "kind": "school", "lon": -78.6, "lat": 35.8}]))
+            with self.assertRaises(MissingCache):
+                refresh_detail(data, cache)
 
 
 if __name__ == "__main__":

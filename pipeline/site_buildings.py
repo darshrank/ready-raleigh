@@ -5,6 +5,8 @@ Run from the repository root (standard library only, any Python 3.11+):
     python3 -m pipeline.site_buildings            # uses cached Overpass answers if there are any
     python3 -m pipeline.site_buildings --refresh  # asks Overpass again
 
+A full rebuild (pipeline.build_all) runs it last from the cache only (pipeline/detail.py).
+
 For each site in app/public/data/sites.json, finds its OpenStreetMap building footprint:
 - `contains`: the site is an OSM node; the building whose polygon contains it.
 - `self`: the site is a way or relation that is itself a building.
@@ -24,13 +26,14 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
+from .bus_stops import MissingCache
 from .config import CACHE, DATA, MAX_FILE_BYTES
 
 OVERPASS = "https://overpass-api.de/api/interpreter"
 # Overpass refuses requests without a User-Agent.
 USER_AGENT = "ready-raleigh-pipeline/1.0 (WolfHacks 2026)"
-SITES_CACHE = CACHE / "site_elements_overpass.json"
-BUILDINGS_CACHE = CACHE / "site_nearby_buildings_overpass.json"
+SITES_CACHE = "site_elements_overpass.json"
+BUILDINGS_CACHE = "site_nearby_buildings_overpass.json"
 NODE_RADIUS_M = 40
 GROUNDS_PAD_M = 30
 GROUNDS_MAX_M = 900
@@ -45,19 +48,31 @@ def tls_context():
     return context
 
 
-def overpass(query, cache, refresh=False):
+def overpass(query, cache, refresh=False, offline=False):
+    """Overpass's answer to `query`, cached in `cache` with the query beside it (`.query`), so a
+    changed sites.json never reuses an answer for other sites. A cache from before the `.query`
+    files is adopted once."""
+    asked = cache.with_suffix(".query")
     if cache.exists() and not refresh:
-        return json.loads(cache.read_text())
+        if not asked.exists():
+            asked.write_text(query)
+        if asked.read_text() == query:
+            return json.loads(cache.read_text())
+        if offline:
+            raise MissingCache(f"{cache} answers other sites than sites.json now has; run `python3 -m pipeline.site_buildings --refresh` with network.")
+    if offline:
+        raise MissingCache(f"{cache} is not cached; run `python3 -m pipeline.site_buildings` once with network.")
     body = urllib.parse.urlencode({"data": query}).encode()
     request = urllib.request.Request(OVERPASS, data=body, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=600, context=tls_context()) as response:
         answer = json.loads(response.read())
     if answer.get("remark", "").lower().startswith(("runtime error", "error")):
         raise SystemExit(f"Overpass: {answer['remark']}")
-    CACHE.mkdir(parents=True, exist_ok=True)
+    cache.parent.mkdir(parents=True, exist_ok=True)
     tmp = cache.with_suffix(".tmp")
     tmp.write_text(json.dumps(answer))
     os.replace(tmp, cache)
+    asked.write_text(query)
     return answer
 
 
@@ -211,22 +226,19 @@ def queries(sites, elements):
     return first, second
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--refresh", action="store_true", help="ask Overpass again")
-    args = parser.parse_args()
-
-    sites = json.loads((DATA / "sites.json").read_text())
+def build(data_dir=DATA, cache_dir=CACHE, refresh=False, offline=False):
+    """Write site_buildings.json and its meta.json entries into data_dir. offline: cache only."""
+    sites = json.loads((data_dir / "sites.json").read_text())
     first, _ = queries(sites, None)
-    elements = overpass(first, SITES_CACHE, args.refresh)["elements"]
+    elements = overpass(first, cache_dir / SITES_CACHE, refresh, offline)["elements"]
     _, second = queries(sites, elements)
-    buildings = overpass(second, BUILDINGS_CACHE, args.refresh)["elements"]
+    buildings = overpass(second, cache_dir / BUILDINGS_CACHE, refresh, offline)["elements"]
 
     matched = match_sites(sites, elements, buildings)
     body = json.dumps(matched, separators=(",", ":"), ensure_ascii=False).encode()
     if len(body) >= MAX_FILE_BYTES:
         raise SystemExit(f"site_buildings.json would be {len(body):,} bytes, over the {MAX_FILE_BYTES:,} budget.")
-    out = DATA / "site_buildings.json"
+    out = data_dir / "site_buildings.json"
     tmp = out.with_suffix(".tmp")
     tmp.write_bytes(body)
     os.replace(tmp, out)
@@ -248,12 +260,13 @@ def main():
     missing = [s for s in sites if s["id"] not in hit]
     print(f"  {len(missing)} keep their square: " + "; ".join(f"{s['name']} ({s['id']})" for s in missing[:12]) + (" ..." if len(missing) > 12 else ""))
 
-    meta_path = DATA / "meta.json"
+    meta_path = data_dir / "meta.json"
     meta = json.loads(meta_path.read_text())
     meta.setdefault("sources", {})["siteBuildings"] = "https://www.openstreetmap.org/copyright"
     meta["siteBuildings"] = {
         "source": "OpenStreetMap building footprints via the Overpass API (" + OVERPASS + ")",
-        "built": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        # When OSM was read (the cached answer), so a rebuild from the cache changes nothing.
+        "osmFetched": datetime.fromtimestamp((cache_dir / BUILDINGS_CACHE).stat().st_mtime, timezone.utc).isoformat(timespec="seconds"),
         "file": "site_buildings.json",
         "sites": len(sites),
         "matched": len(matched),
@@ -263,6 +276,12 @@ def main():
     tmp = meta_path.with_suffix(".tmp")
     tmp.write_text(json.dumps(meta, separators=(",", ":"), ensure_ascii=False, allow_nan=False))
     os.replace(tmp, meta_path)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--refresh", action="store_true", help="ask Overpass again")
+    build(refresh=parser.parse_args().refresh)
 
 
 if __name__ == "__main__":
